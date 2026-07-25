@@ -1,0 +1,610 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+*/
+import React from 'react';
+import { GeneratedImage, Project, DraftPrompt } from './types';
+import { useAppEngine } from './hooks/useAppEngine';
+import ConfigForm from './components/ConfigForm';
+import PromptStudio from './components/PromptStudio';
+import GalleryDashboard from './components/GalleryDashboard';
+import Infographic from './components/Infographic';
+import Loading from './components/Loading';
+import IntroScreen from './components/IntroScreen';
+import SearchResults from './components/SearchResults';
+import Sidebar from './components/Sidebar';
+import ProjectsDashboard from './components/ProjectsDashboard';
+import DraftsPlanner from './components/DraftsPlanner';
+import { ResearchCenter } from './components/ResearchCenter';
+import { AnnotationStudio } from './components/AnnotationStudio';
+import VideoStudio from './components/VideoStudio';
+import VoiceoverStudio from './components/VoiceoverStudio';
+import { PresentationDeck } from './components/PresentationDeck';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { 
+  AlertCircle, 
+  Compass, 
+  Sun, 
+  Moon, 
+  Key, 
+  CreditCard, 
+  ExternalLink, 
+  DollarSign,
+  ChevronLeft,
+  ChevronRight,
+  SlidersHorizontal,
+  Folder,
+  Image as ImageIcon,
+  Eye,
+  ArrowRight,
+  Plus,
+  Sparkles,
+  Play
+} from 'lucide-react';
+
+const App: React.FC = () => {
+  const {
+    showIntro, setShowIntro,
+    topic, setTopic,
+    currentView, setCurrentView,
+    isSidebarOpen, setIsSidebarOpen,
+    projects,
+    selectedProjectId, setSelectedProjectId,
+    complexityLevel, setComplexityLevel,
+    visualStyle, setVisualStyle,
+    language, setLanguage,
+    resolution, setResolution,
+    subOptions, setSubOptions,
+    hasDraft, setHasDraft,
+    draftedPrompt, setDraftedPrompt,
+    draftedFacts,
+    draftedSearchResults,
+    isLoading,
+    loadingMessage,
+    loadingStep,
+    loadingFacts,
+    error, setError,
+    imageHistory,
+    currentSearchResults,
+    referenceImage, setReferenceImage,
+    referenceMode, setReferenceMode,
+    annotatingImage, setAnnotatingImage,
+    presentingProject, setPresentingProject,
+    isDarkMode, setIsDarkMode,
+    isControlPanelOpen, setIsControlPanelOpen,
+    hasApiKey,
+    checkingKey,
+
+    // Computed/derived state
+    activeProjectImages,
+    activeDrafts,
+
+    // Handlers
+    handleCreateProject,
+    handleUpdateProject,
+    handleDeleteProject,
+    handleSaveAnnotations,
+    handleDeleteDraft,
+    handleCreateDraft,
+    handleLaunchDraft,
+    handleGenerate,
+    handleDraftOnly,
+    handleGenerateFromDraft,
+    handleEdit,
+    selectImageFromGallery,
+    deleteImageFromGallery,
+    clearAllGallery,
+    loadForTweaking,
+    handleSelectKey,
+    handleImportImagesToProject
+  } = useAppEngine();
+
+  // Research prefill state for seamless bridge between Research Center and Social Campaign / Drafts
+  const [researchPrefillTopic, setResearchPrefillTopic] = React.useState<string>('');
+  const [researchPrefillPrompt, setResearchPrefillPrompt] = React.useState<string>('');
+  const [researchPrefillWebsite, setResearchPrefillWebsite] = React.useState<string>('');
+
+  // Modal for API Key Selection
+  const KeySelectionModal = () => (
+    <div className="fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300">
+        <div className="bg-white dark:bg-slate-900 border-2 border-amber-500/50 rounded-2xl shadow-2xl max-w-md w-full p-6 md:p-8 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-amber-500 via-orange-500 to-red-500"></div>
+            
+            <div className="flex flex-col items-center text-center space-y-6">
+                <div className="relative">
+                    <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center text-amber-600 dark:text-amber-400 mb-2 border-4 border-white dark:border-slate-900 shadow-lg">
+                        <CreditCard className="w-8 h-8" />
+                    </div>
+                    <div className="absolute -bottom-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm border-2 border-white dark:border-slate-900 uppercase tracking-wide">
+                        Paid App
+                    </div>
+                </div>
+                
+                <div className="space-y-3">
+                    <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white">
+                        Paid API Key Required
+                    </h2>
+                    <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed font-medium">
+                        This application uses premium Gemini 3 Pro models which are not available on the free tier.
+                    </p>
+                    <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
+                        You must select a Google Cloud Project with <span className="font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1 py-0.5 rounded">Billing Enabled</span> to proceed.
+                    </p>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-4 w-full text-left">
+                    <div className="flex items-start gap-3">
+                         <div className="p-1.5 bg-amber-100 dark:bg-amber-900/30 rounded-lg text-amber-600 dark:text-amber-400 shrink-0">
+                            <DollarSign className="w-4 h-4" />
+                         </div>
+                         <div className="space-y-1">
+                            <p className="text-xs font-bold text-slate-900 dark:text-slate-200">Billing Required</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                                Standard API keys will fail. Please ensure you have set up billing in Google AI Studio.
+                            </p>
+                             <a 
+                                href="https://ai.google.dev/gemini-api/docs/billing" 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline mt-1"
+                             >
+                                View Billing Documentation <ExternalLink className="w-3 h-3" />
+                             </a>
+                         </div>
+                    </div>
+                </div>
+
+                <button 
+                    id="select-paid-key-btn"
+                    onClick={handleSelectKey}
+                    className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-amber-500/20 transition-all transform hover:scale-[1.02] flex items-center justify-center gap-2"
+                >
+                    <Key className="w-4 h-4" />
+                    <span>Select Paid API Key</span>
+                </button>
+            </div>
+        </div>
+    </div>
+  );
+
+  return (
+    <>
+    {!checkingKey && !hasApiKey && <KeySelectionModal />}
+
+    {showIntro ? (
+      <IntroScreen onComplete={() => setShowIntro(false)} />
+    ) : (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white pb-20 relative overflow-x-hidden animate-in fade-in duration-1000 transition-colors">
+      
+      {/* Collapsible Sidebar */}
+      <Sidebar 
+        currentView={currentView}
+        onViewChange={setCurrentView}
+        isOpen={isSidebarOpen}
+        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+      />
+
+      {/* Main Content Area Offsetted by Sidebar Width */}
+      <div className={`transition-all duration-300 ${isSidebarOpen ? 'pl-20 md:pl-64' : 'pl-20'}`}>
+        
+        {/* Dynamic Ambient Background Canvas */}
+        <div className="fixed inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-indigo-100 via-slate-50 to-white dark:from-indigo-900 dark:via-slate-950 dark:to-black z-0 transition-colors"></div>
+        <div className="fixed inset-0 opacity-5 dark:opacity-20 z-0 pointer-events-none" style={{
+            backgroundImage: `radial-gradient(currentColor 1px, transparent 1px)`,
+            backgroundSize: '40px 40px'
+        }}></div>
+
+        {/* Navigation Header bar */}
+        <header className="border-b border-slate-200 dark:border-white/10 sticky top-0 z-50 backdrop-blur-md bg-white/70 dark:bg-slate-950/60 transition-colors">
+          <div className="max-w-[1550px] mx-auto px-4 sm:px-6 h-16 md:h-20 flex items-center justify-between">
+            <div className="flex items-center gap-3 md:gap-4 group">
+              <div className="relative scale-90 md:scale-100">
+                  <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-indigo-500 blur-md opacity-30 dark:opacity-50 animate-pulse"></div>
+                  <div className="bg-white dark:bg-gradient-to-br dark:from-slate-900 dark:to-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-white/10 relative z-10 shadow-md">
+                     <Sparkles className="w-6 h-6 text-cyan-600 dark:text-cyan-400 animate-pulse" />
+                  </div>
+              </div>
+              <div className="flex flex-col">
+                  <span className="font-display font-bold text-lg md:text-2xl tracking-tight text-slate-900 dark:text-white leading-none">
+                  Social Studio <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-600 to-indigo-600 dark:from-cyan-400 dark:to-amber-400">X</span>
+                  </span>
+                  <span className="text-[8px] md:text-[10px] uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 font-medium">Brand & Post Workspace</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+                {/* Active Project Indicator - Only shown inside the project generative workspace */}
+                {selectedProjectId && currentView === 'canvas' && (
+                  <div className="flex items-center gap-2">
+                    <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-purple-500/10 border border-purple-500/20 text-purple-600 dark:text-purple-400 text-xs font-semibold rounded-lg">
+                      <Folder className="w-3.5 h-3.5" />
+                      <span className="max-w-[120px] truncate">
+                        {projects.find(p => p.id === selectedProjectId)?.name || 'Default Project'}
+                      </span>
+                    </div>
+                    {imageHistory.filter(img => (img.subOptions?.projectId || 'proj-1') === selectedProjectId).length > 0 && (
+                      <button
+                        onClick={() => {
+                          const activeProj = projects.find(p => p.id === selectedProjectId);
+                          if (activeProj) {
+                            setPresentingProject(activeProj);
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-indigo-600 dark:from-cyan-500 dark:to-indigo-500 text-white dark:text-slate-950 text-xs font-bold uppercase tracking-wider rounded-lg shadow-md hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+                        title="Start Fullscreen Presentation Slideshow"
+                      >
+                        <Play className="w-3 h-3 fill-current" />
+                        <span className="hidden sm:inline">Present</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <button 
+                  id="header-api-key-btn"
+                  onClick={handleSelectKey}
+                  className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-cyan-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-xs font-medium transition-colors border border-slate-200 dark:border-white/10"
+                  title="Change API Key"
+                >
+                  <Key className="w-3.5 h-3.5" />
+                  <span>API Key</span>
+                </button>
+
+                <button 
+                  id="header-darkmode-toggle"
+                  onClick={() => setIsDarkMode(!isDarkMode)}
+                  className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-300 transition-colors border border-slate-200 dark:border-white/10 shadow-sm"
+                  title={isDarkMode ? "Switch to Light Mode" : "Switch to Dark Mode"}
+                >
+                  {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                </button>
+            </div>
+          </div>
+        </header>
+
+        <main className="max-w-[1550px] mx-auto px-3 sm:px-6 py-4 md:py-8 relative z-10">
+          
+          {/* View 1: Projects Dashboard */}
+          {currentView === 'dashboard' && (
+            <ErrorBoundary fallbackTitle="Projects Dashboard Display Interrupted">
+              <ProjectsDashboard 
+                projects={projects}
+                selectedProjectId={selectedProjectId}
+                onSelectProject={setSelectedProjectId}
+                onCreateProject={handleCreateProject}
+                onUpdateProject={handleUpdateProject}
+                onDeleteProject={handleDeleteProject}
+                onPresentProject={(proj) => setPresentingProject(proj)}
+                images={imageHistory}
+                onViewChange={setCurrentView}
+              />
+            </ErrorBoundary>
+          )}
+
+          {/* View 2: Active Generative Canvas */}
+          {currentView === 'canvas' && (
+            <ErrorBoundary fallbackTitle="Generative Canvas Display Interrupted">
+              <div className="space-y-8">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start relative">
+                
+                {/* Left Column: Collapsible Control Deck (col-span-4) - Configured to be stationary/sticky with viewport inner scroll to prevent full-page scrolling offset */}
+                {isControlPanelOpen && (
+                  <div className="lg:col-span-4 xl:col-span-3 lg:sticky lg:top-24 pb-6 space-y-6 order-first animate-in slide-in-from-left-6 duration-300 z-30">
+                    <div className="relative">
+                      {/* Optional ambient badge/label */}
+                      <div className="absolute -top-3 left-6 z-30 px-3 py-1 bg-gradient-to-r from-cyan-500 to-indigo-500 text-white text-[9px] font-bold uppercase tracking-widest rounded-full shadow-md">
+                        Control Panel
+                      </div>
+                      {/* Beautiful Collapse Button */}
+                      <button
+                        id="collapse-control-panel-btn"
+                        onClick={() => setIsControlPanelOpen(false)}
+                        className="absolute -top-3 right-6 z-30 px-3 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 text-[9px] font-bold uppercase tracking-widest rounded-full shadow-md transition-colors border border-slate-200 dark:border-white/5 flex items-center gap-1 cursor-pointer"
+                        title="Collapse Panel"
+                      >
+                        <ChevronLeft className="w-3 h-3" />
+                        <span>Collapse</span>
+                      </button>
+                      <ConfigForm 
+                        topic={topic}
+                        setTopic={setTopic}
+                        complexityLevel={complexityLevel}
+                        setComplexityLevel={setComplexityLevel}
+                        visualStyle={visualStyle}
+                        setVisualStyle={setVisualStyle}
+                        language={language}
+                        setLanguage={setLanguage}
+                        resolution={resolution}
+                        setResolution={setResolution}
+                        subOptions={subOptions}
+                        setSubOptions={setSubOptions}
+                        onSubmit={handleGenerate}
+                        onDraft={handleDraftOnly}
+                        isLoading={isLoading}
+                        referenceImage={referenceImage}
+                        setReferenceImage={setReferenceImage}
+                        referenceMode={referenceMode}
+                        setReferenceMode={setReferenceMode}
+                        lastGeneratedImage={activeProjectImages[0]?.data || null}
+                        drafts={activeDrafts}
+                        onLaunchDraft={handleLaunchDraft}
+                        onDeleteDraft={handleDeleteDraft}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Active Visual Workspace Column (takes remaining space dynamically) */}
+                <div className={`${isControlPanelOpen ? 'lg:col-span-8 xl:col-span-9' : 'lg:col-span-12 w-full'} space-y-6 order-last transition-all duration-300`}>
+                  
+                  {/* 1. Loading State */}
+                  {isLoading && (
+                    <div className="animate-in fade-in zoom-in-95 duration-300">
+                      <Loading status={loadingMessage} step={loadingStep} facts={loadingFacts} />
+                    </div>
+                  )}
+
+                  {/* 2. Error Notification Block */}
+                  {error && !isLoading && (
+                    <div className="p-6 bg-red-100 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 rounded-2xl flex items-center gap-4 text-red-800 dark:text-red-200 backdrop-blur-sm animate-in fade-in slide-in-from-bottom-4 shadow-sm relative z-30">
+                      <AlertCircle className="w-6 h-6 flex-shrink-0 text-red-500 dark:text-red-400" />
+                      <div className="flex-1">
+                          <p className="font-medium text-sm">{error}</p>
+                          {(error.includes("Access denied") || error.includes("billing")) && (
+                              <button 
+                                  id="error-select-key-btn"
+                                  onClick={handleSelectKey}
+                                  className="mt-2 text-xs font-bold text-red-700 dark:text-red-300 underline hover:text-red-900 dark:hover:text-red-100"
+                              >
+                                  Select a different API key
+                              </button>
+                          )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. Main Workspace Display */}
+                  {!isLoading && (
+                    <>
+                      {/* A. Premium Prompt Studio Workspace */}
+                      {hasDraft && (
+                        <PromptStudio 
+                          draftedPrompt={draftedPrompt}
+                          setDraftedPrompt={setDraftedPrompt}
+                          draftedFacts={draftedFacts}
+                          draftedSearchResults={draftedSearchResults}
+                          onGenerate={handleGenerateFromDraft}
+                          onCancel={() => {
+                            setHasDraft(false);
+                            setTopic('');
+                          }}
+                          isLoading={isLoading}
+                        />
+                      )}
+
+                      {/* B. Active Generated Infographic and Live Grounding Data */}
+                      {activeProjectImages.length > 0 && !hasDraft && (
+                        <div id="active-visual-anchor" className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                          <Infographic 
+                            image={activeProjectImages[0]} 
+                            onEdit={handleEdit} 
+                            isEditing={isLoading}
+                            onAnnotate={() => setAnnotatingImage(activeProjectImages[0])}
+                          />
+                          <SearchResults results={activeProjectImages[0]?.searchResults || []} />
+                        </div>
+                      )}
+
+                      {/* C. Empty Canvas Suggestion Guide when no generation/draft exists yet */}
+                      {activeProjectImages.length === 0 && !hasDraft && (
+                        <div className="border border-dashed border-slate-200 dark:border-white/10 rounded-3xl p-8 md:p-12 text-center bg-white/40 dark:bg-slate-900/10 backdrop-blur-sm min-h-[420px] flex flex-col justify-center items-center shadow-inner relative overflow-hidden group">
+                          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/5 via-transparent to-purple-500/5 opacity-50"></div>
+                          
+                          <div className="relative mb-6">
+                            <div className="absolute inset-0 bg-cyan-500/10 blur-xl rounded-full scale-150 animate-pulse"></div>
+                            <Compass className="w-16 h-16 text-cyan-500/70 dark:text-cyan-400/70 animate-[spin_60s_linear_infinite] relative z-10" />
+                          </div>
+                          
+                          <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100 font-display relative z-10">Creative Knowledge Canvas</h3>
+                          <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-md mx-auto leading-relaxed relative z-10">
+                            Enter any historical event, mechanical model, biology layout or technical schematic in the Control Panel on the left, then click <strong>Instant Generate</strong> to see it visualised at the center of this canvas!
+                          </p>
+                          
+                          {/* Interactive suggestions deck */}
+                          <div className="mt-8 relative z-10 w-full max-w-lg">
+                            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 font-display">Example topics to explore:</p>
+                            <div className="flex flex-wrap gap-2 justify-center">
+                              {[
+                                "Roman Aqueduct Cross Section",
+                                "Photosynthesis Mechanism",
+                                "Quantum Computing Qubits",
+                                "Anatomy of the Human Heart",
+                                "James Webb Space Telescope optics"
+                              ].map((suggestion, idx) => (
+                                <button
+                                  key={idx}
+                                  id={`suggestion-btn-${idx}`}
+                                  onClick={() => setTopic(suggestion)}
+                                  className="px-3 py-1.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-cyan-500 dark:hover:border-cyan-400 hover:scale-[1.02] transition-all shadow-sm"
+                                >
+                                  {suggestion}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                </div>
+
+              </div>
+
+              {/* Floating pull-tab to expand Control Panel when collapsed */}
+              {!isControlPanelOpen && (
+                <button
+                  id="expand-sidebar-floating-btn"
+                  onClick={() => setIsControlPanelOpen(true)}
+                  className="fixed left-0 top-24 z-50 p-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-r-2xl shadow-2xl hover:from-cyan-500 hover:to-blue-500 transition-all flex items-center gap-2 group animate-in slide-in-from-left-4 duration-300 border-t border-b border-r border-cyan-400/25"
+                  title="Expand Control Panel"
+                >
+                  <SlidersHorizontal className="w-5 h-5 animate-pulse" />
+                  <span className="text-xs font-bold font-display uppercase tracking-wider max-w-0 overflow-hidden group-hover:max-w-xs transition-all duration-300 whitespace-nowrap">
+                    Control Panel
+                  </span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              )}
+
+              {/* Lightweight Recent Project Assets list strip */}
+              {activeProjectImages.length > 0 && (
+                <div className="border border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/10 backdrop-blur-sm rounded-3xl p-6 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4 text-cyan-500" />
+                      <span>Recent Project Generations</span>
+                    </h4>
+                    <button 
+                      onClick={() => setCurrentView('gallery')}
+                      className="text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
+                    >
+                      <span>Open Library Vault</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {activeProjectImages.slice(0, 4).map((img, idx) => (
+                      <div 
+                        key={img.id}
+                        onClick={() => selectImageFromGallery(img)}
+                        className="relative aspect-video rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 hover:border-cyan-500 dark:hover:border-cyan-500 cursor-pointer group shadow-sm transition-all"
+                      >
+                        <img src={img.data} alt={img.prompt} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" referrerPolicy="no-referrer" />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Eye className="w-5 h-5 text-white" />
+                        </div>
+                        {idx === 0 && (
+                          <span className="absolute top-2 left-2 bg-cyan-500 text-slate-950 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded">
+                            Active
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            </ErrorBoundary>
+          )}
+
+          {/* View 3: Research Center */}
+          {currentView === 'research' && (
+            <ErrorBoundary fallbackTitle="Research Center Display Interrupted">
+              <ResearchCenter 
+                onSendToSocialCampaign={(topic, prompt, companyContext) => {
+                  setResearchPrefillTopic(topic);
+                  setResearchPrefillPrompt(prompt);
+                  setResearchPrefillWebsite(companyContext);
+                  setCurrentView('drafts');
+                }}
+                onSaveToDraftPlanner={(topic, prompt) => {
+                  handleCreateDraft({
+                    topic: topic || 'Researched Strategy',
+                    complexityLevel: 'Default',
+                    visualStyle: 'Carousel',
+                    language: 'Default',
+                    resolution: '9:16',
+                    subOptions: { notes: prompt }
+                  });
+                  setCurrentView('drafts');
+                }}
+              />
+            </ErrorBoundary>
+          )}
+
+          {/* View 4: Planner Drafts */}
+          {currentView === 'drafts' && (
+            <ErrorBoundary fallbackTitle="Drafts & Campaigns Planner Display Interrupted">
+              <DraftsPlanner 
+                activeProjectId={selectedProjectId || 'proj-1'}
+                drafts={activeDrafts}
+                onCreateDraft={handleCreateDraft}
+                onDeleteDraft={handleDeleteDraft}
+                onLaunchDraft={handleLaunchDraft}
+                initialTopic={researchPrefillTopic}
+                initialPrompt={researchPrefillPrompt}
+                initialWebsite={researchPrefillWebsite}
+              />
+            </ErrorBoundary>
+          )}
+
+          {/* View 5: Full Page Library Gallery */}
+          {currentView === 'gallery' && (
+            <ErrorBoundary fallbackTitle="Gallery Dashboard Display Interrupted">
+              <GalleryDashboard 
+                images={imageHistory}
+                onSelectImage={(img) => {
+                  selectImageFromGallery(img);
+                  setCurrentView('canvas');
+                }}
+                onDeleteImage={deleteImageFromGallery}
+                onClearAll={clearAllGallery}
+                onLoadForTweaking={(img) => {
+                  loadForTweaking(img);
+                  setCurrentView('canvas');
+                }}
+                activeProjectId={selectedProjectId}
+                projects={projects}
+              />
+            </ErrorBoundary>
+          )}
+
+          {/* View 6: Video Studio */}
+          {currentView === 'video-studio' && (
+            <ErrorBoundary fallbackTitle="Video Studio Display Interrupted">
+              <VideoStudio 
+                images={imageHistory}
+                activeProjectId={selectedProjectId}
+              />
+            </ErrorBoundary>
+          )}
+
+          {/* View 7: Voiceover Studio */}
+          {currentView === 'voiceover-studio' && (
+            <ErrorBoundary fallbackTitle="Voiceover Studio Display Interrupted">
+              <VoiceoverStudio 
+                images={imageHistory}
+                activeProjectId={selectedProjectId}
+              />
+            </ErrorBoundary>
+          )}
+
+        </main>
+      </div>
+    </div>
+    )}
+
+    {annotatingImage && (
+      <AnnotationStudio 
+        image={annotatingImage}
+        onSave={handleSaveAnnotations}
+        onClose={() => setAnnotatingImage(null)}
+      />
+    )}
+
+    {presentingProject && (
+      <PresentationDeck 
+        project={presentingProject}
+        images={imageHistory.filter(img => (img.subOptions?.projectId || 'proj-1') === presentingProject.id)}
+        allImages={imageHistory}
+        projects={projects}
+        onImportImages={(imageIds) => handleImportImagesToProject(imageIds, presentingProject.id)}
+        onClose={() => setPresentingProject(null)}
+      />
+    )}
+    </>
+  );
+};
+
+export default App;

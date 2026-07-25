@@ -1,0 +1,8 @@
+{
+  "name": "Social Studio X",
+  "description": "Create high-converting social media copy, draft spoken voiceover scripts, compile cinematic AI videos, research topics with search-grounding, and edit visual assets in a professional multi-modal studio.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
