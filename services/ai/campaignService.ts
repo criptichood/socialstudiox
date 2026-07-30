@@ -460,3 +460,160 @@ export const conductResearchChat = async (
     suggestedVideoScript
   };
 };
+
+export interface SectionImagePrompt {
+  id: string;
+  prompt: string;
+  tag: string;
+  generatedUrl?: string;
+}
+
+export interface BlogPostResult {
+  title: string;
+  slug?: string;
+  excerpt?: string;
+  metaDescription?: string;
+  keywords?: string[];
+  markdownContent: string;
+  characterCount: number;
+  readingTimeMinutes: number;
+  embeddedImagesCount: number;
+  sectionImagePrompts: SectionImagePrompt[];
+}
+
+export const generateBlogPostFromCampaign = async (
+  topic: string,
+  campaignSummary: string,
+  availableImages: { title: string; url: string }[] = [],
+  companyContext: string = '',
+  targetTone: string = 'Informative, Authoritative & Actionable Guide',
+  targetWordCount: number = 1200
+): Promise<BlogPostResult> => {
+  const imagesListText = availableImages.length > 0
+    ? availableImages.map((img, i) => `Image #${i + 1}: Title: "${img.title}", URL: "${img.url}"`).join('\n')
+    : 'No pre-generated images available.';
+
+  const systemInstruction = `
+    You are a world-class technology blogger, content strategist, and technical writer.
+    Your task is to write an in-depth, authoritative, and engaging Markdown blog post based on a research topic or social campaign.
+
+    CONTEXT & INPUTS:
+    - Main Topic: "${topic}"
+    - Business / Brand Context: "${companyContext || 'Innovative Tech & Digital Brand'}"
+    - Tone / Style: "${targetTone}"
+    - Target Word Count: approximately ${targetWordCount} words
+    - Research / Campaign Context:
+    ${campaignSummary}
+    
+    AVAILABLE CAMPAIGN VISUAL ASSETS:
+    ${imagesListText}
+
+    PUNCTUATION & STYLE CONSTRAINT (CRITICAL):
+    - NEVER use em-dashes (— or --) under ANY circumstances anywhere in the blog post. Use hyphens with spaces, colons, commas, or parentheses instead to ensure natural, human-grade prose.
+
+    LENGTH & DENSITY GUIDELINES:
+    - Write a comprehensive, high-density, authoritative blog post aiming for ~${targetWordCount} words.
+    - Focus on practical, structured value with distinct double-line breaks (\n\n) between all sections. Do NOT cut off mid-thought.
+
+    FORMATTING & STRUCTURE REQUIREMENTS:
+    1. **In-Depth Guide & Practical Reasoning**:
+       Expand high-level concepts into actionable guides with foundational explanations.
+       (e.g., If explaining AI Personas, detail HOW persona system prompts condition model attention, tone boundaries, and operational fidelity).
+    2. **Section Spacing & Structure**:
+       - ALWAYS place a double newline (\n\n) between paragraphs, headings, list blocks, quotes, and image blocks.
+       - Start with a compelling H1 title: "# [Title]"
+       - An engaging opening hook establishing the core problem & solution.
+       - 3 to 5 clear H2 section headings ("## Section Title").
+       - Bulleted key insights or step-by-step framework takeaways with spaces before and after list groups.
+       - A quote callout box ("> Key Insight...") or prompt code block if applicable.
+       - A concluding summary with a strategic call-to-action.
+    3. **Image Integration & Prompts**:
+       - If pre-generated images exist above, embed them as markdown images:
+         ![Slide Visual: Title](Image_URL)
+       - If NO pre-generated images exist or for key sections needing visual illustrations, insert an explicit Image Prompt placeholder on its own line between sections with blank lines around it:
+         
+         [IMAGE_PROMPT: Detailed prompt describing a high-quality 16:9 infographic/illustration for this section]
+         
+       - Limit image prompts to 1 or 2 strategic section breaks so the user can generate images on demand.
+
+    Output ONLY the raw Markdown blog post. Do not add introductory conversational filler before or after the markdown text.
+  `;
+
+  const response = await getAi().models.generateContent({
+    model: TEXT_MODEL,
+    contents: systemInstruction,
+  });
+
+  // Clean raw text and strictly eliminate any em-dashes
+  let rawText = (response.text || "").trim();
+  rawText = rawText.replace(/—/g, ' - ').replace(/--/g, ' - ');
+
+  let markdownContent = rawText;
+
+  // Extract Title from H1 if present
+  const titleMatch = markdownContent.match(/^#\s*(.+)/m);
+  const title = titleMatch ? titleMatch[1].trim().replace(/\*+/g, '') : `${topic}: In-Depth Guide`;
+
+  const characterCount = markdownContent.length;
+  const wordCount = markdownContent.split(/\s+/).filter(Boolean).length;
+  const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
+
+  // Count embedded markdown images
+  const imageMatches = markdownContent.match(/!\[.*?\]\(.*?\)/g) || [];
+
+  // Extract section image prompts of form [IMAGE_PROMPT: ...]
+  const promptRegex = /\[IMAGE_PROMPT:\s*([^\]]+)\]/gi;
+  const sectionImagePrompts: SectionImagePrompt[] = [];
+  let match: RegExpExecArray | null;
+
+  let promptCount = 0;
+  while ((match = promptRegex.exec(markdownContent)) !== null) {
+    promptCount++;
+    sectionImagePrompts.push({
+      id: `img_prompt_${Date.now()}_${promptCount}`,
+      prompt: match[1].trim(),
+      tag: match[0]
+    });
+  }
+
+  // Compute SEO slug, excerpt, metaDescription, and keywords
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 150) || 'blog-post';
+
+  const cleanTextForExcerpt = markdownContent
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/\[IMAGE_PROMPT:.*?\]/gi, '')
+    .replace(/#+\s+/g, '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
+
+  const excerpt = cleanTextForExcerpt.slice(0, 280) + (cleanTextForExcerpt.length > 280 ? '...' : '');
+  const metaDescription = cleanTextForExcerpt.slice(0, 160);
+
+  // Derive top keywords from topic and title
+  const keywordCandidates = `${topic} ${title}`
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'your', 'about', 'guide', 'master'].includes(w));
+  const keywords = Array.from(new Set(keywordCandidates)).slice(0, 8);
+
+  return {
+    title,
+    slug,
+    excerpt,
+    metaDescription,
+    keywords,
+    markdownContent,
+    characterCount,
+    readingTimeMinutes,
+    embeddedImagesCount: imageMatches.length,
+    sectionImagePrompts
+  };
+};
+

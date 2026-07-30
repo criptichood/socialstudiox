@@ -28,5 +28,7 @@ export {
   generateSocialCampaign,
   generateSingleSocialPost,
   refineSingleSocialPost,
-  conductResearchChat
+  conductResearchChat,
+  generateBlogPostFromCampaign
 } from "./ai/campaignService";
+export type { BlogPostResult, SectionImagePrompt } from "./ai/campaignService";

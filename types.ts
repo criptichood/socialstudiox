@@ -141,6 +141,7 @@ export interface ChatMessageItem {
   content: string;
   timestamp: number;
   searchResults?: SearchResultItem[];
+  groundingSources?: { title?: string; uri: string }[];
   suggestedCampaignTopic?: string;
   suggestedPrompt?: string;
   suggestedVideoPrompt?: string;
@@ -208,6 +209,64 @@ export interface DraftPrompt {
   slideNumber?: number;
   slideTitle?: string;
   visualPrompt?: string;
+}
+
+export interface PublishEndpointConfig {
+  id: string;
+  name: string;
+  endpointUrl: string;
+  secretKey: string;
+  headerName: string;
+  enabled: boolean;
+  isDefault?: boolean;
+}
+
+export interface SectionImagePromptItem {
+  id: string;
+  prompt: string;
+  tag: string;
+  generatedUrl?: string;
+}
+
+export interface SavedBlogDraft {
+  id: string;
+  sessionId?: string;
+  campaignId?: string;
+  campaignTitle?: string;
+  title: string;
+  slug?: string;
+  excerpt?: string;
+  metaDescription?: string;
+  keywords?: string[];
+  markdownContent: string;
+  characterCount: number;
+  readingTimeMinutes: number;
+  embeddedImagesCount: number;
+  sectionImagePrompts?: SectionImagePromptItem[];
+  status: 'draft' | 'scheduled' | 'published';
+  scheduledAt?: string;
+  publishedAt?: string;
+  publishedEndpointId?: string;
+  createdAt: number | string;
+  updatedAt: number | string;
+}
+
+export interface CronScheduleItem {
+  id: string;
+  campaignId?: string;
+  campaignTitle?: string;
+  draftId?: string;
+  postTitle: string;
+  cronExpression: string; // e.g. "0 9 * * 1"
+  cronHumanReadable?: string;
+  scheduledDateTime?: string; // ISO datetime
+  endpointId: string;
+  endpointName?: string;
+  status: 'active' | 'paused' | 'completed';
+  lastRunAt?: string;
+  nextRunAt?: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 declare global {
