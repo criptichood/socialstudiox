@@ -2,16 +2,22 @@ import React, { useState } from 'react';
 import { 
   ChevronLeft, ChevronRight, Layers, Edit, Trash2, Globe, ExternalLink, Settings, Plus, Sparkles, 
   X, Loader2, Wand2, FileSpreadsheet, Copy, Save, Play, MessageSquare, CheckCircle2, Eye, Maximize2, Download,
-  Volume2, VolumeX, Video, Film, Mic, Music, Pause
+  Volume2, VolumeX, Video, Film, Mic, Music, Pause, Image as ImageIcon
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SocialPostCampaignItem, SavedCampaign } from '../DraftsPlanner';
-import { VisualStyle, AspectRatio } from '../../types';
+import { VisualStyle, AspectRatio, CarouselSlide } from '../../types';
 import { AspectRatioIcon, getAspectShortLabel } from './AspectBadge';
 import { CampaignImage } from './CampaignImage';
+import { ImageDownloadDropdown } from '../ImageDownloadDropdown';
+import { AIModelDropdown } from '../CustomDropdown';
 
-import { generateInfographicImage, generateVoiceOverAndVideoPrompt, generateVeoVideo, generateVoiceOverSpeech } from '../../services/geminiService';
+import { generateInfographicImage, generateVoiceOverAndVideoPrompt, generateVoiceOverSpeech } from '../../services/geminiService';
 import { DBService } from '../../services/dbService';
+import { AudioSubtitleViewer } from '../AudioSubtitleViewer';
+import { compileProgrammaticVideo } from '../../services/programmaticVideoCompiler';
+import { saveVoiceoverSession } from '../../services/audioStorageService';
+import { loadVideoBlobUrl } from '../../services/videoStorageService';
 
 interface CampaignWorkspaceProps {
   activeCampaignId: string;
@@ -68,6 +74,8 @@ interface CampaignWorkspaceProps {
   getPlatformBadgeColor: (platform: string) => string;
   getPlatformIcon: (platform: string) => React.ReactNode;
   onUpdateCampaignPosts: (posts: SocialPostCampaignItem[]) => void;
+  onUpdateCampaignModel?: (newModel: string) => void;
+  activeProjectId?: string;
 }
 
 export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
@@ -75,6 +83,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
   savedCampaigns,
   onSelectCampaign,
   onDeleteCampaign,
+  activeProjectId = 'proj-1',
   campaignPosts,
   isRenaming,
   setIsRenaming,
@@ -125,6 +134,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
   getPlatformBadgeColor,
   getPlatformIcon,
   onUpdateCampaignPosts,
+  onUpdateCampaignModel,
 }) => {
   const currentCampaign = savedCampaigns.find(c => c.id === activeCampaignId);
   if (!currentCampaign) return null;
@@ -144,27 +154,270 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
   const [expandedStudioMap, setExpandedStudioMap] = useState<Record<string, boolean>>({});
   const [playingAudio, setPlayingAudio] = useState<HTMLAudioElement | null>(null);
 
-  // Cleanup speech synthesis on unmount
+  // Persistent Settings for Voice, Engine, Accent & Camera Motion
+  const [selectedVoiceActor, setSelectedVoiceActor] = useState<'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede'>(() => {
+    return (localStorage.getItem('social_studio_voice_actor') as any) || 'Puck';
+  });
+
+  const [selectedAudioEngine, setSelectedAudioEngine] = useState<string>(() => {
+    return localStorage.getItem('social_studio_audio_engine') || 'gemini-3.1-flash-tts-preview';
+  });
+
+  const [selectedAccent, setSelectedAccent] = useState<string>(() => {
+    return localStorage.getItem('social_studio_voice_accent') || 'US Standard';
+  });
+
+  const [selectedPersonaStyle, setSelectedPersonaStyle] = useState<string>(() => {
+    return localStorage.getItem('social_studio_voice_persona') || 'adult';
+  });
+
+  const [selectedDeliveryTone, setSelectedDeliveryTone] = useState<string>(() => {
+    return localStorage.getItem('social_studio_voice_tone') || 'natural';
+  });
+
+  const [selectedSpeechSpeed, setSelectedSpeechSpeed] = useState<string>(() => {
+    return localStorage.getItem('social_studio_voice_speed') || '1.0';
+  });
+
+  const [selectedCameraAnim, setSelectedCameraAnim] = useState<'zoom-in' | 'pan-left' | 'pan-right' | 'pulse' | 'ken-burns' | 'static'>(() => {
+    return (localStorage.getItem('social_studio_camera_anim') as any) || 'zoom-in';
+  });
+
+  const [selectedBackgroundTrack, setSelectedBackgroundTrack] = useState<'none' | 'lofi' | 'ambient' | 'synthwave' | 'cinematic'>(() => {
+    return (localStorage.getItem('social_studio_bg_track') as any) || 'none';
+  });
+
+  // Lightbox Dual-Tab State (Pristine Image vs Compiled Video)
+  const [lightboxViewTab, setLightboxViewTab] = useState<'image' | 'video'>('image');
+
+  // Cleanup audio on unmount
   React.useEffect(() => {
     return () => {
-      if (typeof window !== 'undefined' && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
       if (playingAudio) {
         playingAudio.pause();
       }
     };
   }, [playingAudio]);
 
+  // Automatically restore compiled video blob URLs from IndexedDB when campaign posts reload or mount
+  React.useEffect(() => {
+    if (!campaignPosts || campaignPosts.length === 0) return;
+
+    let isSubscribed = true;
+    const restoreVideoBlobs = async () => {
+      let changed = false;
+      const updatedPosts = JSON.parse(JSON.stringify(campaignPosts));
+
+      for (let pIdx = 0; pIdx < updatedPosts.length; pIdx++) {
+        const post = updatedPosts[pIdx];
+
+        if (post.videoId) {
+          const blobUrl = await loadVideoBlobUrl(post.videoId);
+          if (blobUrl && blobUrl !== post.videoUrl) {
+            post.videoUrl = blobUrl;
+            post.videoGenerated = true;
+            changed = true;
+          }
+        }
+
+        if (post.slides) {
+          for (let sIdx = 0; sIdx < post.slides.length; sIdx++) {
+            const slide = post.slides[sIdx];
+            if (slide.videoId) {
+              const blobUrl = await loadVideoBlobUrl(slide.videoId);
+              if (blobUrl && blobUrl !== slide.videoUrl) {
+                slide.videoUrl = blobUrl;
+                slide.videoGenerated = true;
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+
+      if (changed && isSubscribed) {
+        onUpdateCampaignPosts(updatedPosts);
+      }
+    };
+
+    restoreVideoBlobs();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [activeCampaignId, campaignPosts?.length]);
+
   const getStudioKey = (postIdx: number, slideIdx: number | null) => {
     return `${postIdx}-${slideIdx !== null ? slideIdx : 'post'}`;
   };
 
-  const handleSynthesizeVoice = async (postIdx: number, slideIdx: number | null, text: string, voice: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede') => {
+  const handleSelectVoiceActor = (voice: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede', postIdx?: number, slideIdx?: number | null) => {
+    localStorage.setItem('social_studio_voice_actor', voice);
+    setSelectedVoiceActor(voice);
+    if (postIdx !== undefined) {
+      const updatedPosts = [...(campaignPosts || [])];
+      if (slideIdx !== undefined && slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
+        updatedPosts[postIdx].slides![slideIdx].voiceName = voice;
+      } else if (updatedPosts[postIdx]) {
+        updatedPosts[postIdx].voiceName = voice;
+      }
+      onUpdateCampaignPosts(updatedPosts);
+    }
+  };
+
+  const handleSelectAudioEngine = (model: string, postIdx?: number, slideIdx?: number | null) => {
+    localStorage.setItem('social_studio_audio_engine', model);
+    setSelectedAudioEngine(model);
+    if (postIdx !== undefined) {
+      const updatedPosts = [...(campaignPosts || [])];
+      if (slideIdx !== undefined && slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
+        (updatedPosts[postIdx].slides![slideIdx] as any).ttsModel = model;
+      } else if (updatedPosts[postIdx]) {
+        (updatedPosts[postIdx] as any).ttsModel = model;
+      }
+      onUpdateCampaignPosts(updatedPosts);
+    }
+  };
+
+  const handleSelectAccent = (accent: string, postIdx?: number, slideIdx?: number | null) => {
+    localStorage.setItem('social_studio_voice_accent', accent);
+    setSelectedAccent(accent);
+    if (postIdx !== undefined) {
+      const updatedPosts = [...(campaignPosts || [])];
+      if (slideIdx !== undefined && slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
+        (updatedPosts[postIdx].slides![slideIdx] as any).accent = accent;
+      } else if (updatedPosts[postIdx]) {
+        (updatedPosts[postIdx] as any).accent = accent;
+      }
+      onUpdateCampaignPosts(updatedPosts);
+    }
+  };
+
+  const handleSelectPersonaStyle = (persona: string, postIdx?: number, slideIdx?: number | null) => {
+    localStorage.setItem('social_studio_voice_persona', persona);
+    setSelectedPersonaStyle(persona);
+    if (postIdx !== undefined) {
+      const updatedPosts = [...(campaignPosts || [])];
+      if (slideIdx !== undefined && slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
+        (updatedPosts[postIdx].slides![slideIdx] as any).personaStyle = persona;
+      } else if (updatedPosts[postIdx]) {
+        (updatedPosts[postIdx] as any).personaStyle = persona;
+      }
+      onUpdateCampaignPosts(updatedPosts);
+    }
+  };
+
+  const handleSelectDeliveryTone = (tone: string, postIdx?: number, slideIdx?: number | null) => {
+    localStorage.setItem('social_studio_voice_tone', tone);
+    setSelectedDeliveryTone(tone);
+    if (postIdx !== undefined) {
+      const updatedPosts = [...(campaignPosts || [])];
+      if (slideIdx !== undefined && slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
+        (updatedPosts[postIdx].slides![slideIdx] as any).deliveryTone = tone;
+      } else if (updatedPosts[postIdx]) {
+        (updatedPosts[postIdx] as any).deliveryTone = tone;
+      }
+      onUpdateCampaignPosts(updatedPosts);
+    }
+  };
+
+  const handleSelectSpeechSpeed = (speed: string, postIdx?: number, slideIdx?: number | null) => {
+    localStorage.setItem('social_studio_voice_speed', speed);
+    setSelectedSpeechSpeed(speed);
+    if (postIdx !== undefined) {
+      const updatedPosts = [...(campaignPosts || [])];
+      if (slideIdx !== undefined && slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
+        (updatedPosts[postIdx].slides![slideIdx] as any).speechSpeed = speed;
+      } else if (updatedPosts[postIdx]) {
+        (updatedPosts[postIdx] as any).speechSpeed = speed;
+      }
+      onUpdateCampaignPosts(updatedPosts);
+    }
+  };
+
+  const handleSelectCameraAnim = (anim: 'zoom-in' | 'pan-left' | 'pan-right' | 'pulse' | 'ken-burns' | 'static', postIdx?: number, slideIdx?: number | null) => {
+    localStorage.setItem('social_studio_camera_anim', anim);
+    setSelectedCameraAnim(anim);
+    if (postIdx !== undefined) {
+      const updatedPosts = [...(campaignPosts || [])];
+      if (slideIdx !== undefined && slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
+        (updatedPosts[postIdx].slides![slideIdx] as any).animationStyle = anim;
+      } else if (updatedPosts[postIdx]) {
+        (updatedPosts[postIdx] as any).animationStyle = anim;
+      }
+      onUpdateCampaignPosts(updatedPosts);
+    }
+  };
+
+  const handleSelectVideoAspectRatio = (aspect: string, postIdx?: number, slideIdx?: number | null) => {
+    if (postIdx !== undefined) {
+      const updatedPosts = [...(campaignPosts || [])];
+      if (slideIdx !== undefined && slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
+        (updatedPosts[postIdx].slides![slideIdx] as any).videoAspectRatio = aspect;
+      } else if (updatedPosts[postIdx]) {
+        (updatedPosts[postIdx] as any).videoAspectRatio = aspect;
+      }
+      onUpdateCampaignPosts(updatedPosts);
+    }
+  };
+
+  const handleSelectBackgroundTrack = (track: 'none' | 'lofi' | 'ambient' | 'synthwave' | 'cinematic', postIdx?: number, slideIdx?: number | null) => {
+    localStorage.setItem('social_studio_bg_track', track);
+    setSelectedBackgroundTrack(track);
+    if (postIdx !== undefined) {
+      const updatedPosts = [...(campaignPosts || [])];
+      if (slideIdx !== undefined && slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
+        (updatedPosts[postIdx].slides![slideIdx] as any).backgroundTrack = track;
+      } else if (updatedPosts[postIdx]) {
+        (updatedPosts[postIdx] as any).backgroundTrack = track;
+      }
+      onUpdateCampaignPosts(updatedPosts);
+    }
+  };
+
+  const handleDownloadAsset = (url: string, filename: string) => {
+    if (!url) return;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    triggerToast(`Downloading ${filename}...`);
+  };
+
+  const handleSynthesizeVoice = async (
+    postIdx: number, 
+    slideIdx: number | null, 
+    text: string, 
+    voice?: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede',
+    engineModel?: string,
+    accentStyle?: string,
+    personaStyle?: string,
+    deliveryTone?: string,
+    speechSpeed?: string
+  ) => {
     const key = getStudioKey(postIdx, slideIdx);
     setSynthesizingSpeechMap(prev => ({ ...prev, [key]: true }));
+
+    const activeVoice = voice || selectedVoiceActor;
+    const activeModel = engineModel || selectedAudioEngine;
+    const activeAccent = accentStyle || selectedAccent;
+    const activePersona = personaStyle || selectedPersonaStyle;
+    const activeTone = deliveryTone || selectedDeliveryTone;
+    const activeSpeed = speechSpeed || selectedSpeechSpeed;
+
     try {
-      const audioUrl = await generateVoiceOverSpeech(text, voice);
+      const audioUrl = await generateVoiceOverSpeech(
+        text, 
+        activeVoice, 
+        activeTone, 
+        activeModel,
+        activePersona,
+        activeAccent,
+        activeSpeed
+      );
+      
       const updatedPosts = [...(campaignPosts || [])];
       const post = updatedPosts[postIdx];
 
@@ -172,27 +425,55 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         post.slides[slideIdx] = {
           ...post.slides[slideIdx],
           audioUrl,
-          voiceName: voice
+          voiceName: activeVoice,
+          ttsModel: activeModel,
+          accent: activeAccent,
+          personaStyle: activePersona,
+          deliveryTone: activeTone,
+          speechSpeed: activeSpeed
         };
       } else {
         updatedPosts[postIdx] = {
           ...post,
           audioUrl,
-          voiceName: voice
+          voiceName: activeVoice,
+          ttsModel: activeModel,
+          accent: activeAccent,
+          personaStyle: activePersona,
+          deliveryTone: activeTone,
+          speechSpeed: activeSpeed
         };
       }
 
       onUpdateCampaignPosts(updatedPosts);
-      triggerToast(`Successfully synthesized premium AI voice narration track using ${voice}!`);
+
+      // Save to Audio Vault IndexedDB!
+      await saveVoiceoverSession({
+        id: `campaign-vo-${Date.now()}`,
+        projectId: activeProjectId || 'proj-1',
+        name: `${post.topic || 'Campaign'} (${activeVoice} - ${activePersona})`,
+        scriptText: text,
+        voiceName: activeVoice,
+        deliveryStyleId: activeTone,
+        createdAt: Date.now(),
+        ttsModel: activeModel,
+        personaStyle: activePersona,
+        accent: activeAccent,
+        speechSpeed: activeSpeed
+      }, audioUrl);
+
+      triggerToast(`Synthesized AI voice narration track (${activePersona} / ${activeVoice})!`);
+      return audioUrl;
     } catch (err) {
       console.error(err);
-      triggerToast("Failed to synthesize AI Voiceover. Please check your credentials or retry.");
+      triggerToast("Failed to synthesize AI Voiceover. Please check network/API setup.");
+      return null;
     } finally {
       setSynthesizingSpeechMap(prev => ({ ...prev, [key]: false }));
     }
   };
 
-  const handlePlayVoiceOver = (postIdx: number, slideIdx: number | null, text: string, voice: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede' = 'Puck', savedAudioUrl?: string) => {
+  const handlePlayVoiceOver = async (postIdx: number, slideIdx: number | null, text: string, voice: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede' = 'Puck', savedAudioUrl?: string) => {
     if (playingAudio) {
       playingAudio.pause();
       setPlayingAudio(null);
@@ -203,60 +484,69 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
       return;
     }
 
-    if (savedAudioUrl) {
-      const audio = new Audio(savedAudioUrl);
+    let audioUrlToPlay = savedAudioUrl;
+
+    // Ignore expired session blob URLs (e.g. starting with blob:)
+    if (audioUrlToPlay && audioUrlToPlay.startsWith('blob:')) {
+      audioUrlToPlay = undefined;
+    }
+
+    if (!audioUrlToPlay) {
+      if (!text || !text.trim()) {
+        triggerToast("Please add voiceover script text before playing narration.");
+        return;
+      }
+      const synthesizedUrl = await handleSynthesizeVoice(postIdx, slideIdx, text, voice);
+      if (!synthesizedUrl) return;
+      audioUrlToPlay = synthesizedUrl;
+    }
+
+    if (audioUrlToPlay) {
+      const audio = new Audio();
       setPlayingAudio(audio);
       setActiveSpeech({ postIdx, slideIdx });
-      audio.play().catch(err => {
-        console.error("Error playing premium audio", err);
-        triggerToast("Failed to play synthesized audio track.");
-      });
+
       audio.onended = () => {
         setActiveSpeech(null);
         setPlayingAudio(null);
       };
-      return;
+
+      audio.onerror = async () => {
+        console.warn("Audio source failed to load, attempting re-synthesis...");
+        const freshUrl = await handleSynthesizeVoice(postIdx, slideIdx, text, voice);
+        if (freshUrl) {
+          const freshAudio = new Audio(freshUrl);
+          setPlayingAudio(freshAudio);
+          freshAudio.onended = () => {
+            setActiveSpeech(null);
+            setPlayingAudio(null);
+          };
+          freshAudio.play().catch(e => {
+            console.error("Failed to play fresh audio track", e);
+            triggerToast("Failed to play audio track.");
+            setActiveSpeech(null);
+            setPlayingAudio(null);
+          });
+        } else {
+          triggerToast("Failed to play audio track.");
+          setActiveSpeech(null);
+          setPlayingAudio(null);
+        }
+      };
+
+      audio.src = audioUrlToPlay;
+      audio.play().catch(err => {
+        console.warn("Error playing audio track", err);
+        // Trigger onerror callback logic
+        audio.dispatchEvent(new Event('error'));
+      });
     }
-
-    if (typeof window === 'undefined' || !window.speechSynthesis) {
-      triggerToast("Web Speech Synthesis is not supported in this browser.");
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voices = window.speechSynthesis.getVoices();
-    // Choose high quality English natural / assistant voice matching gender/tone if possible
-    let chosenVoice = null;
-    if (voice === 'Kore' || voice === 'Aoede') {
-      chosenVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Female') || v.name.includes('Zira') || v.name.includes('Samantha')));
-    } else {
-      chosenVoice = voices.find(v => v.lang.startsWith('en') && (v.name.includes('Google') || v.name.includes('Natural') || v.name.includes('Male') || v.name.includes('David') || v.name.includes('Alex')));
-    }
-    
-    if (chosenVoice) {
-      utterance.voice = chosenVoice;
-    }
-
-    utterance.onend = () => {
-      setActiveSpeech(null);
-    };
-    utterance.onerror = () => {
-      setActiveSpeech(null);
-    };
-
-    window.speechSynthesis.speak(utterance);
-    setActiveSpeech({ postIdx, slideIdx });
   };
 
   const handleStopVoiceOver = () => {
     if (playingAudio) {
       playingAudio.pause();
       setPlayingAudio(null);
-    }
-    if (typeof window !== 'undefined' && window.speechSynthesis) {
-      window.speechSynthesis.cancel();
     }
     setActiveSpeech(null);
   };
@@ -293,49 +583,75 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     }
   };
 
-  const handleRenderVideo = async (postIdx: number, slideIdx: number | null, promptText: string, imageSrc?: string) => {
+  const handleRenderVideo = async (
+    postIdx: number, 
+    slideIdx: number | null, 
+    promptText: string, 
+    imageSrc?: string,
+    audioUrl?: string,
+    animStyle?: string,
+    aspectRatio?: string
+  ) => {
     const key = getStudioKey(postIdx, slideIdx);
     setVideoRenderingMap(prev => ({ ...prev, [key]: true }));
+    setVideoRenderingErrors(prev => ({ ...prev, [key]: "" }));
     try {
-      // Simulate physical rendering timer (2.5 seconds) for premium feedback
-      await new Promise(resolve => setTimeout(resolve, 2500));
-
-      let imageBase64: string | undefined = undefined;
-      if (imageSrc && imageSrc.startsWith('db-img:')) {
-        const imgKey = imageSrc.replace('db-img:', '');
-        const record = await DBService.getDraftImage(imgKey);
-        if (record && record.base64) {
-          imageBase64 = record.base64;
-        }
-      } else if (imageSrc && imageSrc.startsWith('data:image/')) {
-        imageBase64 = imageSrc;
-      }
-
-      const result = await generateVeoVideo(promptText, imageBase64, '16:9');
       const updatedPosts = [...(campaignPosts || [])];
       const post = updatedPosts[postIdx];
+      const currentSlide = (slideIdx !== null && post.slides) ? post.slides[slideIdx] : null;
+      const targetObj = currentSlide || post;
+
+      const activeAnim = (animStyle || (targetObj as any).animationStyle || selectedCameraAnim) as any;
+      const activeAspect = aspectRatio || (targetObj as any).videoAspectRatio || post.aspectRatio || 'auto';
+      const activeBgTrack = (targetObj as any).backgroundTrack || selectedBackgroundTrack || 'none';
+      const activeAudio = audioUrl || targetObj.audioUrl;
+      const title = post.topic || 'Campaign Motion Video';
+      const videoId = `cam-vid-${Date.now()}`;
+
+      const slideImage = currentSlide
+        ? (currentSlide.imageUrl || (slideIdx === 0 ? post.imageUrl : undefined))
+        : post.imageUrl;
+
+      const videoBlobUrl = await compileProgrammaticVideo({
+        id: videoId,
+        title,
+        imageSrc: imageSrc || slideImage || '',
+        audioUrl: activeAudio,
+        animationStyle: activeAnim,
+        aspectRatio: activeAspect,
+        backgroundTrack: activeBgTrack,
+        videoPrompt: promptText,
+        projectId: activeProjectId || 'proj-1'
+      });
 
       if (slideIdx !== null && post.slides && post.slides[slideIdx]) {
         post.slides[slideIdx] = {
           ...post.slides[slideIdx],
-          videoUrl: result.videoUrl || "",
+          videoId,
+          videoUrl: videoBlobUrl,
           videoGenerated: true,
-          videoGenerating: false
+          videoGenerating: false,
+          animationStyle: activeAnim
         };
       } else {
         updatedPosts[postIdx] = {
           ...post,
-          videoUrl: result.videoUrl || "",
+          videoId,
+          videoUrl: videoBlobUrl,
           videoGenerated: true,
-          videoGenerating: false
+          videoGenerating: false,
+          animationStyle: activeAnim
         };
       }
 
       onUpdateCampaignPosts(updatedPosts);
-      triggerToast("AI Cinematic Video rendered successfully!");
-    } catch (err) {
+      setLightboxViewTab('video');
+      triggerToast("Cinematic Video compiled & saved to Video Vault!");
+    } catch (err: any) {
       console.error(err);
-      triggerToast("Failed to render VEO video.");
+      const errMsg = err?.message || String(err);
+      setVideoRenderingErrors(prev => ({ ...prev, [key]: errMsg }));
+      triggerToast("Failed to compile video frame.");
     } finally {
       setVideoRenderingMap(prev => ({ ...prev, [key]: false }));
     }
@@ -360,6 +676,8 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
   
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [savedDraftIndex, setSavedDraftIndex] = useState<number | null>(null);
+  const [zoomImageModalUrl, setZoomImageModalUrl] = useState<string | null>(null);
+  const [videoRenderingErrors, setVideoRenderingErrors] = useState<Record<string, string>>({});
   const [previewImageModal, setPreviewImageModal] = useState<{
     url: string;
     title: string;
@@ -463,7 +781,9 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
           generated: true
         };
         currentPost.slides = updatedSlides;
-        currentPost.imageUrl = `db-img:${newImage.id}`;
+        if (slideIdx === 0 || !currentPost.imageUrl) {
+          currentPost.imageUrl = `db-img:${newImage.id}`;
+        }
         currentPost.generated = true;
       } else {
         currentPost.imageUrl = `db-img:${newImage.id}`;
@@ -587,25 +907,11 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
               </a>
             </div>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">Style Guidelines Target</span>
-              {currentCampaign.customRequirements ? (
-                <div className="mt-1">
-                  <p className={`text-xs font-medium text-slate-700 dark:text-slate-300 italic leading-relaxed ${!isStyleGuideExpanded ? 'line-clamp-2' : ''}`}>
-                    {currentCampaign.customRequirements}
-                  </p>
-                  {currentCampaign.customRequirements.length > 80 && (
-                    <button
-                      type="button"
-                      onClick={() => setIsStyleGuideExpanded(!isStyleGuideExpanded)}
-                      className="text-[10px] font-bold text-purple-500 dark:text-purple-400 hover:underline mt-1 cursor-pointer flex items-center gap-1"
-                    >
-                      <span>{isStyleGuideExpanded ? 'Show Less' : 'Show Full Style Guide'}</span>
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <p className="text-xs font-medium text-slate-400 mt-1 italic">No specific design guides set.</p>
-              )}
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest font-mono">Active AI Model</span>
+              <div className="mt-1 flex items-center gap-1.5 text-xs font-bold text-slate-700 dark:text-slate-200">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>{currentCampaign.aiModel || 'gemini-3.6-flash'}</span>
+              </div>
             </div>
           </div>
 
@@ -625,11 +931,26 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
               <span>Campaign Toolset</span>
             </h4>
             <p className="text-[11px] text-slate-400 mt-1">
-              Auto-generate all posts using AI research, refine existing drafts, or add single posts manually.
+              Select AI Model, auto-generate posts, refine drafts, or append single posts.
             </p>
           </div>
 
-          <div className="space-y-2 pt-2">
+          <div className="space-y-2.5 pt-1">
+            <div>
+              <label className="block text-[10px] font-bold text-purple-400 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-amber-400" />
+                <span>AI Model Selection</span>
+              </label>
+              <AIModelDropdown
+                value={currentCampaign.aiModel || 'gemini-3.6-flash'}
+                onChange={(newModel) => {
+                  if (onUpdateCampaignModel) {
+                    onUpdateCampaignModel(newModel);
+                  }
+                }}
+              />
+            </div>
+
             <button
               onClick={handleAutoGenerateCampaignPosts}
               disabled={isGeneratingCampaign}
@@ -1101,8 +1422,28 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                     {(() => {
                       const slideIdx = activeSlideMap[idx] || 0;
                       const currentSlide = (post.slides && post.slides[slideIdx]) ? post.slides[slideIdx] : null;
-                      const imgUrl = currentSlide?.imageUrl || (slideIdx === 0 ? post.imageUrl : undefined) || post.imageUrl;
-                      if (!imgUrl) return null;
+                      const imgUrl = currentSlide
+                        ? (currentSlide.imageUrl || (slideIdx === 0 ? post.imageUrl : undefined))
+                        : post.imageUrl;
+
+                      if (!imgUrl) {
+                        if (currentSlide) {
+                          return (
+                            <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/40 p-4 text-center max-w-sm mt-2 flex flex-col items-center justify-center space-y-1.5 animate-in fade-in duration-200">
+                              <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                                <ImageIcon className="w-4 h-4 opacity-60" />
+                              </div>
+                              <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                No visual generated for Slide {currentSlide.slideNumber} yet.
+                              </p>
+                              <p className="text-[9px] text-slate-400 font-mono">
+                                Click "Generate Visual" below to synthesize graphic for this slide.
+                              </p>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }
 
                       return (
                         <div className="relative rounded-2xl overflow-hidden border border-purple-500/30 bg-slate-950 aspect-video max-w-sm mt-2 shadow-md group/thumb animate-in fade-in duration-300">
@@ -1128,19 +1469,35 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                                   slideIdx: currentSlide ? slideIdx : null
                                 });
                               }}
-                              className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-bold rounded-xl shadow-lg transition-all flex items-center gap-1 cursor-pointer"
+                              className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold rounded-xl shadow-lg transition-all flex items-center gap-1 cursor-pointer"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Eye className="w-3 h-3" />
                               <span>Preview</span>
                             </button>
+                            <button
+                              type="button"
+                              onClick={() => setZoomImageModalUrl(imgUrl)}
+                              className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold rounded-xl shadow-lg transition-all flex items-center gap-1 cursor-pointer"
+                              title="Zoom Image Up Close"
+                            >
+                              <Maximize2 className="w-3 h-3" />
+                              <span>Zoom</span>
+                            </button>
+                             <ImageDownloadDropdown
+                               imageUrl={imgUrl}
+                               filenameSlug={`campaign-graphic-day${post.day}${currentSlide ? `-slide${currentSlide.slideNumber}` : ''}`}
+                               buttonVariant="compact"
+                               buttonText="Download"
+                               onDownloadSuccess={(fmt) => triggerToast(`Graphic downloaded in .${fmt} format!`)}
+                             />
                             <button
                               type="button"
                               onClick={() => {
                                 handleLaunchPost(post, currentSlide);
                               }}
-                              className="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-950 text-[11px] font-bold rounded-xl shadow-lg transition-all flex items-center gap-1 cursor-pointer"
+                              className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-950 text-[10px] font-bold rounded-xl shadow-lg transition-all flex items-center gap-1 cursor-pointer"
                             >
-                              <Play className="w-3.5 h-3.5 fill-current" />
+                              <Play className="w-3 h-3 fill-current" />
                               <span>Canvas</span>
                             </button>
                           </div>
@@ -1293,7 +1650,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                                       ) : (
                                         <>
                                           <Sparkles className="w-3 h-3 text-purple-200" />
-                                          <span>{savedAudioUrl ? 'Re-Synthesize Speech' : 'Synthesize AI Speech'}</span>
+                                          <span>{savedAudioUrl ? 'Re-Synthesize Audio & SRT' : 'Synthesize Audio & SRT'}</span>
                                         </>
                                       )}
                                     </button>
@@ -1350,27 +1707,61 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                                 </div>
                               </div>
 
+                              {voiceOver && (
+                                <div className="mt-3">
+                                  <AudioSubtitleViewer
+                                    scriptText={voiceOver}
+                                    audioUrl={savedAudioUrl}
+                                    title={`Day ${post.day} Voiceover Subtitles`}
+                                  />
+                                </div>
+                              )}
+
+                              {videoRenderingErrors[getStudioKey(idx, currentSlide ? slideIdx : null)] && (
+                                <div className="p-4 bg-rose-500/10 border border-rose-500/25 text-rose-600 dark:text-rose-400 rounded-2xl text-xs flex flex-col gap-2 text-left animate-in fade-in duration-300 mt-2">
+                                  <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider font-mono text-[9px]">
+                                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                                    <span>VEO Compilation Error Detected</span>
+                                  </div>
+                                  <p className="font-medium leading-relaxed whitespace-pre-wrap">
+                                    {videoRenderingErrors[getStudioKey(idx, currentSlide ? slideIdx : null)]}
+                                  </p>
+                                  <div className="text-[10px] text-slate-500 dark:text-slate-400 border-t border-rose-500/10 pt-2 mt-1 font-mono">
+                                    Please ensure your Google GenAI API billing is configured for the selected model. You may also re-attempt generation or update the camera motion prompt.
+                                  </div>
+                                </div>
+                              )}
+
                               {/* Animated Video Render Preview Frame */}
                               {isVideoGenerated && (
                                 <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-purple-500/30 bg-slate-950 shadow-md group/video animate-in zoom-in-95 duration-500 text-left">
-                                  {/* Cinematic Zoom & Pan Canvas Container */}
-                                  <div className="absolute inset-0 overflow-hidden">
-                                    <div className={`w-full h-full origin-center transition-all duration-[12000ms] ${
-                                      isPlaying 
-                                        ? 'scale-115 translate-x-2 translate-y-1 ease-out' 
-                                        : 'scale-105 duration-1000'
-                                    }`}>
-                                      {(() => {
-                                        const imgUrl = currentSlide?.imageUrl || (slideIdx === 0 ? post.imageUrl : undefined) || post.imageUrl;
-                                        return imgUrl ? (
-                                          <CampaignImage src={imgUrl} alt="Cinematic Video Slide" className="w-full h-full object-cover select-none filter brightness-90 saturate-110" />
-                                        ) : (
-                                          <div className="w-full h-full bg-slate-900 flex items-center justify-center text-slate-500 text-xs">
-                                            Generating Visual Framework...
-                                          </div>
-                                        );
-                                      })()}
-                                    </div>
+                                  {/* Cinematic Canvas Container or Real Video Player */}
+                                  <div className="absolute inset-0 overflow-hidden flex items-center justify-center bg-slate-950">
+                                    {targetObj.videoUrl ? (
+                                      <video
+                                        src={targetObj.videoUrl || undefined}
+                                        className="w-full h-full object-contain bg-slate-950"
+                                        controls
+                                        playsInline
+                                      />
+                                    ) : (
+                                      <div className={`w-full h-full origin-center transition-all duration-[12000ms] ${
+                                        isPlaying 
+                                          ? 'scale-115 translate-x-2 translate-y-1 ease-out' 
+                                          : 'scale-105 duration-1000'
+                                      }`}>
+                                        {(() => {
+                                          const imgUrl = currentSlide?.imageUrl || (slideIdx === 0 ? post.imageUrl : undefined) || post.imageUrl;
+                                          return imgUrl ? (
+                                            <CampaignImage src={imgUrl} alt="Cinematic Video Slide" className="w-full h-full object-cover select-none filter brightness-90 saturate-110" />
+                                          ) : (
+                                            <div className="w-full h-full bg-slate-900 flex items-center justify-center text-slate-500 text-xs">
+                                              Generating Visual Framework...
+                                            </div>
+                                          );
+                                        })()}
+                                      </div>
+                                    )}
                                   </div>
 
                                   {/* Top-left Status Overlay */}
@@ -1421,6 +1812,16 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                                     >
                                       {isPlaying ? <VolumeX className="w-5 h-5" /> : <Play className="w-5 h-5 fill-current" />}
                                     </button>
+                                    {targetObj.videoUrl && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDownloadAsset(targetObj.videoUrl!, `campaign-video-day${post.day}.webm`)}
+                                        className="p-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full shadow-lg hover:scale-105 transition-all cursor-pointer"
+                                        title="Download Compiled Video"
+                                      >
+                                        <Download className="w-5 h-5" />
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -1936,7 +2337,6 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         const post = campaignPosts?.[pIdx] || previewImageModal.post;
         const currentSlide = (sIdx !== null && post.slides && post.slides[sIdx]) ? post.slides[sIdx] : null;
         const targetObj = currentSlide ? currentSlide : post;
-
         const voiceOver = targetObj.voiceOver || '';
         const videoPrompt = targetObj.videoPrompt || '';
         const isVideoGenerating = videoRenderingMap[getStudioKey(pIdx, sIdx)] || false;
@@ -1944,9 +2344,37 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         const isScriptGenerating = scriptGeneratingMap[getStudioKey(pIdx, sIdx)] || false;
         const isSpeechSynthesizing = synthesizingSpeechMap[getStudioKey(pIdx, sIdx)] || false;
         const savedAudioUrl = targetObj.audioUrl || '';
-        const selectedVoice = targetObj.voiceName || 'Puck';
+        
+        const selectedVoice = targetObj.voiceName || selectedVoiceActor;
+        const selectedEngine = (targetObj as any).ttsModel || selectedAudioEngine;
+        const currentAccent = (targetObj as any).accent || selectedAccent;
+        const currentPersona = (targetObj as any).personaStyle || selectedPersonaStyle;
+        const currentTone = (targetObj as any).deliveryTone || selectedDeliveryTone;
+        const currentSpeed = (targetObj as any).speechSpeed || selectedSpeechSpeed;
+        const currentAnim = (targetObj as any).animationStyle || selectedCameraAnim;
 
         const isPlaying = activeSpeech && activeSpeech.postIdx === pIdx && activeSpeech.slideIdx === sIdx;
+
+        const handleDownloadGraphic = () => {
+          const a = document.createElement('a');
+          a.href = previewImageModal.url;
+          a.download = `campaign-graphic-${Date.now()}.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          triggerToast("Graphic downloaded successfully!");
+        };
+
+        const handleDownloadVideo = () => {
+          if (!targetObj.videoUrl) return;
+          const a = document.createElement('a');
+          a.href = targetObj.videoUrl;
+          a.download = `campaign-video-${Date.now()}.webm`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          triggerToast("Compiled video downloaded successfully!");
+        };
 
         return (
           <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[200] flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
@@ -1956,46 +2384,149 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
               <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
                 <div className="space-y-0.5">
                   <span className="text-[10px] font-bold text-purple-400 uppercase tracking-widest font-mono">
-                    AI Immersive Audio-Visual Lightbox Studio
+                    AI Immersive Campaign Studio Lightbox
                   </span>
                   <h3 className="text-base font-bold text-white font-display line-clamp-1">
                     {previewImageModal.title}
                   </h3>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleStopVoiceOver();
-                    setPreviewImageModal(null);
-                  }}
-                  className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleStopVoiceOver();
+                      setPreviewImageModal(null);
+                    }}
+                    className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
               </div>
 
               {/* Split Content Area */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 overflow-y-auto flex-1 pr-1 scrollbar-thin">
                 
-                {/* Left Side: Dynamic Cinematic Canvas Screen */}
+                {/* Left Side: Dual-View Canvas Screen */}
                 <div className="flex flex-col space-y-3">
-                  <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-purple-500/30 bg-slate-950 shadow-md group/video text-left">
-                    {/* Cinematic Zoom & Pan Canvas Container */}
-                    <div className="absolute inset-0 overflow-hidden">
-                      <div className={`w-full h-full origin-center transition-all duration-[12000ms] ${
-                        isPlaying 
-                          ? 'scale-115 translate-x-2 translate-y-1 ease-out' 
-                          : 'scale-105 duration-1000'
-                      }`}>
-                        <CampaignImage src={previewImageModal.url} alt="Cinematic Preview" className="w-full h-full object-cover filter brightness-90 saturate-110" />
+                  
+                  {/* View Segment Switcher (Image vs Video) */}
+                  <div className="flex items-center justify-between bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setLightboxViewTab('image')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          lightboxViewTab === 'image'
+                            ? 'bg-slate-800 text-white shadow-xs border border-slate-700'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Pristine Graphic</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setLightboxViewTab('video')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          lightboxViewTab === 'video'
+                            ? 'bg-purple-600 text-white shadow-xs'
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        <Film className="w-3.5 h-3.5 text-amber-300" />
+                        <span>Compiled Video {isVideoGenerated && "✨"}</span>
+                      </button>
+                    </div>
+
+                    <span className="text-[10px] text-slate-400 font-mono pr-2">
+                      {lightboxViewTab === 'video' ? (isVideoGenerated ? 'Ready' : 'Not Compiled') : 'PNG'}
+                    </span>
+                  </div>
+
+                  {videoRenderingErrors[getStudioKey(pIdx, sIdx)] && (
+                    <div className="p-4 bg-rose-500/10 border border-rose-500/25 text-rose-400 rounded-2xl text-xs flex flex-col gap-2 text-left animate-in fade-in duration-300">
+                      <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider font-mono text-[9px]">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                        <span>Compilation Error Detected</span>
                       </div>
+                      <p className="font-medium leading-relaxed whitespace-pre-wrap text-left">
+                        {videoRenderingErrors[getStudioKey(pIdx, sIdx)]}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className={`relative w-full rounded-2xl overflow-hidden border border-purple-500/30 bg-slate-950 shadow-md group/video text-left min-h-[300px] max-h-[480px] flex items-center justify-center ${
+                    (targetObj as any).videoAspectRatio === '9:16' || (post.aspectRatio as string) === '9:16'
+                      ? 'aspect-[9/16] mx-auto max-w-[280px]'
+                      : (targetObj as any).videoAspectRatio === '1:1' || (post.aspectRatio as string) === '1:1'
+                      ? 'aspect-square mx-auto max-w-[420px]'
+                      : (targetObj as any).videoAspectRatio === '4:5' || (post.aspectRatio as string) === '4:5'
+                      ? 'aspect-[4/5] mx-auto max-w-[360px]'
+                      : 'aspect-video w-full'
+                  }`}>
+                    <div className="w-full h-full overflow-hidden flex items-center justify-center bg-slate-950">
+                      {lightboxViewTab === 'video' ? (
+                        isVideoGenerated && targetObj.videoUrl ? (
+                          <video
+                            src={targetObj.videoUrl}
+                            className="w-full h-full object-contain bg-slate-950"
+                            controls
+                            playsInline
+                          />
+                        ) : (
+                          <div className="w-full h-full p-6 bg-slate-950/90 flex flex-col items-center justify-center text-center space-y-3">
+                            <div className="w-12 h-12 rounded-2xl bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                              <Film className="w-6 h-6" />
+                            </div>
+                            <div className="space-y-1 max-w-xs">
+                              <h5 className="text-xs font-bold text-white">Video Frame Not Compiled</h5>
+                              <p className="text-[11px] text-slate-400">
+                                Select camera motion animation on the right and click "Compile Video Frame" to create an 8s cinematic video.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isVideoGenerating}
+                              onClick={() => handleRenderVideo(
+                                pIdx, 
+                                sIdx, 
+                                videoPrompt || "Cinematic camera motion", 
+                                currentSlide ? (currentSlide.imageUrl || (sIdx === 0 ? post.imageUrl : undefined)) : post.imageUrl,
+                                savedAudioUrl,
+                                currentAnim,
+                                (targetObj as any).videoAspectRatio || post.aspectRatio
+                              )}
+                              className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase rounded-xl flex items-center gap-2 cursor-pointer shadow-md"
+                            >
+                              {isVideoGenerating ? (
+                                <>
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  <span>Compiling Video...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  <span>Compile Video Now</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-950 overflow-hidden">
+                          <CampaignImage src={previewImageModal.url} alt="Cinematic Preview" className={`w-full h-full object-contain filter brightness-90 saturate-110 anim-${currentAnim}`} />
+                        </div>
+                      )}
                     </div>
 
                     {/* Top-left Status Overlay */}
                     <div className="absolute top-3 left-3 flex items-center gap-2 z-10">
                       <span className="px-2 py-1 bg-slate-950/80 backdrop-blur-md text-[9px] font-bold text-emerald-400 rounded-lg border border-emerald-500/20 flex items-center gap-1.5 shadow-md">
                         <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></span>
-                        <span>{isVideoGenerated ? 'AI VEO VIDEO RENDER ACTIVE' : 'PREVIEW IMAGE ENGAGED'}</span>
+                        <span>{lightboxViewTab === 'video' ? 'VIDEO VIEW ACTIVE' : 'GRAPHIC VIEW ACTIVE'}</span>
                       </span>
                       
                       {isPlaying && (
@@ -2011,7 +2542,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                       {isPlaying ? (
                         <div className="animate-in fade-in duration-300">
                           <span className="text-[8px] font-bold text-purple-400 uppercase tracking-widest font-mono">
-                            Speaking Voiceover Narration ({selectedVoice})
+                            Speaking Voiceover Narration ({selectedVoice} - {currentAccent})
                           </span>
                           <p className="text-xs font-semibold text-white drop-shadow-md leading-relaxed">
                             {voiceOver}
@@ -2020,32 +2551,62 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                       ) : (
                         <div>
                           <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest font-mono">
-                            Scenic prompt directions
+                            Scenic directions
                           </span>
                           <p className="text-[11px] text-slate-200 italic line-clamp-2">
-                            "{videoPrompt || "Generate scripts below to build cinematic voiceover narrations..."}"
+                            "{videoPrompt || "Generate scripts below to build voiceover narrations..."}"
                           </p>
                         </div>
                       )}
                     </div>
 
-                    {/* Hover controls play overlay */}
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/video:opacity-100 flex items-center justify-center gap-3 transition-opacity z-20">
-                      <button
-                        type="button"
-                        onClick={() => handlePlayVoiceOver(pIdx, sIdx, voiceOver, selectedVoice, savedAudioUrl)}
-                        className="p-3 bg-purple-600 hover:bg-purple-500 text-white rounded-full shadow-lg hover:scale-105 transition-all cursor-pointer"
-                        title={isPlaying ? "Mute Speech" : "Play Spoken Voiceover"}
-                      >
-                        {isPlaying ? <VolumeX className="w-5 h-5" /> : <Play className="w-5 h-5 fill-current" />}
-                      </button>
-                    </div>
+                    {/* Hover controls play & zoom overlay */}
+                    {lightboxViewTab === 'image' && (
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover/video:opacity-100 flex items-center justify-center gap-3 transition-opacity z-20">
+                        <button
+                          type="button"
+                          onClick={() => handlePlayVoiceOver(pIdx, sIdx, voiceOver, selectedVoice, savedAudioUrl)}
+                          className="p-3 bg-purple-600 hover:bg-purple-500 text-white rounded-full shadow-lg hover:scale-105 transition-all cursor-pointer"
+                          title={isPlaying ? "Mute Speech" : "Play Spoken Voiceover"}
+                        >
+                          {isPlaying ? <VolumeX className="w-5 h-5" /> : <Play className="w-5 h-5 fill-current" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setZoomImageModalUrl(previewImageModal.url)}
+                          className="p-3 bg-slate-800 hover:bg-slate-700 text-white rounded-full shadow-lg hover:scale-105 transition-all cursor-pointer"
+                          title="View Image Inspector"
+                        >
+                          <Maximize2 className="w-5 h-5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Quick Metadata Stats */}
+                  {/* Quick Metadata Stats & Download Action Buttons */}
                   <div className="bg-slate-950/40 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-[11px] font-mono text-slate-400">
-                    <span>Format: {post.aspectRatio || '1:1'} ({getAspectShortLabel(post.aspectRatio)})</span>
-                    <span>Duration: {savedAudioUrl ? '8s (Premium Audio)' : '5s (Cinematic Pan)'}</span>
+                    <div className="flex items-center gap-2">
+                      <ImageDownloadDropdown
+                        imageUrl={previewImageModal.url}
+                        filenameSlug={`campaign-graphic-${Date.now()}`}
+                        buttonVariant="compact"
+                        buttonText="Graphic"
+                        onDownloadSuccess={(fmt) => triggerToast(`Graphic downloaded in .${fmt} format!`)}
+                      />
+
+                      {isVideoGenerated && targetObj.videoUrl && (
+                        <button
+                          type="button"
+                          onClick={handleDownloadVideo}
+                          className="px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white text-[10px] font-bold uppercase rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
+                        >
+                          <Download className="w-3 h-3 text-amber-300" />
+                          <span>Video</span>
+                        </button>
+                      )}
+                    </div>
+
+                    <span>Motion: <strong className="text-purple-400 uppercase">{currentAnim}</strong></span>
                   </div>
                 </div>
 
@@ -2053,55 +2614,177 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                 <div className="space-y-4 flex flex-col justify-between">
                   <div className="space-y-4">
                     
-                    {/* Voice Actor & Character Select Block */}
+                    {/* Voice Actor & Engine & Accent Select Block */}
                     <div className="bg-slate-950/60 p-4 border border-slate-800/80 rounded-2xl space-y-3">
                       <div className="flex items-center justify-between">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono flex items-center gap-1.5">
                           <Mic className="w-3.5 h-3.5 text-purple-400" />
-                          <span>Premium AI Voice Settings</span>
+                          <span>Premium AI Audio & Voice Settings</span>
                         </label>
                         {savedAudioUrl && (
                           <span className="px-2 py-0.5 bg-emerald-500/10 border border-emerald-500/20 text-[9px] font-bold uppercase rounded text-emerald-400">
-                            ✨ AI Audio Loaded
+                            ✨ AI Audio Saved
                           </span>
                         )}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Voice Actor Character */}
                         <div className="space-y-1 text-left">
-                          <span className="text-[9px] text-slate-500 block">Voice Actor Character</span>
+                          <span className="text-[9px] text-slate-400 block font-bold font-mono">Voice Actor Character</span>
                           <select
                             value={selectedVoice}
-                            onChange={(e) => {
-                              const val = e.target.value as any;
-                              const updatedPosts = [...(campaignPosts || [])];
-                              if (sIdx !== null) {
-                                updatedPosts[pIdx].slides![sIdx].voiceName = val;
-                              } else {
-                                updatedPosts[pIdx].voiceName = val;
-                              }
-                              onUpdateCampaignPosts(updatedPosts);
-                            }}
+                            onChange={(e) => handleSelectVoiceActor(e.target.value as any, pIdx, sIdx)}
                             className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-purple-500 cursor-pointer"
                           >
                             <option value="Puck">🎤 Puck (Energetic Male)</option>
-                            <option value="Charon">🎤 Charon (Deep/Authoritative Male)</option>
+                            <option value="Charon">🎤 Charon (Deep Male)</option>
                             <option value="Kore">🎤 Kore (Inspiring Female)</option>
                             <option value="Fenrir">🎤 Fenrir (Modern Sleek Male)</option>
                             <option value="Aoede">🎤 Aoede (Empathetic Female)</option>
                           </select>
                         </div>
 
+                        {/* Character Persona & Maturity */}
                         <div className="space-y-1 text-left">
-                          <span className="text-[9px] text-slate-500 block">AI Synthesis Engine</span>
-                          <div className="px-3 py-2 bg-purple-950/20 border border-purple-500/20 text-purple-300 rounded-xl text-xs font-bold font-mono">
-                            Gemini-2.5-flash Audio
-                          </div>
+                          <span className="text-[9px] font-bold text-cyan-400 block font-mono">Character Persona & Maturity</span>
+                          <select
+                            value={currentPersona}
+                            onChange={(e) => handleSelectPersonaStyle(e.target.value, pIdx, sIdx)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-cyan-500/30 text-cyan-200 rounded-xl text-xs font-bold focus:outline-none focus:border-cyan-400 cursor-pointer"
+                          >
+                            <option value="adult">🧑 Adult (Standard Voice)</option>
+                            <option value="child">👧 Child / Kid Voice (Explainer)</option>
+                            <option value="teenager">🎧 Teenager / Youth Voice</option>
+                            <option value="anime">✨ Anime / Cartoon Style</option>
+                            <option value="anime_hero">⚡ Anime Hero / Protagonist Dub</option>
+                            <option value="anime_mascot">🐾 Anime Chibi / Mascot Voice</option>
+                            <option value="senior">👴 Senior / Elder Voice</option>
+                          </select>
+                        </div>
+
+                        {/* Delivery Tone & Natural Flow */}
+                        <div className="space-y-1 text-left">
+                          <span className="text-[9px] font-bold text-purple-400 block font-mono">Delivery Tone & Emotion</span>
+                          <select
+                            value={currentTone}
+                            onChange={(e) => handleSelectDeliveryTone(e.target.value, pIdx, sIdx)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-purple-500/30 text-purple-200 rounded-xl text-xs font-bold focus:outline-none focus:border-purple-400 cursor-pointer"
+                          >
+                            <option value="natural">🍃 Natural & Conversational (Default)</option>
+                            <option value="conversational">💬 Friendly & Casual</option>
+                            <option value="educational">🎓 Educational & Clear</option>
+                            <option value="high_energy">⚡ High-Energy & Punchy</option>
+                            <option value="calm_warm">🧘 Calm & Reassuring</option>
+                            <option value="dramatic">🎬 Dramatic Suspense</option>
+                            <option value="inspirational">✨ Inspirational & Uplifting</option>
+                          </select>
+                        </div>
+
+                        {/* Talking Speed Control */}
+                        <div className="space-y-1 text-left">
+                          <span className="text-[9px] font-bold text-emerald-400 block font-mono">Talking Speed & Pace</span>
+                          <select
+                            value={currentSpeed}
+                            onChange={(e) => handleSelectSpeechSpeed(e.target.value, pIdx, sIdx)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-emerald-500/30 text-emerald-200 rounded-xl text-xs font-bold focus:outline-none focus:border-emerald-400 cursor-pointer"
+                          >
+                            <option value="0.8">🐢 0.8x Slow & Relaxed</option>
+                            <option value="1.0">🍃 1.0x Normal Speed (Default)</option>
+                            <option value="1.25">⚡ 1.25x Upbeat & Snappy</option>
+                            <option value="1.5">🚀 1.5x Anime Rapid Pace</option>
+                            <option value="1.75">🔥 1.75x Hyper Speed</option>
+                          </select>
+                        </div>
+
+                        {/* Accent Dropdown */}
+                        <div className="space-y-1 text-left">
+                          <span className="text-[9px] text-slate-400 block font-bold font-mono">Accent & Dialect</span>
+                          <select
+                            value={currentAccent}
+                            onChange={(e) => handleSelectAccent(e.target.value, pIdx, sIdx)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-purple-500 cursor-pointer"
+                          >
+                            <option value="US Standard">🇺🇸 US Standard Accent</option>
+                            <option value="Anime Dub">🎌 Japanese Anime Dub (English Dub Style)</option>
+                            <option value="British">🇬🇧 British Accent</option>
+                            <option value="Australian">🇦🇺 Australian Accent</option>
+                            <option value="Canadian">🇨🇦 Canadian Accent</option>
+                            <option value="Irish">🇮🇪 Irish Accent</option>
+                            <option value="Scottish">🏴󠁧󠁢󠁳󠁣󠁴󠁿 Scottish Accent</option>
+                            <option value="Nigerian">🇳🇬 Nigerian Accent</option>
+                            <option value="Indian">🇮🇳 Indian Accent</option>
+                            <option value="Transatlantic">✈️ Transatlantic Accent</option>
+                          </select>
+                        </div>
+
+                        {/* AI Synthesis Engine Dropdown */}
+                        <div className="space-y-1 text-left">
+                          <span className="text-[9px] text-slate-400 block font-bold font-mono">Audio Engine</span>
+                          <select
+                            value={selectedEngine}
+                            onChange={(e) => handleSelectAudioEngine(e.target.value, pIdx, sIdx)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:border-purple-500 cursor-pointer"
+                          >
+                            <option value="gemini-3.1-flash-tts-preview">Gemini 3.1 Flash Speech Engine</option>
+                            <option value="gemini-2.5-flash">Gemini 2.5 Flash Audio Engine</option>
+                            <option value="gemini-2.0-flash">Gemini 2.0 Flash Engine</option>
+                            <option value="gemini-2.5-pro">Gemini 2.5 Pro Ultra Speech</option>
+                          </select>
+                        </div>
+
+                        {/* Camera Motion Style */}
+                        <div className="space-y-1 text-left">
+                          <span className="text-[9px] text-slate-400 block font-bold font-mono">Camera Motion Style</span>
+                          <select
+                            value={currentAnim}
+                            onChange={(e) => handleSelectCameraAnim(e.target.value as any, pIdx, sIdx)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-amber-300 rounded-xl text-xs font-semibold focus:outline-none focus:border-purple-500 cursor-pointer"
+                          >
+                            <option value="zoom-in">🎥 Cinematic Zoom-In</option>
+                            <option value="pan-left">⬅️ Smooth Pan Left</option>
+                            <option value="pan-right">➡️ Smooth Pan Right</option>
+                            <option value="pulse">💓 Subtle Pulse Zoom</option>
+                            <option value="ken-burns">🎬 Ken Burns Drift</option>
+                            <option value="static">🖼️ Static Frame</option>
+                          </select>
+                        </div>
+
+                        {/* Background Soundtrack Tune */}
+                        <div className="space-y-1 text-left">
+                          <span className="text-[9px] text-emerald-400 block font-bold font-mono">Background Soundtrack</span>
+                          <select
+                            value={(targetObj as any).backgroundTrack || selectedBackgroundTrack || 'none'}
+                            onChange={(e) => handleSelectBackgroundTrack(e.target.value as any, pIdx, sIdx)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-emerald-500/30 text-emerald-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-400 cursor-pointer"
+                          >
+                            <option value="none">🔇 Voiceover Only (No Music)</option>
+                            <option value="lofi">✨ Soft Lo-Fi Atmosphere</option>
+                            <option value="ambient">🌊 Ambient Calm Chord Pad</option>
+                            <option value="synthwave">⚡ Cyber Pulse Synth</option>
+                            <option value="cinematic">🎬 Epic Cinematic Drone</option>
+                          </select>
+                        </div>
+
+                        {/* Video Target Aspect Ratio */}
+                        <div className="space-y-1 text-left">
+                          <span className="text-[9px] text-cyan-400 block font-bold font-mono">Video Target Resolution</span>
+                          <select
+                            value={(targetObj as any).videoAspectRatio || post.aspectRatio || 'auto'}
+                            onChange={(e) => handleSelectVideoAspectRatio(e.target.value, pIdx, sIdx)}
+                            className="w-full px-3 py-2 bg-slate-900 border border-cyan-500/30 text-cyan-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-cyan-400 cursor-pointer"
+                          >
+                            <option value="auto">📐 Auto (Match Graphic Aspect)</option>
+                            <option value="1:1">⬛ 1:1 Square (1080x1080)</option>
+                            <option value="9:16">📱 9:16 Portrait Reel / Story (720x1280)</option>
+                            <option value="16:9">📺 16:9 Landscape Video (1280x720)</option>
+                            <option value="4:5">🖼️ 4:5 Feed Portrait (864x1080)</option>
+                          </select>
                         </div>
                       </div>
 
                       {/* Narration script block */}
-                      <div className="space-y-1.5 pt-1">
+                      <div className="space-y-1.5 pt-2">
                         <div className="flex justify-between items-center">
                           <span className="text-[9px] text-slate-400 font-bold uppercase">Spoken Script Draft</span>
                           <div className="flex items-center gap-2">
@@ -2109,8 +2792,8 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                               <button
                                 type="button"
                                 disabled={isSpeechSynthesizing}
-                                onClick={() => handleSynthesizeVoice(pIdx, sIdx, voiceOver, selectedVoice)}
-                                className={`px-2 py-1 text-[9px] font-bold uppercase rounded transition-all cursor-pointer flex items-center gap-1 border ${
+                                onClick={() => handleSynthesizeVoice(pIdx, sIdx, voiceOver, selectedVoice, selectedEngine, currentAccent, currentPersona, currentTone, currentSpeed)}
+                                className={`px-2.5 py-1 text-[9px] font-bold uppercase rounded-lg transition-all cursor-pointer flex items-center gap-1 border ${
                                   isSpeechSynthesizing 
                                     ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' 
                                     : 'bg-purple-600 hover:bg-purple-500 text-white border-transparent'
@@ -2124,7 +2807,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                                 ) : (
                                   <>
                                     <Sparkles className="w-2.5 h-2.5" />
-                                    <span>{savedAudioUrl ? 'Re-Synthesize Speech' : 'Synthesize AI Speech'}</span>
+                                    <span>{savedAudioUrl ? 'Re-Synthesize Audio' : 'Synthesize Audio & SRT'}</span>
                                   </>
                                 )}
                               </button>
@@ -2134,7 +2817,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handlePlayVoiceOver(pIdx, sIdx, voiceOver, selectedVoice, savedAudioUrl)}
-                                className={`text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 px-2 py-1 rounded transition-colors border cursor-pointer ${
+                                className={`text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 px-2 py-1 rounded-lg transition-colors border cursor-pointer ${
                                   isPlaying 
                                     ? 'bg-rose-500/15 text-rose-500 border-rose-500/20 animate-pulse' 
                                     : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20'
@@ -2146,6 +2829,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                             )}
                           </div>
                         </div>
+
                         <textarea
                           value={voiceOver}
                           onChange={(e) => handleUpdateScriptField(pIdx, sIdx, 'voiceOver', e.target.value)}
@@ -2153,6 +2837,16 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                           rows={3}
                           className="w-full px-3 py-2 bg-slate-900 text-white border border-slate-800 rounded-xl text-xs leading-relaxed focus:outline-none focus:border-purple-500 transition-colors"
                         />
+
+                        {voiceOver && (
+                          <div className="mt-2">
+                            <AudioSubtitleViewer
+                              scriptText={voiceOver}
+                              audioUrl={savedAudioUrl}
+                              title={`Slide ${sIdx !== null ? sIdx + 1 : 1} Voiceover Subtitles`}
+                            />
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2201,8 +2895,16 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
 
                     <button
                       type="button"
-                      disabled={isVideoGenerating || !videoPrompt}
-                      onClick={() => handleRenderVideo(pIdx, sIdx, videoPrompt, currentSlide?.imageUrl || post.imageUrl)}
+                      disabled={isVideoGenerating}
+                      onClick={() => handleRenderVideo(
+                        pIdx, 
+                        sIdx, 
+                        videoPrompt || "Cinematic camera motion", 
+                        currentSlide?.imageUrl || post.imageUrl,
+                        savedAudioUrl,
+                        currentAnim,
+                        post.aspectRatio
+                      )}
                       className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold uppercase rounded-xl flex items-center gap-1.5 transition-all shadow-md hover:shadow-lg cursor-pointer disabled:opacity-50"
                     >
                       {isVideoGenerating ? (
@@ -2213,26 +2915,38 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                       ) : (
                         <>
                           <Video className="w-3.5 h-3.5 text-amber-300 animate-pulse" />
-                          <span>{isVideoGenerated ? 'Re-Render Video Frame' : 'Compile 8s Cinematic Video'}</span>
+                          <span>{isVideoGenerated ? 'Re-Compile Video' : 'Compile 8s Cinematic Video'}</span>
                         </>
                       )}
                     </button>
                   </div>
 
                 </div>
-
               </div>
 
               {/* Bottom Footer Actions */}
               <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
-                <a
-                  href={previewImageModal.url}
-                  download="campaign-visual.png"
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold uppercase rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Graphic</span>
-                </a>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleDownloadGraphic}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold uppercase rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Download Graphic (.PNG)</span>
+                  </button>
+
+                  {isVideoGenerated && targetObj.videoUrl && (
+                    <button
+                      type="button"
+                      onClick={handleDownloadVideo}
+                      className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase rounded-xl shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 text-amber-300" />
+                      <span>Download Video (.WEBM)</span>
+                    </button>
+                  )}
+                </div>
 
                 <div className="flex gap-2">
                   <button
@@ -2263,6 +2977,45 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
           </div>
         );
       })()}
+
+      {/* IMMERSIVE FULL-RESOLUTION IMAGE ZOOM INSPECTOR MODAL */}
+      {zoomImageModalUrl && (
+        <div className="fixed inset-0 z-[99999] bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-5xl flex items-center justify-between mb-4 text-white">
+            <div className="space-y-0.5">
+              <span className="text-xs font-bold font-mono text-purple-400 uppercase tracking-widest block">
+                High-Resolution Immersive Image Inspector
+              </span>
+              <p className="text-xs text-slate-400">View graphic up close at full resolution without audio playback triggers.</p>
+            </div>
+            <button
+              onClick={() => setZoomImageModalUrl(null)}
+              className="p-2 bg-slate-900 hover:bg-slate-800 text-slate-200 rounded-full transition-all border border-slate-800 cursor-pointer shadow-md"
+              title="Close Inspector"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+          <div className="flex-1 w-full max-w-5xl bg-slate-900/60 border border-slate-800 rounded-3xl overflow-hidden relative flex items-center justify-center p-6 shadow-2xl">
+            <CampaignImage src={zoomImageModalUrl} alt="Immersive Zoom Inspection" className="max-h-[75vh] max-w-full object-contain rounded-xl shadow-2xl" />
+          </div>
+          <div className="w-full max-w-5xl mt-4 flex items-center justify-between">
+            <ImageDownloadDropdown
+              imageUrl={zoomImageModalUrl}
+              filenameSlug={`campaign-inspection-${Date.now()}`}
+              buttonVariant="outline"
+              buttonText="Download Full Resolution"
+              onDownloadSuccess={(fmt) => triggerToast(`Full-resolution image downloaded in .${fmt} format!`)}
+            />
+            <button
+              onClick={() => setZoomImageModalUrl(null)}
+              className="px-5 py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase rounded-xl transition-all cursor-pointer"
+            >
+              Close Inspector
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ANIMATED FLOATING TOAST NOTIFICATION */}
       {toastMessage && (

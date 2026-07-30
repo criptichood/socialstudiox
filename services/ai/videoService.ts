@@ -9,8 +9,10 @@ export interface VideoGenerationResult {
 export const generateVeoVideo = async (
   prompt: string,
   imageBase64?: string,
-  aspectRatio: '16:9' | '9:16' | '1:1' = '16:9'
-): Promise<VideoGenerationResult> => {
+  aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
+  model: string = 'veo-3.1-lite-generate-preview',
+  endImageBase64?: string
+): Promise<any> => {
   // If we have an image base64, clean it up
   let imagePayload: any = undefined;
   if (imageBase64) {
@@ -25,33 +27,99 @@ export const generateVeoVideo = async (
     }
   }
 
+  // If we have a second (last) frame, clean it up too
+  let lastFramePayload: any = undefined;
+  if (endImageBase64) {
+    try {
+      const { mimeType, data } = getMimeTypeAndData(endImageBase64);
+      lastFramePayload = {
+        imageBytes: data,
+        mimeType: mimeType
+      };
+    } catch (e) {
+      console.error("Error formatting end image for VEO", e);
+    }
+  }
+
   try {
     // VEO requires a paid API key or specific project settings
     // Call the direct generateVideos model
     const op = await getAi().models.generateVideos({
-      model: 'veo-3.1-lite-generate-preview',
+      model: model,
       prompt: prompt,
       image: imagePayload,
       config: {
         numberOfVideos: 1,
         resolution: '720p',
-        aspectRatio: aspectRatio === '1:1' ? '9:16' : aspectRatio // VEO supports 16:9 and 9:16
+        aspectRatio: aspectRatio === '1:1' ? '9:16' : aspectRatio, // VEO supports 16:9 and 9:16
+        ...(lastFramePayload ? { lastFrame: lastFramePayload } : {})
       }
     });
 
+    if (!op) {
+      throw new Error("No operation returned from generateVideos API.");
+    }
+
+    // Poll the operation
+    let polledOp = op;
+    const maxRetries = 60; // Up to 3 minutes max
+    const delayMs = 3000;
+    let attempts = 0;
+
+    while (!polledOp.done && attempts < maxRetries) {
+      attempts++;
+      console.log(`Polling VEO operation (attempt ${attempts}/${maxRetries}):`, polledOp.name);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      polledOp = await getAi().operations.getVideosOperation({ operation: polledOp });
+    }
+
+    if (!polledOp.done) {
+      throw new Error(`Video generation timed out after ${maxRetries * delayMs / 1000} seconds.`);
+    }
+
+    if (polledOp.error) {
+      const errDetails = typeof polledOp.error === 'object' ? JSON.stringify(polledOp.error, null, 2) : polledOp.error;
+      throw new Error(`Video generation failed with API error: ${errDetails}`);
+    }
+
+    const generatedVideos = polledOp.response?.generatedVideos;
+    if (!generatedVideos || generatedVideos.length === 0) {
+      const responseStr = JSON.stringify(polledOp.response || {}, null, 2);
+      throw new Error(`Video generation completed but returned no video output. RAI filters may have triggered. Response details:\n${responseStr}`);
+    }
+
+    const videoObj = generatedVideos[0].video;
+    if (!videoObj) {
+      throw new Error("No video element found in response generatedVideos[0].video");
+    }
+
+    let videoUrl = "";
+    if (videoObj.videoBytes) {
+      const mime = videoObj.mimeType || "video/mp4";
+      videoUrl = `data:${mime};base64,${videoObj.videoBytes}`;
+    } else if (videoObj.uri) {
+      videoUrl = videoObj.uri;
+    } else {
+      throw new Error("Video object contains neither videoBytes nor uri. Response: " + JSON.stringify(videoObj));
+    }
+
     return {
-      operationName: op.name,
-      isSimulated: false
+      videoUrl,
+      isSimulated: false,
+      response: polledOp.response
     };
   } catch (err: any) {
-    console.warn("VEO API failed or model require paid key, falling back to simulated high-fidelity cinematic render", err);
-    
-    // We return a simulated flag so the frontend can play a spectacular Ken Burns cinematic video preview
-    // synced with beautiful subtitles and voiceover playback!
-    return {
-      isSimulated: true,
-      videoUrl: imageBase64 || "" // Use the slide image to trigger our high-fidelity client-side animator
-    };
+    console.warn("VEO API failed, throwing error for client control flow", err);
+    throw err;
+  }
+};
+
+export const pollVideoOperation = async (operation: any): Promise<any> => {
+  try {
+    return await getAi().operations.getVideosOperation({ operation });
+  } catch (err: any) {
+    console.error("Error polling video operation:", err);
+    throw err;
   }
 };
 

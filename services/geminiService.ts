@@ -13,7 +13,8 @@ export {
 
 export {
   generateVeoVideo,
-  generateVoiceOverAndVideoPrompt
+  generateVoiceOverAndVideoPrompt,
+  pollVideoOperation
 } from "./ai/videoService";
 export type { VideoGenerationResult } from "./ai/videoService";
 

@@ -47,6 +47,53 @@
         .dark ::-webkit-scrollbar-thumb:hover {
           background: #475569; 
         }
+
+        /* Live Camera Motion Animation Classes */
+        @keyframes motion-zoom-in {
+          0% { transform: scale(1.0); }
+          100% { transform: scale(1.12); }
+        }
+        @keyframes motion-pan-left {
+          0% { transform: scale(1.08) translateX(4%); }
+          100% { transform: scale(1.08) translateX(-4%); }
+        }
+        @keyframes motion-pan-right {
+          0% { transform: scale(1.08) translateX(-4%); }
+          100% { transform: scale(1.08) translateX(4%); }
+        }
+        @keyframes motion-pulse {
+          0%, 100% { transform: scale(1.0); }
+          50% { transform: scale(1.08); }
+        }
+        @keyframes motion-ken-burns {
+          0% { transform: scale(1.0) translate(0%, 0%); }
+          50% { transform: scale(1.08) translate(-2%, -1%); }
+          100% { transform: scale(1.12) translate(2%, 1%); }
+        }
+
+        .anim-zoom-in {
+          animation: motion-zoom-in 10s ease-out infinite alternate;
+          transform-origin: center center;
+        }
+        .anim-pan-left {
+          animation: motion-pan-left 10s ease-in-out infinite alternate;
+          transform-origin: center center;
+        }
+        .anim-pan-right {
+          animation: motion-pan-right 10s ease-in-out infinite alternate;
+          transform-origin: center center;
+        }
+        .anim-pulse {
+          animation: motion-pulse 6s ease-in-out infinite;
+          transform-origin: center center;
+        }
+        .anim-ken-burns {
+          animation: motion-ken-burns 12s ease-in-out infinite alternate;
+          transform-origin: center center;
+        }
+        .anim-static {
+          transform: scale(1.0);
+        }
     </style>
   <script type="importmap">
 {

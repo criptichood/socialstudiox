@@ -6,6 +6,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { GeneratedImage } from '../types';
 import { Download, Sparkles, Edit3, Maximize2, X, ZoomIn, ZoomOut, Pencil } from 'lucide-react';
+import { ImageDownloadDropdown } from './ImageDownloadDropdown';
 
 interface InfographicProps {
   image: GeneratedImage;
@@ -331,7 +332,7 @@ const Infographic: React.FC<InfographicProps> = ({ image, onEdit, isEditing, onA
 
         <div className="relative inline-block max-w-full">
           <img 
-            src={image.data} 
+            src={image.data || undefined} 
             alt={image.prompt} 
             onClick={() => setIsFullscreen(true)}
             className="w-full h-auto object-contain max-h-[80vh] bg-checkered relative z-10 cursor-zoom-in block rounded-xl"
@@ -355,14 +356,11 @@ const Infographic: React.FC<InfographicProps> = ({ image, onEdit, isEditing, onA
           >
             <Maximize2 className="w-5 h-5" />
           </button>
-          <a 
-            href={image.data} 
-            download={`infographic-${image.id}.png`}
-            className="bg-black/60 backdrop-blur-md text-white p-3 rounded-xl shadow-lg hover:bg-cyan-600 transition-colors border border-white/10 block"
-            title="Download Image"
-          >
-            <Download className="w-5 h-5" />
-          </a>
+          <ImageDownloadDropdown
+            imageUrl={image.data}
+            filenameSlug={`infographic-${image.id}`}
+            buttonVariant="glass"
+          />
         </div>
       </div>
 
@@ -469,7 +467,7 @@ const Infographic: React.FC<InfographicProps> = ({ image, onEdit, isEditing, onA
                   }}
                 >
                   <img 
-                      src={image.data} 
+                      src={image.data || undefined} 
                       alt={image.prompt}
                       className="max-w-full max-h-full object-contain shadow-2xl rounded-lg pointer-events-none select-none"
                   />

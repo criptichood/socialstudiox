@@ -61,6 +61,7 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
     newCampStyleGuide, setNewCampStyleGuide,
     newCampAspect, setNewCampAspect,
     newCampStyle, setNewCampStyle,
+    newCampModel, setNewCampModel,
     startMethod, setStartMethod,
     newCampTemplate, setNewCampTemplate,
     campaignPosts,
@@ -109,6 +110,8 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
     handleRenameSave,
     handleCopyToClipboard,
     handleUpdateCampaignPosts,
+    handleUpdateCampaignModel,
+    isLoadingCampaigns,
   } = useCampaigns({ activeProjectId, onCreateDraft, onLaunchDraft });
 
   React.useEffect(() => {
@@ -250,6 +253,14 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
         </div>
       )}
 
+      {/* INDEXEDDB LOADING INDICATOR */}
+      {isLoadingCampaigns && (
+        <div className="p-12 border border-purple-500/10 rounded-3xl bg-white/50 dark:bg-slate-900/40 backdrop-blur-sm flex flex-col items-center justify-center text-center space-y-4 shadow-sm animate-in fade-in duration-200">
+          <RefreshCw className="w-8 h-8 text-purple-600 dark:text-purple-400 animate-spin" />
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Synchronizing campaigns from IndexedDB...</p>
+        </div>
+      )}
+
       {/* GENERATING PROGRESS BLOCK (For new campaigns) */}
       {isGeneratingCampaign && activeCampaignId === null && (
         <div className="border border-purple-500/20 rounded-3xl p-12 bg-white dark:bg-slate-900/40 backdrop-blur-sm flex flex-col items-center justify-center text-center space-y-6 shadow-md animate-pulse">
@@ -346,6 +357,7 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
               getPlatformBadgeColor={getPlatformBadgeColor}
               getPlatformIcon={getPlatformIcon}
               onUpdateCampaignPosts={handleUpdateCampaignPosts}
+              onUpdateCampaignModel={handleUpdateCampaignModel}
             />
           )}
         </>
@@ -391,6 +403,8 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
         setPreferredAspect={setNewCampAspect}
         preferredStyle={newCampStyle}
         setPreferredStyle={setNewCampStyle}
+        aiModel={newCampModel}
+        setAiModel={setNewCampModel}
         onSubmit={(e) => {
           handleCreateCampaignProject(e);
           setShowCreateCampaignModal(false);

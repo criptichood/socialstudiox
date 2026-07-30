@@ -57,6 +57,15 @@ export interface Project {
   createdAt: number;
 }
 
+export interface SubtitleSegment {
+  id: number;
+  startMs: number;
+  endMs: number;
+  startTime: string; // SRT timestamp e.g. "00:00:01,250"
+  endTime: string;   // SRT timestamp e.g. "00:00:04,100"
+  text: string;
+}
+
 export interface CarouselSlide {
   slideNumber: number;
   title: string;
@@ -66,11 +75,20 @@ export interface CarouselSlide {
   generated?: boolean;
   voiceOver?: string;
   videoPrompt?: string;
+  videoId?: string;
   videoUrl?: string;
   videoGenerating?: boolean;
   videoGenerated?: boolean;
   voiceName?: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede';
+  ttsModel?: string;
+  accent?: string;
+  personaStyle?: string;
+  deliveryTone?: string;
+  speechSpeed?: string;
+  animationStyle?: string;
   audioUrl?: string;
+  subtitles?: SubtitleSegment[];
+  srtText?: string;
 }
 
 export interface SocialPostCampaignItem {
@@ -87,11 +105,20 @@ export interface SocialPostCampaignItem {
   slides?: CarouselSlide[];
   voiceOver?: string;
   videoPrompt?: string;
+  videoId?: string;
   videoUrl?: string;
   videoGenerating?: boolean;
   videoGenerated?: boolean;
   voiceName?: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede';
+  ttsModel?: string;
+  accent?: string;
+  personaStyle?: string;
+  deliveryTone?: string;
+  speechSpeed?: string;
+  animationStyle?: string;
   audioUrl?: string;
+  subtitles?: SubtitleSegment[];
+  srtText?: string;
 }
 
 export interface SavedCampaign {
@@ -103,6 +130,7 @@ export interface SavedCampaign {
   platform: string;
   postCount: number;
   customRequirements?: string;
+  aiModel?: string;
   posts: SocialPostCampaignItem[];
   createdAt: number;
 }
@@ -115,16 +143,55 @@ export interface ChatMessageItem {
   searchResults?: SearchResultItem[];
   suggestedCampaignTopic?: string;
   suggestedPrompt?: string;
+  suggestedVideoPrompt?: string;
+  suggestedVideoScript?: string;
+  isDeepResearch?: boolean;
 }
 
 export interface ResearchSession {
   id: string;
   title: string;
   companyContext?: string;
+  competitorWebsite?: string;
+  mode?: 'grounded' | 'deep';
   createdAt: number;
   updatedAt: number;
   messages: ChatMessageItem[];
 }
+
+export interface SlideAnimation {
+  intro: 'fade' | 'slide_left' | 'slide_up' | 'zoom' | 'blur' | 'flip';
+  floating: 'none' | 'pulse' | 'drift' | 'tilt' | 'ken_burns';
+  overlayAnimation: 'none' | 'pop' | 'ripple' | 'slide_corner' | 'spin';
+  duration: number; // in seconds
+}
+
+export interface SlideAudioTrack {
+  id: string;
+  name: string;
+  url: string;
+  startTime: number; // start offset in seconds
+  endTime: number; // end trim point in seconds
+  duration: number; // total track duration
+  voiceName?: string;
+}
+
+export interface PresenterSlide {
+  id: string;
+  slideNumber: number;
+  title: string;
+  subtitle?: string;
+  bodyText?: string;
+  imageUrl?: string;
+  overlayImageUrl?: string;
+  layout: 'split' | 'hero' | 'quote' | 'features' | 'stats';
+  animation: SlideAnimation;
+  audioTrack?: SlideAudioTrack;
+  speakerNotes?: string;
+  slideDuration?: number; // in seconds
+}
+
+export type ViewType = 'dashboard' | 'canvas' | 'drafts' | 'gallery' | 'research' | 'presenter-studio' | 'voiceover-studio' | 'video-studio' | 'sound-studio';
 
 export interface DraftPrompt {
   id: string;

@@ -103,7 +103,8 @@ export const generateSocialCampaign = async (
   platform: string,
   postCount: number,
   refinementInstructions?: string,
-  templateName?: string
+  templateName?: string,
+  modelName: string = TEXT_MODEL
 ): Promise<SocialPostCampaignItem[]> => {
   let templatePrompt = "";
   if (templateName) {
@@ -198,7 +199,7 @@ export const generateSocialCampaign = async (
   `;
 
   const response = await getAi().models.generateContent({
-    model: TEXT_MODEL,
+    model: modelName || TEXT_MODEL,
     contents: prompt,
     config: {
       tools: [{ googleSearch: {} }],
@@ -222,7 +223,8 @@ export const generateSingleSocialPost = async (
   campaignTopic: string,
   platform: string,
   customInstructions: string,
-  existingPostsCount: number
+  existingPostsCount: number,
+  modelName: string = TEXT_MODEL
 ): Promise<SocialPostCampaignItem> => {
   const prompt = `
     You are an expert Social Media Campaign Strategist and Premium Growth Marketer.
@@ -253,7 +255,7 @@ export const generateSingleSocialPost = async (
   `;
 
   const response = await getAi().models.generateContent({
-    model: TEXT_MODEL,
+    model: modelName || TEXT_MODEL,
     contents: prompt,
     config: {
       responseMimeType: 'application/json'
@@ -273,7 +275,8 @@ export const generateSingleSocialPost = async (
 export const refineSingleSocialPost = async (
   currentPost: SocialPostCampaignItem,
   refineInstruction: string,
-  platform: string
+  platform: string,
+  modelName: string = TEXT_MODEL
 ): Promise<SocialPostCampaignItem> => {
   const prompt = `
     You are an expert Social Media Copywriter and Creative Director.
@@ -302,7 +305,7 @@ export const refineSingleSocialPost = async (
   `;
 
   const response = await getAi().models.generateContent({
-    model: TEXT_MODEL,
+    model: modelName || TEXT_MODEL,
     contents: prompt,
     config: {
       responseMimeType: 'application/json'
@@ -321,33 +324,68 @@ export const refineSingleSocialPost = async (
 
 export const conductResearchChat = async (
   messages: { role: 'user' | 'model'; content: string }[],
-  companyInfo?: string
+  companyInfo?: string,
+  mode: 'grounded' | 'deep' = 'grounded',
+  competitorWebsite?: string
 ): Promise<{
   reply: string;
   searchResults?: SearchResultItem[];
   suggestedCampaignTopic?: string;
   suggestedPrompt?: string;
+  suggestedVideoPrompt?: string;
+  suggestedVideoScript?: string;
 }> => {
+  const isDeepMode = mode === 'deep';
+
   const systemInstruction = `
-    You are an elite AI Active Content & Market Research Strategist and Viral Growth Intelligence Specialist for Social Studio X.
-    ${companyInfo ? `Target Business / Address / Industry Context: "${companyInfo}"` : ''}
+    You are an elite AI Multipurpose Content, Video & Competitor Intelligence Strategist for Social Studio X.
+    ${companyInfo ? `Target Brand / Website / Context: "${companyInfo}"` : ''}
+    ${competitorWebsite ? `Target Competitor Website / Benchmark: "${competitorWebsite}"` : ''}
+    RESEARCH MODE: ${isDeepMode ? '🔬 DEEP MARKET & COMPETITOR RESEARCH (Exhaustive Analysis)' : '⚡ REAL-TIME SEARCH GROUNDED (Fast Interactive Strategy)'}
 
-    YOUR CORE ROLE:
-    1. Conduct active deep research on social media trends, audience pain points, viral content angles, B2B/B2C strategies, industry statistics, and technological solutions (e.g. how AI automates tax, construction, project management, marketing).
-    2. Proactively search Google using your integrated Google Search tool to find accurate, up-to-date facts, viral hooks, trending topics, hashtags, and real statistics.
-    3. Help the user outline actionable social campaigns, 3-minute video explainer scripts, step-by-step carousel slide breakdowns, and high-converting hooks.
-    4. Provide structured, engaging, and clear responses using clean markdown formatting (bolding, bullet points, numbered lists, section headers).
+    YOUR CORE CAPABILITIES & METHODOLOGY:
+    1. **Multipurpose Video & Content Strategy**:
+       - Research and generate viral short-form video concepts (Reels, TikTok, Shorts) and 3-minute video explainer scripts with visual scene directions, camera motions (e.g., cinematic zoom, orbit, macro tilt), voiceover scripts, and audio cues.
+       - Outline multi-slide educational carousels, B2B thought leadership posts, and high-converting ad concepts.
 
-    CRITICAL STRATEGY EXTRACTOR:
-    Whenever you suggest a specific social campaign topic, viral post angle, or carousel outline in your reply, conclude your response with a dedicated strategy box formatted EXACTLY like this at the end:
+    2. **Competitor & Market Intelligence**:
+       - Actively search Google using your integrated Google Search tool to scan competitor websites, social media content strategies, posting schedules, and viral hooks in the target industry.
+       - If no competitor website is explicitly provided, infer top industry competitors and perform search queries for best-performing social media campaigns in that niche.
+       - Analyze how competitors drive audience growth and recommend strategies to resonate with the community.
 
+    3. **Proactive & Conversational Agent Behavior**:
+       - Never respond with a blank stub or demand endless inputs.
+       - If the user provides a vague or brief idea (e.g. "I want to create video content for my business"), **proactively infer** standard target audiences, key pain points, and 3 viral video angles right away.
+       - Offer 2-3 brief, helpful clarifying questions (e.g. target platform, primary CTA) while delivering immediate, complete research recommendations in the response.
+       - Proactively suggest logical next steps, such as launching a Video Campaign or running paid social ads.
+
+    ${isDeepMode ? `
+    DEEP RESEARCH REPORT STRUCTURE:
+    Provide an exhaustive, multi-tier analysis structured with clean Markdown:
+    - 🎯 **Market & Competitor Intelligence Matrix**: Competitor strategy breakdown, content gaps, viral angles.
+    - 🎥 **Video & Visual Content Blueprint**: Hook options, script breakdown with timestamps, visual camera directions.
+    - 🌐 **Audience Traffic & Conversion Funnel**: How to turn video views into website traffic and sales.
+    - 📈 **Proactive Next Steps & Campaign Recommendations**.
+    ` : ''}
+
+    CRITICAL STRATEGY & VIDEO EXTRACTOR BLOCKS:
+    Conclude your response with dedicated extractor boxes whenever suggesting social campaigns or video scripts:
+
+    For Social / Carousel Campaigns:
     ---
     ### 🚀 Recommended Campaign Strategy
-    - **Topic**: [Short clean campaign name, e.g. "AI Project Management in Construction"]
-    - **Visual & Campaign Prompt**: [Comprehensive prompt describing post objective, visual layout, key statistics, and carousel slide structure ready for Social Studio X]
-    - **Target Platform**: [Instagram / LinkedIn / Twitter]
+    - **Topic**: [Short clean campaign name]
+    - **Visual & Campaign Prompt**: [Comprehensive prompt describing post objective, visual layout, and slide structure]
+    - **Target Platform**: [Instagram / LinkedIn / TikTok / Twitter]
     - **Aspect Ratio**: [9:16 Portrait / 1:1 Square / 16:9 Landscape]
     - **Visual Style**: [Carousel / Minimalist / Realistic / 3D Render]
+    ---
+
+    For Video / Reel / VEO Generation:
+    ---
+    ### 🎥 Recommended Video Script & Scene Setup
+    - **Video Scene Prompt**: [Detailed camera motion & visual description for AI video rendering, e.g., "Cinematic slow motion macro shot of..."]
+    - **Full Video Script**: [Voiceover narration & text overlay script with timestamps]
     ---
   `;
 
@@ -366,7 +404,7 @@ export const conductResearchChat = async (
     },
   });
 
-  const text = response.text || "I have analyzed your request based on current market research.";
+  const text = response.text || "I have completed the market and video content research based on current intelligence.";
 
   // Extract grounding metadata search results if present
   const searchResults: SearchResultItem[] = [];
@@ -390,6 +428,8 @@ export const conductResearchChat = async (
   // Parse suggested strategy from text if structured section exists
   let suggestedCampaignTopic: string | undefined;
   let suggestedPrompt: string | undefined;
+  let suggestedVideoPrompt: string | undefined;
+  let suggestedVideoScript: string | undefined;
 
   const topicMatch = text.match(/\*\*Topic\*\*:\s*(.+)/i);
   if (topicMatch) {
@@ -401,10 +441,22 @@ export const conductResearchChat = async (
     suggestedPrompt = promptMatch[1].trim();
   }
 
+  const videoPromptMatch = text.match(/\*\*Video Scene Prompt\*\*:\s*(.+)/i);
+  if (videoPromptMatch) {
+    suggestedVideoPrompt = videoPromptMatch[1].trim();
+  }
+
+  const videoScriptMatch = text.match(/\*\*Full Video Script\*\*:\s*([\s\S]+?)(?:---|$$)/i);
+  if (videoScriptMatch) {
+    suggestedVideoScript = videoScriptMatch[1].trim();
+  }
+
   return {
     reply: text,
     searchResults,
     suggestedCampaignTopic,
-    suggestedPrompt
+    suggestedPrompt,
+    suggestedVideoPrompt,
+    suggestedVideoScript
   };
 };

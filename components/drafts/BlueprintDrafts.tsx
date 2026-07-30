@@ -33,7 +33,7 @@ export const BlueprintDrafts: React.FC<BlueprintDraftsProps> = ({
             <span>Saved Content Drafts</span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Browse, manage, and load saved blueprint prompts into the Visual Canvas.
+            Browse, manage, and load saved blueprint prompts into the Image Generator.
           </p>
         </div>
 
@@ -107,7 +107,7 @@ export const BlueprintDrafts: React.FC<BlueprintDraftsProps> = ({
                     ) : (
                       <span className="px-2 py-0.5 bg-blue-500/15 border border-blue-500/30 text-blue-600 dark:text-blue-300 text-[10px] font-bold uppercase tracking-wider rounded-lg flex items-center gap-1">
                         <Layout className="w-3 h-3 text-blue-400" />
-                        <span>Visual Canvas</span>
+                        <span>Image Generator</span>
                       </span>
                     )}
 

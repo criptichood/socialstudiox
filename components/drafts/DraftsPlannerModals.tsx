@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Globe, Plus, Sparkles, Folder, ArrowRight, Layers } from 'lucide-react';
 import { ComplexityLevel, VisualStyle, Language, AspectRatio } from '../../types';
+import { CustomDropdown, StyleDropdown, ComplexityDropdown, LanguageDropdown, AIModelDropdown } from '../CustomDropdown';
 import { AspectRatioIcon, getAspectLabel } from './AspectBadge';
 
 
@@ -63,57 +64,37 @@ export const CreateBlueprintModal: React.FC<BlueprintModalProps> = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Visual Style</label>
-              <select
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Style</label>
+              <StyleDropdown
                 value={style}
-                onChange={(e) => setStyle(e.target.value as VisualStyle)}
-                className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-purple-500/20 outline-none cursor-pointer"
-              >
-                {['Default', 'Minimalist', 'Realistic', 'Cartoon', 'Vintage', 'Futuristic', '3D Render', 'Sketch', 'Carousel'].map(s => (
-                  <option key={s} value={s} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{s}</option>
-                ))}
-              </select>
+                onChange={(val) => setStyle(val)}
+              />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Complexity</label>
-              <select
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Level</label>
+              <ComplexityDropdown
                 value={level}
-                onChange={(e) => setLevel(e.target.value as ComplexityLevel)}
-                className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-purple-500/20 outline-none cursor-pointer"
-              >
-                {['Default', 'Elementary', 'High School', 'College', 'Expert'].map(l => (
-                  <option key={l} value={l} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{l}</option>
-                ))}
-              </select>
+                onChange={(val) => setLevel(val)}
+              />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Aspect Ratio</label>
-              <select
+              <CustomDropdown
                 value={resolution}
-                onChange={(e) => setResolution(e.target.value as AspectRatio)}
-                className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-purple-500/20 outline-none cursor-pointer"
-              >
-                {['16:9', '9:16', '1:1'].map(r => (
-                  <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{r}</option>
-                ))}
-              </select>
+                onChange={(val) => setResolution(val)}
+              />
             </div>
 
             <div>
               <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Language</label>
-              <select
+              <LanguageDropdown
                 value={lang}
-                onChange={(e) => setLang(e.target.value as Language)}
-                className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-purple-500/20 outline-none cursor-pointer"
-              >
-                {['Default', 'English', 'Spanish', 'French', 'German', 'Mandarin', 'Japanese', 'Hindi', 'Arabic', 'Portuguese', 'Russian'].map(la => (
-                  <option key={la} value={la} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{la}</option>
-                ))}
-              </select>
+                onChange={(val) => setLang(val)}
+              />
             </div>
           </div>
 
@@ -161,6 +142,8 @@ interface CampaignModalProps {
   setPreferredAspect?: (a: AspectRatio) => void;
   preferredStyle?: VisualStyle;
   setPreferredStyle?: (s: VisualStyle) => void;
+  aiModel?: string;
+  setAiModel?: (m: string) => void;
   onSubmit: (e: React.FormEvent) => void;
 }
 
@@ -187,6 +170,8 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
   setPreferredAspect,
   preferredStyle = 'Default',
   setPreferredStyle,
+  aiModel = 'gemini-3.6-flash',
+  setAiModel,
   onSubmit,
 }) => {
   const [modalStep, setModalStep] = useState<'method' | 'details'>('method');
@@ -353,6 +338,20 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
 
               {/* Common Style and Aspect Settings */}
               <div className="grid grid-cols-1 gap-4 p-4 bg-purple-500/5 dark:bg-purple-500/10 rounded-2xl border border-purple-500/20">
+                <div>
+                  <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+                    <span>AI Model Engine</span>
+                  </label>
+                  <AIModelDropdown
+                    value={aiModel}
+                    onChange={(val) => setAiModel && setAiModel(val)}
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Select which Gemini model will power strategy ideation, post drafting, and visual scene creation.
+                  </p>
+                </div>
+
                 {startMethod === 'ai' && (
                   <div>
                     <label className="block text-xs font-bold text-purple-600 dark:text-purple-400 uppercase tracking-wider mb-1.5">Content Format Template</label>
@@ -381,15 +380,10 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
                       <AspectRatioIcon aspect={preferredAspect} className="text-purple-500" />
                       <span>Target Aspect Ratio</span>
                     </label>
-                    <select
+                    <CustomDropdown
                       value={preferredAspect}
-                      onChange={(e) => setPreferredAspect && setPreferredAspect(e.target.value as AspectRatio)}
-                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white border border-purple-500/30 rounded-xl text-xs outline-none cursor-pointer font-medium"
-                    >
-                      <option value="1:1" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">1:1 Square (Feed Post)</option>
-                      <option value="9:16" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">9:16 Portrait (Mobile Story / Reel)</option>
-                      <option value="16:9" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">16:9 Landscape (Desktop / Banner)</option>
-                    </select>
+                      onChange={(val) => setPreferredAspect && setPreferredAspect(val)}
+                    />
                   </div>
 
                   <div>

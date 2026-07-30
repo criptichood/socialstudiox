@@ -6,6 +6,12 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ComplexityLevel, VisualStyle, Language, AspectRatio, DraftPrompt } from '../types';
 import { STYLE_GUIDES } from '../services/stylesGuide';
 import { 
+  CustomDropdown, 
+  ComplexityDropdown, 
+  StyleDropdown, 
+  LanguageDropdown 
+} from './CustomDropdown';
+import { 
   Search, 
   GraduationCap, 
   Palette, 
@@ -92,13 +98,13 @@ const ConfigForm: React.FC<ConfigFormProps> = ({
     return true;
   });
 
-  // Auto-grow textarea to show up to 6 sentences/lines before becoming scrollable
+  // Auto-grow textarea up to ~5-6 sentences (max height ~130px) before becoming scrollable
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      // scrollHeight measures the total scrollable content height.
-      // We clamp the actual height using max-height in tailwind, but let's set height dynamically.
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+      const scrollH = textareaRef.current.scrollHeight;
+      const clamped = Math.min(scrollH, 130);
+      textareaRef.current.style.height = `${clamped}px`;
     }
   }, [topic]);
 
@@ -127,110 +133,39 @@ const ConfigForm: React.FC<ConfigFormProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-3">
             
               {/* Audience Complexity Level Selector */}
-              <div className="bg-slate-50 dark:bg-slate-950/50 rounded-2xl border border-slate-200/60 dark:border-white/5 px-4 py-3 flex items-center gap-3 hover:border-cyan-500/30 transition-colors relative group/item">
-                  <div className="p-2 bg-white dark:bg-slate-800 rounded-lg text-cyan-600 dark:text-cyan-400 shrink-0 shadow-sm border border-slate-100 dark:border-white/5">
-                      <GraduationCap className="w-4 h-4" />
-                  </div>
-                  <div className="flex flex-col z-10 w-full relative pr-4">
-                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-display">Complexity / Level</label>
-                      <div className="relative flex items-center w-full">
-                          <select 
-                              id="complexity-level-select"
-                              value={complexityLevel} 
-                              onChange={(e) => setComplexityLevel(e.target.value as ComplexityLevel)}
-                              className="bg-transparent border-none text-sm font-bold text-slate-900 dark:text-slate-100 focus:ring-0 cursor-pointer p-0 w-full hover:text-cyan-600 dark:hover:text-cyan-300 transition-colors appearance-none pr-6 [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100 font-display outline-none"
-                          >
-                              <option value="Default">Adaptive / Follow Prompt</option>
-                              <option value="Elementary">Elementary (Ages 6-10)</option>
-                              <option value="High School">High School (Textbook style)</option>
-                              <option value="College">College (Scientific American)</option>
-                              <option value="Expert">Expert (Technical Schematic)</option>
-                          </select>
-                          <ChevronDown className="absolute right-0 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                      </div>
-                  </div>
+              <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-display block px-1">Level</label>
+                  <ComplexityDropdown 
+                      value={complexityLevel} 
+                      onChange={(val) => setComplexityLevel(val)} 
+                  />
               </div>
 
               {/* Visual Style Aesthetic Selector */}
-              <div className="bg-slate-50 dark:bg-slate-950/50 rounded-2xl border border-slate-200/60 dark:border-white/5 px-4 py-3 flex items-center gap-3 hover:border-purple-500/30 transition-colors relative group/item">
-                   <div className="p-2 bg-white dark:bg-slate-800 rounded-lg text-purple-600 dark:text-purple-400 shrink-0 shadow-sm border border-slate-100 dark:border-white/5">
-                      <Palette className="w-4 h-4" />
-                  </div>
-                  <div className="flex flex-col z-10 w-full relative pr-4">
-                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-display">Aesthetic Style</label>
-                      <div className="relative flex items-center w-full">
-                          <select 
-                              id="visual-style-select"
-                              value={visualStyle} 
-                              onChange={(e) => setVisualStyle(e.target.value as VisualStyle)}
-                              className="bg-transparent border-none text-sm font-bold text-slate-900 dark:text-slate-100 focus:ring-0 cursor-pointer p-0 w-full hover:text-purple-600 dark:hover:text-purple-300 transition-colors appearance-none pr-6 [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100 font-display outline-none"
-                          >
-                              <option value="Default">Adaptive / Follow Prompt</option>
-                              <option value="Realistic">Photorealistic Composite</option>
-                              <option value="Sketch">Technical Blueprint</option>
-                              <option value="Minimalist">Minimalist Graphic</option>
-                              <option value="3D Render">3D Isometric / Claymorphism</option>
-                              <option value="Cartoon">Graphic Novel / Comic</option>
-                              <option value="Vintage">Vintage Scientific Lithograph</option>
-                              <option value="Futuristic">Cyberpunk Interface HUD</option>
-                          </select>
-                          <ChevronDown className="absolute right-0 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                      </div>
-                  </div>
+              <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-display block px-1">Style</label>
+                  <StyleDropdown 
+                      value={visualStyle} 
+                      onChange={(val) => setVisualStyle(val)} 
+                  />
               </div>
 
                {/* Target Language Selector */}
-               <div className="bg-slate-50 dark:bg-slate-950/50 rounded-2xl border border-slate-200/60 dark:border-white/5 px-4 py-3 flex items-center gap-3 hover:border-emerald-500/30 transition-colors relative group/item">
-                   <div className="p-2 bg-white dark:bg-slate-800 rounded-lg text-emerald-600 dark:text-emerald-400 shrink-0 shadow-sm border border-slate-100 dark:border-white/5">
-                      <Globe className="w-4 h-4" />
-                  </div>
-                  <div className="flex flex-col z-10 w-full relative pr-4">
-                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-display">Labels Language</label>
-                      <div className="relative flex items-center w-full">
-                          <select 
-                              id="labels-language-select"
-                              value={language} 
-                              onChange={(e) => setLanguage(e.target.value as Language)}
-                              className="bg-transparent border-none text-sm font-bold text-slate-900 dark:text-slate-100 focus:ring-0 cursor-pointer p-0 w-full hover:text-emerald-600 dark:hover:text-emerald-300 transition-colors appearance-none pr-6 [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100 font-display outline-none"
-                          >
-                              <option value="Default">Adaptive / Follow Prompt</option>
-                              <option value="English">English</option>
-                              <option value="Spanish">Español (Spanish)</option>
-                              <option value="French">Français (French)</option>
-                              <option value="German">Deutsch (German)</option>
-                              <option value="Mandarin">中文 (Mandarin)</option>
-                              <option value="Japanese">日本語 (Japanese)</option>
-                              <option value="Hindi">हिन्दी (Hindi)</option>
-                              <option value="Arabic">العربية (Arabic)</option>
-                              <option value="Portuguese">Português (Portuguese)</option>
-                              <option value="Russian">Русский (Russian)</option>
-                          </select>
-                          <ChevronDown className="absolute right-0 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                      </div>
-                  </div>
+              <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-display block px-1">Language</label>
+                  <LanguageDropdown 
+                      value={language} 
+                      onChange={(val) => setLanguage(val)} 
+                  />
               </div>
 
-              {/* Aspect Resolution Selector as a Dropdown */}
-              <div className="bg-slate-50 dark:bg-slate-950/50 rounded-2xl border border-slate-200/60 dark:border-white/5 px-4 py-3 flex items-center gap-3 hover:border-amber-500/30 transition-colors relative group/item">
-                  <div className="p-2 bg-white dark:bg-slate-800 rounded-lg text-amber-600 dark:text-amber-400 shrink-0 shadow-sm border border-slate-100 dark:border-white/5">
-                      <Smartphone className="w-4 h-4" />
-                  </div>
-                  <div className="flex flex-col z-10 w-full relative pr-4">
-                      <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-display">Aspect Resolution</label>
-                      <div className="relative flex items-center w-full">
-                          <select 
-                              id="aspect-resolution-select"
-                              value={resolution} 
-                              onChange={(e) => setResolution(e.target.value as AspectRatio)}
-                              className="bg-transparent border-none text-sm font-bold text-slate-900 dark:text-slate-100 focus:ring-0 cursor-pointer p-0 w-full hover:text-amber-600 dark:hover:text-amber-300 transition-colors appearance-none pr-6 [&>option]:bg-white [&>option]:text-slate-900 dark:[&>option]:bg-slate-900 dark:[&>option]:text-slate-100 font-display outline-none"
-                          >
-                              <option value="16:9">Presentation Widescreen (16:9)</option>
-                              <option value="9:16">Vertical Mobile Story (9:16)</option>
-                              <option value="1:1">Square Badge / Label (1:1)</option>
-                          </select>
-                          <ChevronDown className="absolute right-0 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                      </div>
-                  </div>
+              {/* Aspect Resolution Selector with Custom Dropdown */}
+              <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-display block px-1">Aspect Resolution</label>
+                  <CustomDropdown 
+                      value={resolution} 
+                      onChange={(val) => setResolution(val)} 
+                  />
               </div>
 
             </div>
@@ -289,7 +224,7 @@ const ConfigForm: React.FC<ConfigFormProps> = ({
                 <div className="space-y-3">
                   <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-white/15 bg-slate-950 aspect-[4/3] flex items-center justify-center">
                     <img 
-                      src={referenceImage} 
+                      src={referenceImage || undefined} 
                       alt="Reference visual context" 
                       className="max-h-full max-w-full object-contain"
                       referrerPolicy="no-referrer"
@@ -413,7 +348,7 @@ const ConfigForm: React.FC<ConfigFormProps> = ({
                     value={topic}
                     onChange={(e) => setTopic(e.target.value)}
                     placeholder="E.g., Photosynthesis mechanics, Quantum computing qubits..."
-                    className="w-full bg-transparent border-none outline-none text-xs md:text-sm placeholder:text-slate-400 font-medium text-slate-900 dark:text-white resize-none overflow-y-auto leading-relaxed focus:ring-0 p-0"
+                    className="w-full bg-transparent border-none outline-none text-xs md:text-sm placeholder:text-slate-400 font-medium text-slate-900 dark:text-white resize-none max-h-[130px] overflow-y-auto leading-relaxed focus:ring-0 p-0"
                   />
                 </div>
               </div>
@@ -559,7 +494,7 @@ const ConfigForm: React.FC<ConfigFormProps> = ({
                           ) : (
                             <span className="px-2 py-0.5 bg-blue-500/20 text-blue-300 border border-blue-500/30 text-[9px] font-bold uppercase rounded-md flex items-center gap-1">
                               <Layout className="w-2.5 h-2.5" />
-                              <span>Visual Canvas</span>
+                              <span>Image Generator</span>
                             </span>
                           )}
 

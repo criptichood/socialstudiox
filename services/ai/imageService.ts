@@ -40,7 +40,7 @@ export const generateInfographicImage = async (
     config: {
       responseModalities: [Modality.IMAGE],
       aspectRatio: resolution
-    }
+    } as any
   });
 
   const part = response.candidates?.[0]?.content?.parts?.[0];

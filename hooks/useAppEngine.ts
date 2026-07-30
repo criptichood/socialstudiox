@@ -7,7 +7,8 @@ import {
   AspectRatio, 
   SearchResultItem, 
   Project, 
-  DraftPrompt 
+  DraftPrompt,
+  ViewType
 } from '../types';
 import { 
   researchTopicForPrompt, 
@@ -31,64 +32,55 @@ export const useAppEngine = () => {
   const [topic, setTopic] = useState('');
   
   // Navigation View & Sidebar state
-  const [currentView, setCurrentView] = useState<'dashboard' | 'canvas' | 'drafts' | 'gallery' | 'research' | 'video-studio' | 'voiceover-studio'>('canvas');
+  const [currentView, setCurrentView] = useState<ViewType>('canvas');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
-  // Projects State
-  const [projects, setProjects] = useState<Project[]>(() => {
-    const stored = localStorage.getItem('infogenius_projects');
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch (e) {
-        console.error("Failed to parse projects from localStorage", e);
-      }
-    }
-    return [
-      { id: 'proj-1', name: 'Default Research Space', description: 'Primary topic visualizers and concept breakdowns', createdAt: Date.now() },
-      { id: 'proj-2', name: 'Science Illustrations', description: 'Detailed biological mechanics and quantum layouts', createdAt: Date.now() }
-    ];
-  });
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => {
-    const stored = localStorage.getItem('infogenius_selected_project_id');
-    return stored !== null ? stored : 'proj-1';
-  });
+  // Projects & Drafts State
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<DraftPrompt[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
 
-  // Blueprint Drafts State
-  const [drafts, setDrafts] = useState<DraftPrompt[]>(() => {
-    const stored = localStorage.getItem('infogenius_drafts');
-    if (stored) {
+  // Load Projects & Drafts from IndexedDB on Mount
+  useEffect(() => {
+    let isMounted = true;
+    const loadStoredData = async () => {
       try {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-          const seenIds = new Set<string>();
-          return parsed.map((d: any, idx: number) => {
-            if (!d) return null;
-            let finalId = d.id;
-            if (!finalId || seenIds.has(finalId)) {
-              finalId = `draft-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
-            }
-            seenIds.add(finalId);
-            return { ...d, id: finalId };
-          }).filter(Boolean) as DraftPrompt[];
+        const defaultProjects: Project[] = [
+          { id: 'proj-1', name: 'Default Research Space', description: 'Primary topic visualizers and concept breakdowns', createdAt: Date.now() },
+          { id: 'proj-2', name: 'Science Illustrations', description: 'Detailed biological mechanics and quantum layouts', createdAt: Date.now() }
+        ];
+        const defaultDrafts: DraftPrompt[] = [
+          {
+            id: 'draft-1',
+            topic: 'Mechanical Clockwork Mechanics cross section',
+            complexityLevel: 'Expert',
+            visualStyle: '3D Render',
+            language: 'English',
+            resolution: '16:9',
+            subOptions: { projectId: 'proj-1' },
+            createdAt: Date.now()
+          }
+        ];
+
+        const loadedProjects = await DBService.getItem<Project[]>('infogenius_projects', defaultProjects);
+        const loadedSelectedId = await DBService.getItem<string | null>('infogenius_selected_project_id', 'proj-1');
+        const loadedDrafts = await DBService.getItem<DraftPrompt[]>('infogenius_drafts', defaultDrafts);
+
+        if (isMounted) {
+          setProjects(loadedProjects);
+          setSelectedProjectId(loadedSelectedId);
+          setDrafts(loadedDrafts);
+          setIsLoadingData(false);
         }
-      } catch (e) {
-        console.error("Failed to parse drafts from localStorage", e);
+      } catch (err) {
+        console.error("Failed to load projects/drafts from IndexedDB:", err);
+        if (isMounted) setIsLoadingData(false);
       }
-    }
-    return [
-      {
-        id: 'draft-1',
-        topic: 'Mechanical Clockwork Mechanics cross section',
-        complexityLevel: 'Expert',
-        visualStyle: '3D Render',
-        language: 'English',
-        resolution: '16:9',
-        subOptions: { projectId: 'proj-1' },
-        createdAt: Date.now()
-      }
-    ];
-  });
+    };
+    loadStoredData();
+    return () => { isMounted = false; };
+  }, []);
 
   const handleCreateProject = (name: string, description: string) => {
     const newProj: Project = {
@@ -250,22 +242,34 @@ export const useAppEngine = () => {
     };
   }, []);
 
-  // Synchronize state changes to localStorage
+  // Synchronize state changes to IndexedDB
   useEffect(() => {
-    localStorage.setItem('infogenius_projects', JSON.stringify(projects));
-  }, [projects]);
-
-  useEffect(() => {
-    if (selectedProjectId) {
-      localStorage.setItem('infogenius_selected_project_id', selectedProjectId);
-    } else {
-      localStorage.removeItem('infogenius_selected_project_id');
+    if (!isLoadingData) {
+      DBService.setItem('infogenius_projects', projects).catch(err => {
+        console.error("Failed to save projects to IndexedDB:", err);
+      });
     }
-  }, [selectedProjectId]);
+  }, [projects, isLoadingData]);
 
   useEffect(() => {
-    localStorage.setItem('infogenius_drafts', JSON.stringify(drafts));
-  }, [drafts]);
+    if (!isLoadingData) {
+      if (selectedProjectId) {
+        DBService.setItem('infogenius_selected_project_id', selectedProjectId).catch(err => {
+          console.error("Failed to save selectedProjectId to IndexedDB:", err);
+        });
+      } else {
+        DBService.removeItem('infogenius_selected_project_id').catch(() => {});
+      }
+    }
+  }, [selectedProjectId, isLoadingData]);
+
+  useEffect(() => {
+    if (!isLoadingData) {
+      DBService.setItem('infogenius_drafts', drafts).catch(err => {
+        console.error("Failed to save drafts to IndexedDB:", err);
+      });
+    }
+  }, [drafts, isLoadingData]);
 
   // Check for API Key on Mount
   useEffect(() => {
@@ -562,6 +566,8 @@ export const useAppEngine = () => {
     setDraftedPrompt(img.imagePrompt);
     setDraftedFacts(img.facts || []);
     setDraftedSearchResults(img.searchResults || []);
+    setReferenceImage(img.data);
+    setReferenceMode('style');
     setHasDraft(true);
   };
 
@@ -573,6 +579,7 @@ export const useAppEngine = () => {
     projects, setProjects,
     selectedProjectId, setSelectedProjectId,
     drafts, setDrafts,
+    isLoadingData,
     complexityLevel, setComplexityLevel,
     visualStyle, setVisualStyle,
     language, setLanguage,

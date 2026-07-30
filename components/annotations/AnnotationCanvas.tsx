@@ -305,7 +305,7 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
         }}
       >
         <img 
-          src={image.data} 
+          src={image.data || undefined} 
           alt="Infographic Visual Base" 
           className="max-h-[75vh] md:max-h-[80vh] w-auto max-w-full block select-none pointer-events-none rounded-lg"
         />

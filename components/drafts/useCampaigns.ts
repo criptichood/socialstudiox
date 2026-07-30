@@ -19,6 +19,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
   const [newCampStyleGuide, setNewCampStyleGuide] = useState('');
   const [newCampAspect, setNewCampAspect] = useState<AspectRatio>('9:16');
   const [newCampStyle, setNewCampStyle] = useState<VisualStyle>('Default');
+  const [newCampModel, setNewCampModel] = useState<string>('gemini-3.6-flash');
   const [startMethod, setStartMethod] = useState<'ai' | 'empty'>('ai');
   const [newCampTemplate, setNewCampTemplate] = useState<string>('');
 
@@ -29,21 +30,30 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
   const [campaignStatus, setCampaignStatus] = useState('');
 
   // Persisted Social Campaigns State
-  const [savedCampaigns, setSavedCampaigns] = useState<SavedCampaign[]>(() => {
-    const stored = localStorage.getItem('infogenius_saved_campaigns');
-    if (stored) {
-      try {
-        return JSON.parse(stored);
-      } catch (e) {
-        console.error("Failed to parse saved campaigns", e);
-      }
-    }
-    return [];
-  });
+  const [savedCampaigns, setSavedCampaigns] = useState<SavedCampaign[]>([]);
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+  const [isLoadingCampaigns, setIsLoadingCampaigns] = useState<boolean>(true);
 
-  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(() => {
-    return localStorage.getItem('infogenius_active_campaign_id');
-  });
+  // Load saved campaigns from IndexedDB on initial mount
+  useEffect(() => {
+    let isMounted = true;
+    const loadFromIndexedDB = async () => {
+      try {
+        const storedCampaigns = await DBService.getItem<SavedCampaign[]>('infogenius_saved_campaigns', []);
+        const storedActiveId = await DBService.getItem<string | null>('infogenius_active_campaign_id', null);
+        if (isMounted) {
+          setSavedCampaigns(storedCampaigns || []);
+          setActiveCampaignId(storedActiveId);
+          setIsLoadingCampaigns(false);
+        }
+      } catch (err) {
+        console.error("Failed to load campaigns from IndexedDB:", err);
+        if (isMounted) setIsLoadingCampaigns(false);
+      }
+    };
+    loadFromIndexedDB();
+    return () => { isMounted = false; };
+  }, []);
 
   // Campaign Renaming States
   const [isRenaming, setIsRenaming] = useState(false);
@@ -79,19 +89,27 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
   const [copiedType, setCopiedType] = useState<'prompt' | 'caption' | null>(null);
 
-  // Synchronize savedCampaigns to localStorage
+  // Synchronize savedCampaigns to IndexedDB safely
   useEffect(() => {
-    localStorage.setItem('infogenius_saved_campaigns', JSON.stringify(savedCampaigns));
-  }, [savedCampaigns]);
-
-  // Synchronize activeCampaignId to localStorage
-  useEffect(() => {
-    if (activeCampaignId) {
-      localStorage.setItem('infogenius_active_campaign_id', activeCampaignId);
-    } else {
-      localStorage.removeItem('infogenius_active_campaign_id');
+    if (!isLoadingCampaigns) {
+      DBService.setItem('infogenius_saved_campaigns', savedCampaigns).catch(err => {
+        console.error("Failed to save campaigns to IndexedDB:", err);
+      });
     }
-  }, [activeCampaignId]);
+  }, [savedCampaigns, isLoadingCampaigns]);
+
+  // Synchronize activeCampaignId to IndexedDB
+  useEffect(() => {
+    if (!isLoadingCampaigns) {
+      if (activeCampaignId) {
+        DBService.setItem('infogenius_active_campaign_id', activeCampaignId).catch(err => {
+          console.error("Failed to set activeCampaignId in IndexedDB:", err);
+        });
+      } else {
+        DBService.removeItem('infogenius_active_campaign_id').catch(() => {});
+      }
+    }
+  }, [activeCampaignId, isLoadingCampaigns]);
 
   // Migrate large base64 images from localStorage to IndexedDB on mount
   useEffect(() => {
@@ -237,6 +255,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
       platform: newCampPlatform,
       postCount: newCampPostCount,
       customRequirements: newCampStyleGuide.trim() || undefined,
+      aiModel: newCampModel,
       posts: [],
       createdAt: Date.now()
     };
@@ -285,7 +304,8 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
         newCampPlatform,
         newCampPostCount,
         newCampStyleGuide.trim() || undefined,
-        newCampTemplate || undefined
+        newCampTemplate || undefined,
+        newCampModel
       );
 
       clearInterval(statusInterval);
@@ -376,7 +396,8 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
         activeCamp.mainTopic,
         activeCamp.platform,
         singlePostInstruction.trim(),
-        activeCamp.posts.length
+        activeCamp.posts.length,
+        activeCamp.aiModel || newCampModel || 'gemini-3.6-flash'
       );
 
       const updatedPosts = [...activeCamp.posts, newPost];
@@ -408,7 +429,9 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
         activeCamp.mainTopic,
         activeCamp.platform,
         activeCamp.postCount || 5,
-        activeCamp.customRequirements
+        activeCamp.customRequirements,
+        undefined,
+        activeCamp.aiModel || newCampModel || 'gemini-3.6-flash'
       );
 
       const formattedPosts = posts.map(p => ({
@@ -446,7 +469,8 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
       const updatedPost = await refineSingleSocialPost(
         targetPost,
         instructionText.trim(),
-        activeCamp.platform
+        activeCamp.platform,
+        activeCamp.aiModel || newCampModel || 'gemini-3.6-flash'
       );
 
       const updatedPosts = [...campaignPosts];
@@ -489,7 +513,9 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
         activeCamp.mainTopic,
         activeCamp.platform,
         campaignPosts.length,
-        `Refinement Instructions: ${refinementText.trim()}. Current drafts to optimize: ${JSON.stringify(campaignPosts)}`
+        `Refinement Instructions: ${refinementText.trim()}. Current drafts to optimize: ${JSON.stringify(campaignPosts)}`,
+        undefined,
+        activeCamp.aiModel || newCampModel || 'gemini-3.6-flash'
       );
       
       setSavedCampaigns(prev => prev.map(c => c.id === activeCampaignId ? { ...c, posts: refinedPosts } : c));
@@ -634,6 +660,11 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
     setSavedCampaigns(prev => prev.map(c => c.id === activeCampaignId ? { ...c, posts: updatedPosts } : c));
   };
 
+  const handleUpdateCampaignModel = (newModel: string) => {
+    if (!activeCampaignId) return;
+    setSavedCampaigns(prev => prev.map(c => c.id === activeCampaignId ? { ...c, aiModel: newModel } : c));
+  };
+
   // Save renamed campaign name
   const handleRenameSave = () => {
     if (!tempName.trim() || !activeCampaignId) {
@@ -667,6 +698,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
     newCampStyleGuide, setNewCampStyleGuide,
     newCampAspect, setNewCampAspect,
     newCampStyle, setNewCampStyle,
+    newCampModel, setNewCampModel,
     startMethod, setStartMethod,
     newCampTemplate, setNewCampTemplate,
     campaignPosts, setCampaignPosts,
@@ -675,6 +707,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
     campaignStatus, setCampaignStatus,
     savedCampaigns: activeProjectCampaigns, setSavedCampaigns,
     activeCampaignId, setActiveCampaignId,
+    isLoadingCampaigns,
     isRenaming, setIsRenaming,
     tempName, setTempName,
     editingPostIndex, setEditingPostIndex,
@@ -715,5 +748,6 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
     handleRenameSave,
     handleCopyToClipboard,
     handleUpdateCampaignPosts,
+    handleUpdateCampaignModel,
   };
 };

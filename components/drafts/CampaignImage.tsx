@@ -63,5 +63,5 @@ export const CampaignImage: React.FC<CampaignImageProps> = ({ src, fallbackText,
     );
   }
 
-  return <img src={resolvedSrc} referrerPolicy="no-referrer" {...props} />;
+  return <img src={resolvedSrc || undefined} referrerPolicy="no-referrer" {...props} />;
 };

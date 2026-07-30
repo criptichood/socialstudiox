@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   FolderPlus, 
   Folder, 
@@ -264,8 +265,8 @@ const ProjectsDashboard: React.FC<ProjectsDashboardProps> = ({
       </div>
 
       {/* Edit Project Modal */}
-      {editingProject && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+      {editingProject && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white font-display">Edit Project Details</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Modify the title and descriptive directives of this workspace.</p>
@@ -311,12 +312,13 @@ const ProjectsDashboard: React.FC<ProjectsDashboardProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Creation Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
+      {showCreateModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl relative">
             <h3 className="text-lg font-bold text-slate-900 dark:text-white font-display">Create Project Workspace</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Isolate research topics and styled blueprints.</p>
@@ -362,7 +364,8 @@ const ProjectsDashboard: React.FC<ProjectsDashboardProps> = ({
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
