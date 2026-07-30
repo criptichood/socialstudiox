@@ -1,4 +1,4 @@
-import { getAi, getMimeTypeAndData } from "./config";
+import { getAi, getMimeTypeAndData } from "@/services/ai/config";
 import { Modality } from "@google/genai";
 
 // Helper to convert ArrayBuffer/Uint8Array to base64 string safely
@@ -182,7 +182,7 @@ export const generateVoiceOverSpeech = async (
     });
 
     const part = response.candidates?.[0]?.content?.parts?.[0];
-    if (part?.inlineData) {
+    if (part?.inlineData?.data) {
       return convertBase64ToBlobUrl(part.inlineData.data, part.inlineData.mimeType || "audio/mp3");
     }
     // Check other parts in case inlineData is not on the first part

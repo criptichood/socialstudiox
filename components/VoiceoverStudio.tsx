@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { GeneratedImage, Project, SubtitleSegment } from '../types';
-import { DBService } from '../services/dbService';
+import { GeneratedImage, Project, SubtitleSegment } from '@/types';
+import { DBService } from '@/services/dbService';
 import { 
   Mic, 
   Play, 
@@ -36,8 +36,8 @@ import {
   ListMusic,
   FileText
 } from 'lucide-react';
-import { generateVoiceOverSpeech, generateImageToScript } from '../services/geminiService';
-import { generateSrtFromScript, downloadSrtFile } from '../services/subtitleService';
+import { generateVoiceOverSpeech, generateImageToScript } from '@/services/geminiService';
+import { generateSrtFromScript, downloadSrtFile } from '@/services/subtitleService';
 import { AudioSubtitleViewer } from './AudioSubtitleViewer';
 
 interface VoiceoverStudioProps {
@@ -667,13 +667,15 @@ const VoiceoverStudio: React.FC<VoiceoverStudioProps> = ({ images, activeProject
       const savedSessionId = handleSaveSession(finalTrackName, true);
 
       // Persist generated audio binary inside self-contained IndexedDB so it survives refreshes!
-      await saveAudioToIndexedDB(savedSessionId, resultAudioUrl);
+      if (savedSessionId) {
+        await saveAudioToIndexedDB(savedSessionId, resultAudioUrl);
 
-      setAudioCache(prev => ({
-        ...prev,
-        [savedSessionId]: resultAudioUrl
-      }));
-      setActiveAudioKey(savedSessionId);
+        setAudioCache(prev => ({
+          ...prev,
+          [savedSessionId]: resultAudioUrl
+        }));
+        setActiveAudioKey(savedSessionId);
+      }
       
       // Open the floating player automatically
       setShowPreviewModal(true);

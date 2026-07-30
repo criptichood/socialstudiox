@@ -1,28 +1,30 @@
+"use client";
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
+ */
 import React from 'react';
-import { GeneratedImage, Project, DraftPrompt } from './types';
-import { useAppEngine } from './hooks/useAppEngine';
-import ConfigForm from './components/ConfigForm';
-import PromptStudio from './components/PromptStudio';
-import GalleryDashboard from './components/GalleryDashboard';
-import Infographic from './components/Infographic';
-import Loading from './components/Loading';
-import IntroScreen from './components/IntroScreen';
-import SearchResults from './components/SearchResults';
-import Sidebar from './components/Sidebar';
-import ProjectsDashboard from './components/ProjectsDashboard';
-import DraftsPlanner from './components/DraftsPlanner';
-import { ResearchCenter } from './components/ResearchCenter';
-import { AnnotationStudio } from './components/AnnotationStudio';
-import { PresenterStudio } from './components/PresenterStudio';
-import VoiceoverStudio from './components/VoiceoverStudio';
-import { VideoStudio } from './components/VideoStudio';
-import { SoundStudio } from './components/SoundStudio';
-import { PresentationDeck } from './components/PresentationDeck';
-import { ErrorBoundary } from './components/ErrorBoundary';
+import { GeneratedImage, Project, DraftPrompt } from '@/types';
+import { useAppEngine } from '@/hooks/useAppEngine';
+import ConfigForm from '@/components/ConfigForm';
+import PromptStudio from '@/components/PromptStudio';
+import GalleryDashboard from '@/components/GalleryDashboard';
+import Infographic from '@/components/Infographic';
+import Loading from '@/components/Loading';
+import IntroScreen from '@/components/IntroScreen';
+import SearchResults from '@/components/SearchResults';
+import Sidebar from '@/components/Sidebar';
+import ProjectsDashboard from '@/components/ProjectsDashboard';
+import DraftsPlanner from '@/components/DraftsPlanner';
+import { ResearchCenter } from '@/components/ResearchCenter';
+import { AnnotationStudio } from '@/components/AnnotationStudio';
+import { PresenterStudio } from '@/components/PresenterStudio';
+import VoiceoverStudio from '@/components/VoiceoverStudio';
+import { VideoStudio } from '@/components/VideoStudio';
+import { SoundStudio } from '@/components/SoundStudio';
+import { PresentationDeck } from '@/components/PresentationDeck';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { 
   AlertCircle, 
   Compass, 
@@ -598,9 +600,6 @@ const App: React.FC = () => {
                 images={imageHistory}
                 activeProjectId={selectedProjectId}
                 onBackToDashboard={() => setCurrentView('dashboard')}
-                isDarkMode={isDarkMode}
-                onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
-                onSelectKey={handleSelectKey}
               />
             </ErrorBoundary>
           )}

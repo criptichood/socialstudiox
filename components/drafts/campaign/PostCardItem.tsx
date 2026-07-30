@@ -15,11 +15,11 @@ import {
   Image as ImageIcon, 
   Wand2 
 } from 'lucide-react';
-import { SocialPostCampaignItem } from '../../DraftsPlanner';
-import { VisualStyle, AspectRatio, CarouselSlide } from '../../../types';
-import { AspectRatioIcon, getAspectShortLabel } from '../AspectBadge';
-import { CampaignImage } from '../CampaignImage';
-import { ImageDownloadDropdown } from '../../ImageDownloadDropdown';
+import { SocialPostCampaignItem } from '@/components/DraftsPlanner';
+import { VisualStyle, AspectRatio, CarouselSlide } from '@/types';
+import { AspectRatioIcon, getAspectShortLabel } from '@/components/drafts/AspectBadge';
+import { CampaignImage } from '@/components/drafts/CampaignImage';
+import { ImageDownloadDropdown } from '@/components/ImageDownloadDropdown';
 
 interface PostCardItemProps {
   idx: number;
@@ -410,7 +410,7 @@ export const PostCardItem: React.FC<PostCardItemProps> = ({
           {/* Hashtags */}
           {post.hashtags && (
             <div className="flex flex-wrap gap-1.5">
-              {(typeof (post.hashtags as any) === 'string' ? (post.hashtags as string).split(',') : Array.isArray(post.hashtags) ? post.hashtags : []).map((tag: string, tIdx: number) => {
+              {(typeof (post.hashtags as any) === 'string' ? (post.hashtags as unknown as string).split(',') : Array.isArray(post.hashtags) ? post.hashtags : []).map((tag: string, tIdx: number) => {
                 const cleaned = tag.trim().startsWith('#') ? tag.trim() : `#${tag.trim()}`;
                 return (
                   <span key={tIdx} className="text-[10px] font-bold text-purple-600 dark:text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20 font-mono">

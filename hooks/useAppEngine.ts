@@ -9,13 +9,13 @@ import {
   Project, 
   DraftPrompt,
   ViewType
-} from '../types';
+} from '@/types';
 import { 
   researchTopicForPrompt, 
   generateInfographicImage, 
   editInfographicImage,
-} from '../services/geminiService';
-import { DBService } from '../services/dbService';
+} from '@/services/geminiService';
+import { DBService } from '@/services/dbService';
 
 // Ensure standard typings for window.aistudio if TypeScript needs it
 declare global {
@@ -342,7 +342,7 @@ export const useAppEngine = () => {
         style: visualStyle,
         language: language,
         resolution: resolution,
-        subOptions: { ...subOptions, projectId: selectedProjectId || undefined },
+        subOptions: { ...subOptions, ...(selectedProjectId ? { projectId: selectedProjectId } : {}) },
         facts: researchResult.facts,
         searchResults: researchResult.searchResults
       };
@@ -423,7 +423,7 @@ export const useAppEngine = () => {
         style: visualStyle,
         language: language,
         resolution: resolution,
-        subOptions: { ...subOptions, projectId: selectedProjectId || undefined },
+        subOptions: { ...subOptions, ...(selectedProjectId ? { projectId: selectedProjectId } : {}) },
         facts: [...draftedFacts],
         searchResults: [...draftedSearchResults]
       };
@@ -466,7 +466,7 @@ export const useAppEngine = () => {
         style: currentImage.style,
         language: currentImage.language,
         resolution: currentImage.resolution,
-        subOptions: { ...(currentImage.subOptions || {}), projectId: selectedProjectId || undefined },
+        subOptions: { ...(currentImage.subOptions || {}), ...(selectedProjectId ? { projectId: selectedProjectId } : {}) },
         facts: currentImage.facts ? [...currentImage.facts] : [],
         searchResults: currentImage.searchResults ? [...currentImage.searchResults] : []
       };
