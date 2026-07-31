@@ -129,7 +129,7 @@ export const BlogPreviewTab: React.FC<BlogPreviewTabProps> = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {blogResult.sectionImagePrompts.map((pObj) => (
+            {blogResult.sectionImagePrompts.map((pObj: SectionImagePrompt) => (
               <div
                 key={pObj.id}
                 className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col justify-between gap-2 text-xs"

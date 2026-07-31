@@ -23,7 +23,7 @@ import {
   Video
 } from 'lucide-react';
 import { generateVeoVideo } from '@/services/geminiService';
-import { getAi } from '@/services/ai/config';
+
 
 interface VideoStudioProps {
   images: GeneratedImage[];
@@ -158,11 +158,20 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
     setError(null);
     setIsEnhancing(true);
     try {
-      const ai = getAi();
-      const res = await ai.models.generateContent({
-        model: 'gemini-3.5-flash',
-        contents: `You are an elite cinematic AI prompt engineer. Take the following simple video prompt concept: "${prompt}". Transform it into an exceptionally descriptive, highly cinematic direction prompt for a video generator like Veo. Focus on camera motion (panning, tracking shot, slow dolly), realistic physics, dynamic lighting (moody shadows, volumetric rays, high-contrast glow), rich details (ambient dust, glowing embers, high texture fidelity), and aspect ratio context. Keep it highly descriptive but concise. Return ONLY the enhanced prompt. No introduction, no markdown. Keep it under 150 words.`
+      const response = await fetch("/api/video/enhance-prompt", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ prompt })
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Enhance failed");
+      }
+
+      const res = await response.json();
       if (res && res.text) {
         setPrompt(res.text.trim());
         setSuccessMessage("Prompt enhanced with cinematic keywords!");

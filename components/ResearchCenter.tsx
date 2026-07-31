@@ -637,7 +637,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         }
       }
 
-      const updatedPrompts = (blogResult.sectionImagePrompts || []).map(p => {
+      const updatedPrompts = (blogResult.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
         if (p.id === promptObj.id) {
           return { ...p, generatedUrl: generatedDataUrl };
         }

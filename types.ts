@@ -251,6 +251,26 @@ export interface SavedBlogDraft {
   updatedAt: number | string;
 }
 
+export interface SectionImagePrompt {
+  id: string;
+  prompt: string;
+  tag: string;
+  generatedUrl?: string;
+}
+
+export interface BlogPostResult {
+  title: string;
+  slug?: string;
+  excerpt?: string;
+  metaDescription?: string;
+  keywords?: string[];
+  markdownContent: string;
+  characterCount: number;
+  readingTimeMinutes: number;
+  embeddedImagesCount: number;
+  sectionImagePrompts: SectionImagePrompt[];
+}
+
 export interface CronScheduleItem {
   id: string;
   campaignId?: string;
@@ -269,9 +289,15 @@ export interface CronScheduleItem {
   updatedAt: number;
 }
 
+export interface VideoGenerationResult {
+  operationName?: string;
+  videoUrl?: string;
+  isSimulated?: boolean;
+}
+
 declare global {
   interface AIStudio {
     hasSelectedApiKey: () => Promise<boolean>;
     openSelectKey: () => Promise<void>;
   }
-}
+}

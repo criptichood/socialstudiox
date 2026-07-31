@@ -1,6 +1,4 @@
-import { Modality } from "@google/genai";
-import { AspectRatio, ComplexityLevel, VisualStyle, Language } from "../../types";
-import { getAi, IMAGE_MODEL, EDIT_MODEL, getMimeTypeAndData } from "./config";
+import { AspectRatio, ComplexityLevel, VisualStyle, Language } from "@/types";
 
 export const generateInfographicImage = async (
   prompt: string, 
@@ -8,46 +6,26 @@ export const generateInfographicImage = async (
   referenceImageBase64?: string,
   referenceMode?: string
 ): Promise<string> => {
-  const parts: any[] = [];
-  
-  if (referenceImageBase64) {
-    const cleanBase64 = referenceImageBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
-    parts.push({
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: cleanBase64
-      }
-    });
-    
-    let modePrompt = "";
-    if (referenceMode === 'background') {
-      modePrompt = "Use the supplied reference image as the primary subject. Remove/replace its original background and render a stunning new background matching this detailed description, keeping the main subject unchanged: ";
-    } else if (referenceMode === 'style') {
-      modePrompt = "Create a brand new infographic visual. Adopt the color palette, artistic style, layout aesthetics, and overall mood of this reference image. Visual description: ";
-    } else {
-      modePrompt = "Use this reference image as a layout composition and anatomical skeleton template. Build and annotate on top of this exact composition according to: ";
-    }
-    parts.push({ text: modePrompt + prompt });
-  } else {
-    parts.push({ text: prompt });
-  }
-
-  const response = await getAi().models.generateContent({
-    model: IMAGE_MODEL,
-    contents: {
-      parts: parts
+  const response = await fetch("/api/image/generate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
     },
-    config: {
-      responseModalities: [Modality.IMAGE],
-      aspectRatio: resolution
-    } as any
+    body: JSON.stringify({
+      prompt,
+      resolution,
+      referenceImageBase64,
+      referenceMode
+    })
   });
 
-  const part = response.candidates?.[0]?.content?.parts?.[0];
-  if (part && part.inlineData && part.inlineData.data) {
-    return `data:image/png;base64,${part.inlineData.data}`;
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to generate image");
   }
-  throw new Error("Failed to generate image");
+
+  const data = await response.json();
+  return data.imageUrl;
 };
 
 export const verifyInfographicAccuracy = async (
@@ -57,7 +35,6 @@ export const verifyInfographicAccuracy = async (
   style: VisualStyle,
   language: Language
 ): Promise<{ isAccurate: boolean; critique: string }> => {
-  // Bypassing verification to send straight to image generation
   return {
     isAccurate: true,
     critique: "Verification bypassed."
@@ -65,54 +42,43 @@ export const verifyInfographicAccuracy = async (
 };
 
 export const fixInfographicImage = async (currentImageBase64: string, correctionPrompt: string): Promise<string> => {
-  const { mimeType, data: cleanBase64 } = getMimeTypeAndData(currentImageBase64);
-
-  const prompt = `
-    Edit this image. 
-    Goal: Simplify and Fix.
-    Instruction: ${correctionPrompt}.
-    Ensure the design is clean and any text is large and legible.
-  `;
-
-  const response = await getAi().models.generateContent({
-    model: EDIT_MODEL,
-    contents: {
-      parts: [
-        { inlineData: { mimeType, data: cleanBase64 } },
-        { text: prompt }
-      ]
+  const response = await fetch("/api/image/edit", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
     },
-    config: {
-      responseModalities: [Modality.IMAGE],
-    }
+    body: JSON.stringify({
+      currentImageBase64,
+      correctionPrompt
+    })
   });
 
-  const part = response.candidates?.[0]?.content?.parts?.[0];
-  if (part && part.inlineData && part.inlineData.data) {
-    return `data:image/png;base64,${part.inlineData.data}`;
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to fix image");
   }
-  throw new Error("Failed to fix image");
+
+  const data = await response.json();
+  return data.imageUrl;
 };
 
 export const editInfographicImage = async (currentImageBase64: string, editInstruction: string): Promise<string> => {
-  const { mimeType, data: cleanBase64 } = getMimeTypeAndData(currentImageBase64);
-  
-  const response = await getAi().models.generateContent({
-    model: EDIT_MODEL,
-    contents: {
-      parts: [
-         { inlineData: { mimeType, data: cleanBase64 } },
-         { text: editInstruction }
-      ]
+  const response = await fetch("/api/image/edit", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
     },
-    config: {
-      responseModalities: [Modality.IMAGE],
-    }
+    body: JSON.stringify({
+      currentImageBase64,
+      editInstruction
+    })
   });
-  
-  const part = response.candidates?.[0]?.content?.parts?.[0];
-  if (part && part.inlineData && part.inlineData.data) {
-    return `data:image/png;base64,${part.inlineData.data}`;
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to edit image");
   }
-  throw new Error("Failed to edit image");
+
+  const data = await response.json();
+  return data.imageUrl;
 };

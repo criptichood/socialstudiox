@@ -1,10 +1,4 @@
-import { getAi, TEXT_MODEL, getMimeTypeAndData } from "./config";
-
-export interface VideoGenerationResult {
-  operationName?: string;
-  videoUrl?: string;
-  isSimulated?: boolean;
-}
+import { VideoGenerationResult } from "@/types";
 
 export const generateVeoVideo = async (
   prompt: string,
@@ -13,114 +7,32 @@ export const generateVeoVideo = async (
   model: string = 'veo-3.1-lite-generate-preview',
   endImageBase64?: string
 ): Promise<any> => {
-  // If we have an image base64, clean it up
-  let imagePayload: any = undefined;
-  if (imageBase64) {
-    try {
-      const { mimeType, data } = getMimeTypeAndData(imageBase64);
-      imagePayload = {
-        imageBytes: data,
-        mimeType: mimeType
-      };
-    } catch (e) {
-      console.error("Error formatting reference image for VEO", e);
-    }
+  const response = await fetch("/api/video/generate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      prompt,
+      imageBase64,
+      aspectRatio,
+      model,
+      endImageBase64
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to generate video");
   }
 
-  // If we have a second (last) frame, clean it up too
-  let lastFramePayload: any = undefined;
-  if (endImageBase64) {
-    try {
-      const { mimeType, data } = getMimeTypeAndData(endImageBase64);
-      lastFramePayload = {
-        imageBytes: data,
-        mimeType: mimeType
-      };
-    } catch (e) {
-      console.error("Error formatting end image for VEO", e);
-    }
-  }
-
-  try {
-    // VEO requires a paid API key or specific project settings
-    // Call the direct generateVideos model
-    const op = await getAi().models.generateVideos({
-      model: model,
-      prompt: prompt,
-      image: imagePayload,
-      config: {
-        numberOfVideos: 1,
-        resolution: '720p',
-        aspectRatio: aspectRatio === '1:1' ? '9:16' : aspectRatio, // VEO supports 16:9 and 9:16
-        ...(lastFramePayload ? { lastFrame: lastFramePayload } : {})
-      }
-    });
-
-    if (!op) {
-      throw new Error("No operation returned from generateVideos API.");
-    }
-
-    // Poll the operation
-    let polledOp = op;
-    const maxRetries = 60; // Up to 3 minutes max
-    const delayMs = 3000;
-    let attempts = 0;
-
-    while (!polledOp.done && attempts < maxRetries) {
-      attempts++;
-      console.log(`Polling VEO operation (attempt ${attempts}/${maxRetries}):`, polledOp.name);
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-      polledOp = await getAi().operations.getVideosOperation({ operation: polledOp });
-    }
-
-    if (!polledOp.done) {
-      throw new Error(`Video generation timed out after ${maxRetries * delayMs / 1000} seconds.`);
-    }
-
-    if (polledOp.error) {
-      const errDetails = typeof polledOp.error === 'object' ? JSON.stringify(polledOp.error, null, 2) : polledOp.error;
-      throw new Error(`Video generation failed with API error: ${errDetails}`);
-    }
-
-    const generatedVideos = polledOp.response?.generatedVideos;
-    if (!generatedVideos || generatedVideos.length === 0) {
-      const responseStr = JSON.stringify(polledOp.response || {}, null, 2);
-      throw new Error(`Video generation completed but returned no video output. RAI filters may have triggered. Response details:\n${responseStr}`);
-    }
-
-    const videoObj = generatedVideos[0].video;
-    if (!videoObj) {
-      throw new Error("No video element found in response generatedVideos[0].video");
-    }
-
-    let videoUrl = "";
-    if (videoObj.videoBytes) {
-      const mime = videoObj.mimeType || "video/mp4";
-      videoUrl = `data:${mime};base64,${videoObj.videoBytes}`;
-    } else if (videoObj.uri) {
-      videoUrl = videoObj.uri;
-    } else {
-      throw new Error("Video object contains neither videoBytes nor uri. Response: " + JSON.stringify(videoObj));
-    }
-
-    return {
-      videoUrl,
-      isSimulated: false,
-      response: polledOp.response
-    };
-  } catch (err: any) {
-    console.warn("VEO API failed, throwing error for client control flow", err);
-    throw err;
-  }
+  return await response.json();
 };
 
 export const pollVideoOperation = async (operation: any): Promise<any> => {
-  try {
-    return await getAi().operations.getVideosOperation({ operation });
-  } catch (err: any) {
-    console.error("Error polling video operation:", err);
-    throw err;
-  }
+  // Since operation polling is now handled server-side within the route handler, 
+  // this is kept for signature compatibility but can return the operation status.
+  return { done: true, response: operation };
 };
 
 export const generateVoiceOverAndVideoPrompt = async (
@@ -129,39 +41,25 @@ export const generateVoiceOverAndVideoPrompt = async (
   visualPrompt: string,
   aspectRatio: string = '16:9'
 ): Promise<{ voiceOver: string; videoPrompt: string }> => {
-  const systemPrompt = `
-    You are an elite cinematic director and commercial video scriptwriter.
-    We are creating an engaging social media video for: "${topic}".
-    The visual context is described as: "${visualPrompt}".
-    The main slide/post content or caption is: "${content}".
+  const response = await fetch("/api/video/voice-prompt", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      topic,
+      content,
+      visualPrompt,
+      aspectRatio
+    })
+  });
 
-    Create a compelling 10-15 second voiceover script AND a cinematic video description/prompt that we can pass to an AI video generator like VEO.
-    The aspect ratio is ${aspectRatio}.
-
-    Return your output ONLY as a valid JSON object following this format:
-    {
-      "voiceOver": "The spoken word-for-word voiceover script. Keep it punchy, rhythmic, and perfect for reading aloud.",
-      "videoPrompt": "A highly cinematic, dynamic scene direction prompt for VEO. Describe camera movement (e.g. slow pan, dolly in, camera drift), lighting effects, motion dynamics, and high-fidelity textures."
-    }
-  `;
-
-  try {
-    const response = await getAi().models.generateContent({
-      model: TEXT_MODEL,
-      contents: systemPrompt,
-      config: {
-        responseMimeType: 'application/json'
-      }
-    });
-
-    const text = response.text || "{}";
-    const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    return JSON.parse(cleaned) as { voiceOver: string; videoPrompt: string };
-  } catch (err) {
-    console.error("Failed to generate voiceover/video script", err);
+  if (!response.ok) {
     return {
       voiceOver: `Discover how we can transform ${topic} today. Clean, professional results tailored just for you.`,
       videoPrompt: `Cinematic camera pans across a modern sleek studio, high-key warm ambient lighting, highly detailed textures, smooth 4k render.`
     };
   }
+
+  return await response.json();
 };

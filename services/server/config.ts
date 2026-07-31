@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
-import { AspectRatio, ComplexityLevel, VisualStyle, Language } from "../../types";
-import { STYLE_GUIDES } from "../stylesGuide";
+import { AspectRatio, ComplexityLevel, VisualStyle, Language } from "@/types";
+import { STYLE_GUIDES } from "@/services/stylesGuide";
 
 export const getAi = (customApiKey?: string) => {
   return new GoogleGenAI({ apiKey: customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY });

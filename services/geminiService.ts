@@ -16,7 +16,7 @@ export {
   generateVoiceOverAndVideoPrompt,
   pollVideoOperation
 } from "./ai/videoService";
-export type { VideoGenerationResult } from "./ai/videoService";
+export type { VideoGenerationResult } from "@/types";
 
 export {
   generateVoiceOverSpeech,
@@ -31,4 +31,4 @@ export {
   conductResearchChat,
   generateBlogPostFromCampaign
 } from "./ai/campaignService";
-export type { BlogPostResult, SectionImagePrompt } from "./ai/campaignService";
+export type { BlogPostResult, SectionImagePrompt } from "@/types";
