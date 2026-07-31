@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   Play, 
@@ -12,11 +13,70 @@ import {
   Maximize2, 
   Sparkles, 
   Loader2, 
-  Wand2 
+  Wand2,
+  User,
+  Gauge,
+  Languages,
+  Radio,
+  Music2
 } from 'lucide-react';
 import { SocialPostCampaignItem } from '../../DraftsPlanner';
 import { CampaignImage } from '../CampaignImage';
 import { ImageDownloadDropdown } from '../../ImageDownloadDropdown';
+
+const TTS_MODELS = [
+  { id: 'gemini-3.1-flash-tts-preview', name: 'Gemini 3.1 tts-preview (Recommended)', description: 'Ultra-realistic native audio speech synthesizer' },
+  { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Audio (Experimental)', description: 'Fast experimental multimodal audio synthesizer' }
+];
+
+const PERSONA_STYLES = [
+  { id: 'adult', name: '🧑 Adult Standard Voice', description: 'Natural, mature adult speaking voice' },
+  { id: 'child', name: '👧 Child / Kid Voice', description: 'Higher pitch, innocent, playful, curious kid cadence' },
+  { id: 'teenager', name: '🎧 Teenager / Youth Voice', description: 'Upbeat, casual student/youth voice' },
+  { id: 'anime', name: '✨ Anime / Cartoon Character', description: 'Expressive, animated, energetic character cadence' },
+  { id: 'anime_hero', name: '⚡ Anime Hero / Protagonist Dub', description: 'Passionate, resolute, high-energy main character voice' },
+  { id: 'anime_mascot', name: '🐾 Anime Chibi / Mascot Voice', description: 'Cute, high-pitched, enthusiastic character cadence' },
+  { id: 'senior', name: '👴 Senior / Elder Voice', description: 'Warm, wise, experienced elder voice' }
+];
+
+const ACCENT_OPTIONS = [
+  { id: 'US Standard', name: '🇺🇸 US Standard' },
+  { id: 'Anime Dub', name: '🎌 Japanese Anime Dub (English Dub Style)' },
+  { id: 'British', name: '🇬🇧 British Accent' },
+  { id: 'Australian', name: '🇦🇺 Australian Accent' },
+  { id: 'Canadian', name: '🇨🇦 Canadian Accent' },
+  { id: 'Irish', name: '🇮🇪 Irish Accent' },
+  { id: 'Scottish', name: '🏴󠁧󠁢󠁳󠁣󠁴󠁿 Scottish Accent' },
+  { id: 'Nigerian', name: '🇳🇬 Nigerian Accent' },
+  { id: 'Indian', name: '🇮🇳 Indian Accent' },
+  { id: 'Transatlantic', name: '✈️ Transatlantic Accent' }
+];
+
+const SPEAKING_SPEEDS = [
+  { id: '0.8', name: '🐢 0.8x Slow & Relaxed', description: 'Deliberate, unhurried pacing with spacious breath pauses' },
+  { id: '1.0', name: '🍃 1.0x Normal Speed', description: 'Standard natural conversational cadence' },
+  { id: '1.25', name: '⚡ 1.25x Upbeat & Snappy', description: 'Energetic, slightly brisk pacing' },
+  { id: '1.5', name: '🚀 1.5x Anime Rapid Pace', description: 'Fast, swift articulation and quick word transitions' },
+  { id: '1.75', name: '🔥 1.75x Hyper Speed', description: 'Ultra-fast rapid-fire speech rate' }
+];
+
+const DELIVERY_STYLES = [
+  { id: 'natural', name: '🍃 Natural & Conversational (Default)', description: 'Fluid, natural speech that follows script text and emotional markers organically' },
+  { id: 'conversational', name: '💬 Friendly & Casual', description: 'Warm, approachable, easy-going everyday delivery' },
+  { id: 'educational', name: '🎓 Educational & Clear', description: 'Articulate, steady, and easy to follow' },
+  { id: 'high_energy', name: '⚡ High-Energy & Punchy', description: 'Dynamic, excited, fast-paced and upbeat' },
+  { id: 'calm_warm', name: '🧘 Calm & Reassuring', description: 'Gentle, peaceful, soothing delivery' },
+  { id: 'dramatic', name: '🎬 Dramatic Suspense', description: 'Intense, suspenseful, deliberate cadence' },
+  { id: 'inspirational', name: '✨ Inspirational & Uplifting', description: 'Charismatic, motivational tone' }
+];
+
+const BACKGROUND_TRACKS = [
+  { id: 'none', name: '🔇 No Background Track', description: 'Clean narration only' },
+  { id: 'lofi', name: '🎧 Lofi Chill Beats', description: 'Laid-back lofi hip-hop groove' },
+  { id: 'ambient', name: '🌌 Ambient Pad', description: 'Soft atmospheric soundscape' },
+  { id: 'synthwave', name: '🌆 Synthwave Retro', description: 'Neon retro-futuristic pulse' },
+  { id: 'cinematic', name: '🎬 Cinematic Score', description: 'Epic film-score tension' }
+];
 
 interface VideoStudioLightboxModalProps {
   previewImageModal: {
@@ -138,7 +198,7 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[99990] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-3 md:p-6 animate-in fade-in duration-200">
       <div className="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-3xl p-4 md:p-6 space-y-4 shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar text-white">
         
@@ -364,6 +424,111 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
                   </div>
                 </div>
 
+                {/* Character Persona & Delivery Style */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-fuchsia-400 block font-mono flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      Character Persona
+                    </span>
+                    <select
+                      value={currentPersona}
+                      onChange={(e) => handleSelectPersonaStyle(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-fuchsia-500"
+                    >
+                      {PERSONA_STYLES.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-amber-400 block font-mono flex items-center gap-1">
+                      <Gauge className="w-3 h-3" />
+                      Delivery Tone
+                    </span>
+                    <select
+                      value={currentTone}
+                      onChange={(e) => handleSelectDeliveryTone(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-amber-500"
+                    >
+                      {DELIVERY_STYLES.map((d) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Engine & Accent */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-emerald-400 block font-mono flex items-center gap-1">
+                      <Radio className="w-3 h-3" />
+                      Audio Engine
+                    </span>
+                    <select
+                      value={currentEngine}
+                      onChange={(e) => handleSelectAudioEngine(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                    >
+                      {TTS_MODELS.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-sky-400 block font-mono flex items-center gap-1">
+                      <Languages className="w-3 h-3" />
+                      Accent
+                    </span>
+                    <select
+                      value={currentAccent}
+                      onChange={(e) => handleSelectAccent(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-sky-500"
+                    >
+                      {ACCENT_OPTIONS.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Speech Speed & Background Soundtrack */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-purple-400 block font-mono flex items-center gap-1">
+                      <Gauge className="w-3 h-3" />
+                      Speech Speed
+                    </span>
+                    <select
+                      value={currentSpeed}
+                      onChange={(e) => handleSelectSpeechSpeed(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-purple-500"
+                    >
+                      {SPEAKING_SPEEDS.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-cyan-400 block font-mono flex items-center gap-1">
+                      <Music2 className="w-3 h-3" />
+                      Background Soundtrack
+                    </span>
+                    <select
+                      value={selectedBackgroundTrack}
+                      onChange={(e) => handleSelectBackgroundTrack(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-cyan-500"
+                    >
+                      {BACKGROUND_TRACKS.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 {/* Voiceover Textarea */}
                 <div className="space-y-1 text-left pt-1">
                   <div className="flex items-center justify-between">
@@ -452,6 +617,7 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Sparkles, 
   Plus, 
   Loader2, 
   CheckCircle2, 
-  X, 
-  Maximize2 
+  X 
 } from 'lucide-react';
 import { SocialPostCampaignItem, SavedCampaign } from '@/components/DraftsPlanner';
 import { VisualStyle, AspectRatio, CarouselSlide } from '@/types';
@@ -23,6 +23,7 @@ import { CampaignRefinementModal } from '@/components/drafts/campaign/CampaignRe
 import { SingleAIPostForm } from '@/components/drafts/campaign/SingleAIPostForm';
 import { VideoStudioLightboxModal } from '@/components/drafts/campaign/VideoStudioLightboxModal';
 import { PostCardItem } from '@/components/drafts/campaign/PostCardItem';
+import { PostDetailModal } from '@/components/drafts/campaign/PostDetailModal';
 
 interface CampaignWorkspaceProps {
   activeCampaignId: string;
@@ -121,11 +122,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
   saveEditedPost,
   handleUpdatePostAspect,
   handleUpdatePostStyle,
-  copiedIndex,
-  copiedType,
-  handleCopyToClipboard,
   handleSavePostAsDraft,
-  handleSaveAllSlidesAsDrafts,
   handleLaunchPost,
   refinementText,
   setRefinementText,
@@ -145,35 +142,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
   if (!currentCampaign) return null;
 
   const [showRefinementModal, setShowRefinementModal] = useState(false);
-  const [inlineRefineIndex, setInlineRefineIndex] = useState<number | null>(null);
-  const [inlineRefineText, setInlineRefineText] = useState('');
-  const [activeSlideMap, setActiveSlideMap] = useState<Record<number, number>>({});
-
   const [showCampaignDetails, setShowCampaignDetails] = useState(false);
-  const [expandedCardIndices, setExpandedCardIndices] = useState<Record<number, boolean>>({});
-
-  const handleExpandAll = () => {
-    const next: Record<number, boolean> = {};
-    campaignPosts?.forEach((_, idx) => {
-      next[idx] = true;
-    });
-    setExpandedCardIndices(next);
-  };
-
-  const handleCollapseAll = () => {
-    setExpandedCardIndices({});
-  };
-
-  const toggleCardExpanded = (idx: number) => {
-    setExpandedCardIndices(prev => ({
-      ...prev,
-      [idx]: !prev[idx]
-    }));
-  };
-
-  const allExpanded = campaignPosts && campaignPosts.length > 0
-    ? campaignPosts.every((_, idx) => !!expandedCardIndices[idx])
-    : false;
   
   // Video and Voiceover Studio State managers
   const [videoRenderingMap, setVideoRenderingMap] = useState<Record<string, boolean>>({});
@@ -553,8 +522,8 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     onUpdateCampaignPosts(updatedPosts);
   };
 
-  const handleStartVisualGeneration = async (idx: number, post: SocialPostCampaignItem) => {
-    const slideIdx = activeSlideMap[idx] || 0;
+  const handleStartVisualGeneration = async (idx: number, post: SocialPostCampaignItem, slideIdxOverride?: number | null) => {
+    const slideIdx = slideIdxOverride ?? 0;
     setGeneratorState({
       isOpen: true,
       postIndex: idx,
@@ -589,6 +558,17 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     }
   };
 
+  // Focused post state for the detail/zoom lightbox
+  const [focusedPostIndex, setFocusedPostIndex] = useState<number | null>(null);
+
+  const handleOpenPostDetail = (idx: number) => {
+    setFocusedPostIndex(idx);
+  };
+
+  const handleClosePostDetail = () => {
+    setFocusedPostIndex(null);
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-slate-50 dark:bg-slate-950">
       <CampaignWorkspaceHeader
@@ -613,9 +593,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         handleAutoGenerateCampaignPosts={handleAutoGenerateCampaignPosts}
         showDetails={showCampaignDetails}
         setShowDetails={setShowCampaignDetails}
-        onExpandAll={handleExpandAll}
-        onCollapseAll={handleCollapseAll}
-        allExpanded={allExpanded}
+        onUpdateCampaignModel={onUpdateCampaignModel}
       />
 
       {showCampaignDetails && (
@@ -726,52 +704,53 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                 key={idx}
                 idx={idx}
                 post={post}
-                isExpanded={!!expandedCardIndices[idx]}
-                onToggleExpand={() => toggleCardExpanded(idx)}
-                editingPostIndex={editingPostIndex}
-                setEditingPostIndex={setEditingPostIndex}
-                editTopic={editTopic}
-                setEditTopic={setEditTopic}
-                editVisualPrompt={editVisualPrompt}
-                setEditVisualPrompt={setEditVisualPrompt}
-                editCaption={editCaption}
-                setEditCaption={setEditCaption}
-                editHashtags={editHashtags}
-                setEditHashtags={setEditHashtags}
-                editStyle={editStyle}
-                setEditStyle={setEditStyle}
-                editAspect={editAspect}
-                setEditAspect={setEditAspect}
-                startEditingPost={startEditingPost}
-                saveEditedPost={saveEditedPost}
+                onOpenPost={() => handleOpenPostDetail(idx)}
                 handleDeletePost={handleDeletePost}
-                activeSlideMap={activeSlideMap}
-                setActiveSlideMap={setActiveSlideMap}
-                handleCopyToClipboard={handleCopyToClipboard}
-                copiedIndex={copiedIndex}
-                copiedType={copiedType}
-                handleStartVisualGeneration={handleStartVisualGeneration}
-                generatorState={generatorState}
-                setPreviewImageModal={setPreviewImageModal}
-                handleUpdatePostAspect={handleUpdatePostAspect}
-                handleUpdatePostStyle={handleUpdatePostStyle}
-                handleSavePostAsDraft={handleSavePostAsDraft}
-                handleSaveAllSlidesAsDrafts={handleSaveAllSlidesAsDrafts}
-                handleLaunchPost={handleLaunchPost}
-                savedDraftIndex={null}
-                currentCampaign={currentCampaign}
-                triggerToast={triggerToast}
-                inlineRefineIndex={inlineRefineIndex}
-                setInlineRefineIndex={setInlineRefineIndex}
-                inlineRefineText={inlineRefineText}
-                setInlineRefineText={setInlineRefineText}
-                handleRefineSinglePostAI={handleRefineSinglePostAI}
-                isRefining={isRefining}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Post Detail / Zoom Lightbox */}
+      {focusedPostIndex !== null && campaignPosts && campaignPosts[focusedPostIndex] && (
+        <PostDetailModal
+          isOpen={focusedPostIndex !== null}
+          post={campaignPosts[focusedPostIndex]}
+          postIndex={focusedPostIndex}
+          allPosts={campaignPosts}
+          onClose={handleClosePostDetail}
+          onNavigate={(newIdx) => setFocusedPostIndex(newIdx)}
+          handleStartVisualGeneration={handleStartVisualGeneration}
+          generatorState={generatorState}
+          handleSavePostAsDraft={handleSavePostAsDraft}
+          handleLaunchPost={handleLaunchPost}
+          handleDeletePost={handleDeletePost}
+          handleUpdatePostAspect={handleUpdatePostAspect}
+          handleUpdatePostStyle={handleUpdatePostStyle}
+          handleRefineSinglePostAI={handleRefineSinglePostAI}
+          isRefining={isRefining}
+          setPreviewImageModal={setPreviewImageModal}
+          editingPostIndex={editingPostIndex}
+          setEditingPostIndex={setEditingPostIndex}
+          editTopic={editTopic}
+          setEditTopic={setEditTopic}
+          editVisualPrompt={editVisualPrompt}
+          setEditVisualPrompt={setEditVisualPrompt}
+          editCaption={editCaption}
+          setEditCaption={setEditCaption}
+          editHashtags={editHashtags}
+          setEditHashtags={setEditHashtags}
+          editStyle={editStyle}
+          setEditStyle={setEditStyle}
+          editAspect={editAspect}
+          setEditAspect={setEditAspect}
+          startEditingPost={startEditingPost}
+          saveEditedPost={saveEditedPost}
+          campaignName={currentCampaign?.name}
+          campaignId={currentCampaign?.id}
+        />
+      )}
 
       {/* Modals & Overlay Lightboxes */}
       <CampaignRefinementModal
@@ -822,8 +801,8 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
       />
 
       {/* Full-res Zoom Modal */}
-      {zoomImageModalUrl && (
-        <div className="fixed inset-0 z-[99999] bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+      {zoomImageModalUrl && createPortal(
+        <div className="fixed inset-0 z-[100000] bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-5xl flex items-center justify-between mb-4 text-white">
             <span className="text-xs font-bold font-mono text-purple-400 uppercase tracking-widest">
               High-Resolution Image Inspector
@@ -853,7 +832,8 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
               Close
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Floating Toast Notification */}

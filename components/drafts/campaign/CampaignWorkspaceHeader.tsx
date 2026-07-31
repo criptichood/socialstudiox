@@ -10,9 +10,11 @@ import {
   X, 
   Loader2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Cpu
 } from 'lucide-react';
 import { SavedCampaign, SocialPostCampaignItem } from '@/components/DraftsPlanner';
+import { AIModelDropdown } from '@/components/CustomDropdown';
 
 interface CampaignWorkspaceHeaderProps {
   currentCampaign: SavedCampaign;
@@ -36,9 +38,7 @@ interface CampaignWorkspaceHeaderProps {
   handleAutoGenerateCampaignPosts?: () => void;
   showDetails: boolean;
   setShowDetails: (val: boolean) => void;
-  onExpandAll: () => void;
-  onCollapseAll: () => void;
-  allExpanded: boolean;
+  onUpdateCampaignModel?: (model: string) => void;
 }
 
 export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = ({
@@ -62,9 +62,7 @@ export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = (
   handleAutoGenerateCampaignPosts,
   showDetails,
   setShowDetails,
-  onExpandAll,
-  onCollapseAll,
-  allExpanded,
+  onUpdateCampaignModel,
 }) => {
   return (
     <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 p-3 md:p-4 sticky top-0 z-30 space-y-3">
@@ -153,32 +151,22 @@ export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = (
 
         {/* Right side control tools */}
         <div className="flex items-center gap-2 flex-wrap sm:justify-start md:justify-end">
-          {/* Card Expansion Global Toggles */}
-          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/50 dark:border-slate-700/50 mr-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={onExpandAll}
-              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors cursor-pointer ${
-                allExpanded 
-                  ? 'bg-white dark:bg-slate-705 text-purple-700 dark:text-purple-300 shadow-xs border border-slate-200/40 dark:border-slate-650' 
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              Expand All
-            </button>
-            <button
-              type="button"
-              onClick={onCollapseAll}
-              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors cursor-pointer ${
-                !allExpanded 
-                  ? 'bg-white dark:bg-slate-705 text-purple-700 dark:text-purple-300 shadow-xs border border-slate-200/40 dark:border-slate-650' 
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              Collapse All
-            </button>
-          </div>
-
+          {/* AI Model Switcher — always visible in header */}
+          {onUpdateCampaignModel && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/60 rounded-xl shrink-0" title="AI Generation Model">
+              <Cpu className="w-3 h-3 text-purple-400 shrink-0" />
+              <select
+                value={currentCampaign.aiModel || 'gemini-3.6-flash'}
+                onChange={(e) => onUpdateCampaignModel(e.target.value)}
+                className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 outline-none cursor-pointer min-w-0"
+              >
+                <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro</option>
+                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
+                <option value="gemini-flash-latest">Gemini Flash Latest</option>
+              </select>
+            </div>
+          )}
           <button
             type="button"
             onClick={onOpenAddPostModal}
