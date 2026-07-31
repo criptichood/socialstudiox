@@ -79,7 +79,7 @@ const Sidebar: React.FC<SidebarProps> = ({
     },
     { 
       id: 'drafts' as const, 
-      label: 'Draft Planner', 
+      label: 'Campaigns', 
       description: 'Tweak visual blueprints',
       icon: BookOpen 
     },
