@@ -182,6 +182,12 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
                   </div>
                 ) : (
                   <div>
+                    {!isUser && ((msg.searchResults && msg.searchResults.length > 0) || (msg.groundingSources && msg.groundingSources.length > 0)) && (
+                      <div className="inline-flex items-center gap-1 mb-2.5 px-2 py-0.5 rounded-full bg-cyan-100/70 dark:bg-cyan-950/30 text-cyan-700 dark:text-cyan-400 text-[9px] font-bold uppercase tracking-wider font-mono border border-cyan-200 dark:border-cyan-500/20 shadow-xs">
+                        <Globe className="w-3 h-3 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                        <span>Grounded via Google Search</span>
+                      </div>
+                    )}
                     {isUser ? (
                       <p className="text-xs sm:text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
                     ) : (
@@ -292,7 +298,7 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
           </div>
           <div className="p-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center gap-2 text-xs text-purple-600 dark:text-purple-300 font-medium">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Searching Google & synthesizing multi-source analysis...</span>
+            <span>Formulating strategic insights & synthesizing response...</span>
           </div>
         </div>
       )}

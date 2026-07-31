@@ -200,23 +200,61 @@ export const generateSocialCampaign = async (
     Return ONLY a valid JSON array. Do not include markdown wraps, code block symbols, or any introductory/concluding text.
   `;
 
-  const response = await getAi(customApiKey).models.generateContent({
-    model: modelName || TEXT_MODEL,
-    contents: prompt,
-    config: {
-      tools: [{ googleSearch: {} }],
-      responseMimeType: 'application/json'
-    },
-  });
 
-  const text = response.text || "[]";
+  let response;
   try {
-    return JSON.parse(text) as SocialPostCampaignItem[];
-  } catch (err) {
-    console.error("Failed to parse campaign JSON, falling back", err);
+    response = await getAi(customApiKey).models.generateContent({
+      model: modelName || TEXT_MODEL,
+      contents: prompt,
+      config: {
+        // NOTE: responseMimeType MUST NOT be set when using Google Search grounding tools.
+        // Combining tools + responseMimeType causes the API to return empty candidates (no text).
+        // Instead we rely on prompt instructions + manual JSON parsing below.
+        tools: [{ googleSearch: {} }],
+      },
+    });
+  } catch (apiErr: any) {
+    console.error("[Server Service] Gemini API generateContent call failed:", apiErr);
+    throw new Error(`Gemini API Call failed: ${apiErr?.message || apiErr}`);
+  }
+
+  // IMPORTANT: Do NOT call response.text directly when using Google Search tools.
+  // The @google/genai SDK throws "model output must contain either output text or tool calls"
+  // if response.text is accessed when the response turn contains only a grounding tool-call part.
+  // We must always extract safely from candidates.parts directly.
+  const candidates = response.candidates || [];
+  const parts = candidates[0]?.content?.parts || [];
+
+  // Extract all text parts and join them
+  let text = parts
+    .filter((p: { text?: string }) => typeof p.text === 'string')
+    .map((p: { text?: string }) => p.text ?? '')
+    .join('');
+
+  // If still no text but there are parts, try safe access on response.text as last resort
+  if (!text) {
+    try {
+      text = response.text || '';
+    } catch {
+      text = '';
+    }
+  }
+
+  text = text.trim() || '[]';
+
+  try {
+    const parsed = JSON.parse(text) as SocialPostCampaignItem[];
+    return parsed;
+  } catch {
     // Attempt cleaning if there are surrounding markdown ticks
     const cleanedText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    return JSON.parse(cleanedText) as SocialPostCampaignItem[];
+    
+    try {
+      return JSON.parse(cleanedText) as SocialPostCampaignItem[];
+    } catch (cleanErr: any) {
+      console.error("[Campaign Service] JSON parse failed. Raw response snippet:", text.substring(0, 300));
+      throw new Error(`Failed to parse AI response as JSON: ${cleanErr?.message || cleanErr}`);
+    }
   }
 };
 
@@ -348,6 +386,12 @@ export const conductResearchChat = async (
     ${competitorWebsite ? `Target Competitor Website / Benchmark: "${competitorWebsite}"` : ''}
     RESEARCH MODE: ${isDeepMode ? '🔬 DEEP MARKET & COMPETITOR RESEARCH (Exhaustive Analysis)' : '⚡ REAL-TIME SEARCH GROUNDED (Fast Interactive Strategy)'}
 
+    CRITICAL OPERATIONAL RULES:
+    1. **Dynamic Google Search Execution**: Do NOT use the Google Search tool for simple greetings (e.g., "hello", "hi", "hey"), small talk, generic queries, or general prompts that do not require real-time information or competitor intelligence. Only call Google Search when the request asks for specific, current, or external factual data.
+    2. **Conversational Pacing & Matching**: Match the length and complexity of your response to the user's input. For a simple greeting (e.g. "hello"), respond with a warm, concise professional welcome (1-2 sentences) and ask how you can help with their brand strategy today. Do NOT dump your capabilities, list features, or write long essays unless explicitly asked.
+    3. **Context & History Awareness**: Review the message history carefully. Avoid repeating greetings, instructions, summaries of capabilities, or general intros that have already occurred in the thread. Keep the conversation rolling naturally.
+    4. **Conditional Strategy & Video Extractor Blocks**: Only append the campaign or video extractor markdown boxes (### 🚀 Recommended Campaign Strategy or ### 🎥 Recommended Video Script & Scene Setup) when the user is explicitly asking to generate, draft, or refine a campaign strategy or video script. Never append these boxes for greetings, casual talk, or standard research questions.
+
     YOUR CORE CAPABILITIES & METHODOLOGY:
     1. **Multipurpose Video & Content Strategy**:
        - Research and generate viral short-form video concepts (Reels, TikTok, Shorts) and 3-minute video explainer scripts with visual scene directions, camera motions (e.g., cinematic zoom, orbit, macro tilt), voiceover scripts, and audio cues.
@@ -373,7 +417,7 @@ export const conductResearchChat = async (
     - 📈 **Proactive Next Steps & Campaign Recommendations**.
     ` : ''}
 
-    CRITICAL STRATEGY & VIDEO EXTRACTOR BLOCKS:
+    CRITICAL STRATEGY & VIDEO EXTRACTOR BLOCKS (ONLY APPEND WHEN EXPLICITLY GENERATING/DRAFTING A CAMPAIGN OR VIDEO):
     Conclude your response with dedicated extractor boxes whenever suggesting social campaigns or video scripts:
 
     For Social / Carousel Campaigns:
