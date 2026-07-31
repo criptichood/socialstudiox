@@ -3,18 +3,16 @@ import {
   ChevronLeft, 
   Edit, 
   Trash2, 
-  Settings, 
   Plus, 
   Sparkles, 
   Wand2, 
-  FileSpreadsheet, 
-  Save, 
   Check, 
   X, 
-  Loader2 
+  Loader2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
-import { AIModelDropdown } from '../../CustomDropdown';
-import { SavedCampaign, SocialPostCampaignItem } from '../../DraftsPlanner';
+import { SavedCampaign, SocialPostCampaignItem } from '@/components/DraftsPlanner';
 
 interface CampaignWorkspaceHeaderProps {
   currentCampaign: SavedCampaign;
@@ -36,7 +34,11 @@ interface CampaignWorkspaceHeaderProps {
   campaignError?: string | null;
   campaignPosts: SocialPostCampaignItem[] | null;
   handleAutoGenerateCampaignPosts?: () => void;
-  onUpdateCampaignModel?: (model: string) => void;
+  showDetails: boolean;
+  setShowDetails: (val: boolean) => void;
+  onExpandAll: () => void;
+  onCollapseAll: () => void;
+  allExpanded: boolean;
 }
 
 export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = ({
@@ -57,14 +59,17 @@ export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = (
   isGeneratingCampaign,
   campaignStatus,
   campaignError,
-  campaignPosts,
   handleAutoGenerateCampaignPosts,
-  onUpdateCampaignModel,
+  showDetails,
+  setShowDetails,
+  onExpandAll,
+  onCollapseAll,
+  allExpanded,
 }) => {
   return (
-    <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 p-4 md:p-6 sticky top-0 z-30 space-y-4">
+    <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 p-3 md:p-4 sticky top-0 z-30 space-y-3">
       {/* Top Navigation & Actions Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -75,7 +80,7 @@ export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = (
             <ChevronLeft className="w-5 h-5" />
           </button>
 
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             <div className="flex items-center gap-2 flex-wrap">
               {isRenaming ? (
                 <div className="flex items-center gap-2">
@@ -107,7 +112,7 @@ export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = (
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <h1 className="text-lg md:text-xl font-bold font-display text-slate-900 dark:text-white flex items-center gap-2">
+                  <h1 className="text-base md:text-lg font-bold font-display text-slate-900 dark:text-white flex items-center gap-2">
                     <span>{currentCampaign.name}</span>
                   </h1>
                   <button
@@ -119,71 +124,96 @@ export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = (
                     className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors cursor-pointer"
                     title="Rename Campaign"
                   >
-                    <Edit className="w-4 h-4" />
+                    <Edit className="w-3.5 h-3.5" />
                   </button>
                 </div>
               )}
 
               {/* Platform Badge */}
-              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 border ${getPlatformBadgeColor(currentCampaign.platform)}`}>
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 border ${getPlatformBadgeColor(currentCampaign.platform)}`}>
                 {getPlatformIcon(currentCampaign.platform)}
                 <span>{currentCampaign.platform}</span>
               </span>
             </div>
 
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-              Topic: <strong className="text-slate-700 dark:text-slate-200">{currentCampaign.mainTopic}</strong> • {currentCampaign.posts?.length || 0} Posts Planned
-            </p>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+              <span className="font-mono font-medium">{currentCampaign.posts?.length || 0} Posts Planned</span>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => setShowDetails(!showDetails)}
+                className="text-purple-650 dark:text-purple-400 hover:underline font-bold flex items-center gap-0.5 cursor-pointer uppercase text-[9px] tracking-wider"
+              >
+                <span>{showDetails ? 'Hide details' : 'Show details'}</span>
+                {showDetails ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Right side control tools */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {/* AI Model Selector */}
-          {onUpdateCampaignModel && (
-            <div className="w-44">
-              <AIModelDropdown
-                value={currentCampaign.aiModel || 'gemini-3.6-flash'}
-                onChange={(model) => onUpdateCampaignModel(model)}
-              />
-            </div>
-          )}
+        <div className="flex items-center gap-2 flex-wrap sm:justify-start md:justify-end">
+          {/* Card Expansion Global Toggles */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-0.5 rounded-xl border border-slate-200/50 dark:border-slate-700/50 mr-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={onExpandAll}
+              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors cursor-pointer ${
+                allExpanded 
+                  ? 'bg-white dark:bg-slate-705 text-purple-700 dark:text-purple-300 shadow-xs border border-slate-200/40 dark:border-slate-650' 
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Expand All
+            </button>
+            <button
+              type="button"
+              onClick={onCollapseAll}
+              className={`px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider rounded-lg transition-colors cursor-pointer ${
+                !allExpanded 
+                  ? 'bg-white dark:bg-slate-705 text-purple-700 dark:text-purple-300 shadow-xs border border-slate-200/40 dark:border-slate-650' 
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              Collapse All
+            </button>
+          </div>
 
           <button
             type="button"
             onClick={onOpenAddPostModal}
-            className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 hover:dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border border-slate-200/40 dark:border-slate-700/40"
           >
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">+ Post</span>
+            <Plus className="w-3.5 h-3.5" />
+            <span>Post</span>
           </button>
 
           <button
             type="button"
             onClick={() => setShowSingleAIPostForm(!showSingleAIPostForm)}
-            className={`px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer border ${
               showSingleAIPostForm
                 ? 'bg-purple-600 text-white border-purple-500 shadow-md'
                 : 'bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 hover:bg-purple-500/20'
             }`}
           >
-            <Wand2 className="w-4 h-4" />
-            <span>+ AI Post</span>
+            <Wand2 className="w-3.5 h-3.5" />
+            <span>AI Post</span>
           </button>
 
           <button
             type="button"
             onClick={() => setShowRefinementModal(true)}
-            className="px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-1 cursor-pointer"
           >
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Refine Campaign</span>
+            <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+            <span>Refine</span>
           </button>
 
           <button
             type="button"
             onClick={() => onDeleteCampaign(currentCampaign.id)}
-            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all cursor-pointer"
+            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 rounded-xl transition-all cursor-pointer"
             title="Delete Entire Campaign"
           >
             <Trash2 className="w-4 h-4" />

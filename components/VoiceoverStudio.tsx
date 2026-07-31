@@ -38,13 +38,14 @@ import {
 } from 'lucide-react';
 import { generateVoiceOverSpeech, generateImageToScript } from '@/services/geminiService';
 import { generateSrtFromScript, downloadSrtFile } from '@/services/subtitleService';
-import { AudioSubtitleViewer } from './AudioSubtitleViewer';
+import { AudioSubtitleViewer } from '@/components/AudioSubtitleViewer';
 
 interface VoiceoverStudioProps {
   images: GeneratedImage[];
   activeProjectId?: string | null;
   projects?: Project[];
   onBackToDashboard?: () => void;
+  onSelectProject?: (id: string | null) => void;
 }
 
 interface VoiceoverSession {
@@ -247,13 +248,28 @@ const DELIVERY_STYLES = [
   { id: 'custom', name: '✏️ Custom Prompt Guidelines', description: 'Custom emotion tags and vocal directives' }
 ];
 
-const VoiceoverStudio: React.FC<VoiceoverStudioProps> = ({ images, activeProjectId, projects = [], onBackToDashboard }) => {
+const VoiceoverStudio: React.FC<VoiceoverStudioProps> = ({ 
+  images, 
+  activeProjectId, 
+  projects = [], 
+  onBackToDashboard,
+  onSelectProject
+}) => {
   // Mode Controller: dashboard (for managing projects) vs editor (recording studio)
   const [studioMode, setStudioMode] = useState<'dashboard' | 'editor'>('dashboard');
 
   // 1. Projects State (Supports Campaigns + Standalone local voiceover projects)
   const [standaloneProjects, setStandaloneProjects] = useState<StandaloneProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string>('global');
+
+  // Synchronize with activeProjectId prop
+  useEffect(() => {
+    if (activeProjectId) {
+      setCurrentProjectId(activeProjectId);
+    } else {
+      setCurrentProjectId('global');
+    }
+  }, [activeProjectId]);
 
   const [newProjectName, setNewProjectName] = useState('');
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
@@ -1024,7 +1040,31 @@ const VoiceoverStudio: React.FC<VoiceoverStudioProps> = ({ images, activeProject
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {onSelectProject && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-widest font-mono hidden sm:inline">
+                    Scope:
+                  </span>
+                  <select
+                    value={currentProjectId}
+                    onChange={(e) => {
+                      const pid = e.target.value;
+                      setCurrentProjectId(pid);
+                      onSelectProject(pid === 'global' ? null : pid);
+                    }}
+                    className="text-xs font-semibold px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-800 dark:text-slate-200 cursor-pointer"
+                  >
+                    <option value="global">Standalone Space</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                    {standaloneProjects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <button
                 onClick={handleCreateNewSession}
                 className="px-3.5 py-2 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/20 text-cyan-600 dark:text-cyan-400 rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"

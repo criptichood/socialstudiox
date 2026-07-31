@@ -7,21 +7,22 @@ import {
   X, 
   Maximize2 
 } from 'lucide-react';
-import { SocialPostCampaignItem, SavedCampaign } from '../DraftsPlanner';
-import { VisualStyle, AspectRatio, CarouselSlide } from '../../types';
-import { CampaignImage } from './CampaignImage';
-import { ImageDownloadDropdown } from '../ImageDownloadDropdown';
+import { SocialPostCampaignItem, SavedCampaign } from '@/components/DraftsPlanner';
+import { VisualStyle, AspectRatio, CarouselSlide } from '@/types';
+import { CampaignImage } from '@/components/drafts/CampaignImage';
+import { ImageDownloadDropdown } from '@/components/ImageDownloadDropdown';
+import { AIModelDropdown } from '@/components/CustomDropdown';
 
-import { generateInfographicImage, generateVoiceOverAndVideoPrompt, generateVoiceOverSpeech } from '../../services/geminiService';
-import { compileProgrammaticVideo } from '../../services/programmaticVideoCompiler';
-import { saveVoiceoverSession } from '../../services/audioStorageService';
-import { loadVideoBlobUrl } from '../../services/videoStorageService';
+import { generateInfographicImage, generateVoiceOverAndVideoPrompt, generateVoiceOverSpeech } from '@/services/geminiService';
+import { compileProgrammaticVideo } from '@/services/programmaticVideoCompiler';
+import { saveVoiceoverSession } from '@/services/audioStorageService';
+import { loadVideoBlobUrl } from '@/services/videoStorageService';
 
-import { CampaignWorkspaceHeader } from './campaign/CampaignWorkspaceHeader';
-import { CampaignRefinementModal } from './campaign/CampaignRefinementModal';
-import { SingleAIPostForm } from './campaign/SingleAIPostForm';
-import { VideoStudioLightboxModal } from './campaign/VideoStudioLightboxModal';
-import { PostCardItem } from './campaign/PostCardItem';
+import { CampaignWorkspaceHeader } from '@/components/drafts/campaign/CampaignWorkspaceHeader';
+import { CampaignRefinementModal } from '@/components/drafts/campaign/CampaignRefinementModal';
+import { SingleAIPostForm } from '@/components/drafts/campaign/SingleAIPostForm';
+import { VideoStudioLightboxModal } from '@/components/drafts/campaign/VideoStudioLightboxModal';
+import { PostCardItem } from '@/components/drafts/campaign/PostCardItem';
 
 interface CampaignWorkspaceProps {
   activeCampaignId: string;
@@ -147,6 +148,32 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
   const [inlineRefineIndex, setInlineRefineIndex] = useState<number | null>(null);
   const [inlineRefineText, setInlineRefineText] = useState('');
   const [activeSlideMap, setActiveSlideMap] = useState<Record<number, number>>({});
+
+  const [showCampaignDetails, setShowCampaignDetails] = useState(false);
+  const [expandedCardIndices, setExpandedCardIndices] = useState<Record<number, boolean>>({});
+
+  const handleExpandAll = () => {
+    const next: Record<number, boolean> = {};
+    campaignPosts?.forEach((_, idx) => {
+      next[idx] = true;
+    });
+    setExpandedCardIndices(next);
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedCardIndices({});
+  };
+
+  const toggleCardExpanded = (idx: number) => {
+    setExpandedCardIndices(prev => ({
+      ...prev,
+      [idx]: !prev[idx]
+    }));
+  };
+
+  const allExpanded = campaignPosts && campaignPosts.length > 0
+    ? campaignPosts.every((_, idx) => !!expandedCardIndices[idx])
+    : false;
   
   // Video and Voiceover Studio State managers
   const [videoRenderingMap, setVideoRenderingMap] = useState<Record<string, boolean>>({});
@@ -584,8 +611,65 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         campaignError={campaignError}
         campaignPosts={campaignPosts}
         handleAutoGenerateCampaignPosts={handleAutoGenerateCampaignPosts}
-        onUpdateCampaignModel={onUpdateCampaignModel}
+        showDetails={showCampaignDetails}
+        setShowDetails={setShowCampaignDetails}
+        onExpandAll={handleExpandAll}
+        onCollapseAll={handleCollapseAll}
+        allExpanded={allExpanded}
       />
+
+      {showCampaignDetails && (
+        <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 md:p-6 animate-in slide-in-from-top-2 duration-200 shadow-sm shrink-0">
+          <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Company Website URL</span>
+                <a 
+                  href={currentCampaign.websiteUrl} 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="text-xs text-purple-600 dark:text-purple-400 hover:underline font-semibold block mt-1 break-all"
+                >
+                  {currentCampaign.websiteUrl}
+                </a>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Campaign Topic / Objective</span>
+                <p className="text-xs text-slate-700 dark:text-slate-200 mt-1 font-medium leading-relaxed">
+                  {currentCampaign.mainTopic}
+                </p>
+              </div>
+
+              {currentCampaign.customRequirements && (
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Custom Style Guidelines</span>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed italic">
+                    "{currentCampaign.customRequirements}"
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono font-bold">AI Generation Engine</span>
+                <div className="w-56 mt-1.5">
+                  {onUpdateCampaignModel && (
+                    <AIModelDropdown
+                      value={currentCampaign.aiModel || 'gemini-3.6-flash'}
+                      onChange={(model) => onUpdateCampaignModel(model)}
+                    />
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Change model engine for subsequent AI concept refinements and visual asset generation.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <SingleAIPostForm
         show={showSingleAIPostForm}
@@ -642,6 +726,8 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                 key={idx}
                 idx={idx}
                 post={post}
+                isExpanded={!!expandedCardIndices[idx]}
+                onToggleExpand={() => toggleCardExpanded(idx)}
                 editingPostIndex={editingPostIndex}
                 setEditingPostIndex={setEditingPostIndex}
                 editTopic={editTopic}

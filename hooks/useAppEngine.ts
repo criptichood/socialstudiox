@@ -175,8 +175,65 @@ export const useAppEngine = () => {
   const [presentingProject, setPresentingProject] = useState<Project | null>(null);
 
   // Derived state for project-sandbox isolation (Phase 2)
-  const activeProjectImages = imageHistory.filter(img => (img.subOptions?.projectId || 'proj-1') === selectedProjectId);
-  const activeDrafts = drafts.filter(d => (d.subOptions?.projectId || 'proj-1') === selectedProjectId);
+  const activeProjectImages = imageHistory.filter(img => {
+    const imgPid = img.subOptions?.projectId;
+    if (!selectedProjectId) {
+      return !imgPid || imgPid === 'global';
+    }
+    return imgPid === selectedProjectId;
+  });
+
+  const activeDrafts = drafts.filter(d => {
+    const draftPid = d.subOptions?.projectId;
+    if (!selectedProjectId) {
+      return !draftPid || draftPid === 'global';
+    }
+    return draftPid === selectedProjectId;
+  });
+
+  // State maps for assets associated with projects (reloaded dynamically on returning to dashboard)
+  const [campaignCounts, setCampaignCounts] = useState<Record<string, number>>({});
+  const [voiceoverCounts, setVoiceoverCounts] = useState<Record<string, number>>({});
+  const [videoCounts, setVideoCounts] = useState<Record<string, number>>({});
+
+  const reloadAssetCounts = async () => {
+    try {
+      const storedCampaigns = await DBService.getItem<any[]>('infogenius_saved_campaigns', []);
+      const storedVoiceovers = await DBService.getItem<any[]>('social_studio_voiceover_sessions', []);
+      const storedVideos = await DBService.getItem<any[]>('social_studio_x_generated_videos_v1', []);
+
+      const cmap: Record<string, number> = {};
+      storedCampaigns.forEach(c => {
+        const pid = c.projectId || 'proj-1';
+        cmap[pid] = (cmap[pid] || 0) + 1;
+      });
+
+      const vmap: Record<string, number> = {};
+      storedVoiceovers.forEach(v => {
+        const pid = v.projectId || 'global';
+        vmap[pid] = (vmap[pid] || 0) + 1;
+      });
+
+      const vidmap: Record<string, number> = {};
+      storedVideos.forEach(vid => {
+        const pid = vid.projectId || 'global';
+        vidmap[pid] = (vidmap[pid] || 0) + 1;
+      });
+
+      setCampaignCounts(cmap);
+      setVoiceoverCounts(vmap);
+      setVideoCounts(vidmap);
+    } catch (err) {
+      console.error("Failed to load asset counts:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (currentView === 'dashboard') {
+      reloadAssetCounts();
+    }
+  }, [currentView]);
+
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
 
@@ -608,6 +665,9 @@ export const useAppEngine = () => {
     // Computed/derived state
     activeProjectImages,
     activeDrafts,
+    campaignCounts,
+    voiceoverCounts,
+    videoCounts,
 
     // Handlers
     handleCreateProject,
@@ -626,6 +686,7 @@ export const useAppEngine = () => {
     clearAllGallery,
     loadForTweaking,
     handleSelectKey,
-    handleImportImagesToProject
+    handleImportImagesToProject,
+    reloadAssetCounts
   };
 };

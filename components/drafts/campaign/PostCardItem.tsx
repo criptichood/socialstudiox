@@ -2,6 +2,8 @@ import React from 'react';
 import { 
   ChevronLeft, 
   ChevronRight, 
+  ChevronDown,
+  ChevronUp,
   Layers, 
   Edit, 
   Trash2, 
@@ -13,7 +15,8 @@ import {
   Film, 
   Video, 
   Image as ImageIcon, 
-  Wand2 
+  Wand2,
+  Mic
 } from 'lucide-react';
 import { SocialPostCampaignItem } from '@/components/DraftsPlanner';
 import { VisualStyle, AspectRatio, CarouselSlide } from '@/types';
@@ -24,6 +27,8 @@ import { ImageDownloadDropdown } from '@/components/ImageDownloadDropdown';
 interface PostCardItemProps {
   idx: number;
   post: SocialPostCampaignItem;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
   editingPostIndex: number | null;
   setEditingPostIndex: (idx: number | null) => void;
   editTopic: string;
@@ -68,6 +73,8 @@ interface PostCardItemProps {
 export const PostCardItem: React.FC<PostCardItemProps> = ({
   idx,
   post,
+  isExpanded,
+  onToggleExpand,
   editingPostIndex,
   setEditingPostIndex,
   editTopic,
@@ -117,21 +124,53 @@ export const PostCardItem: React.FC<PostCardItemProps> = ({
   const aspectOptions: AspectRatio[] = ['1:1', '9:16', '16:9'];
   const styleOptions: VisualStyle[] = ['Default', 'Minimalist', 'Realistic', 'Cartoon', 'Vintage', 'Futuristic', '3D Render', 'Sketch', 'Carousel'];
 
+  const shouldShowDetails = isExpanded || isEditing || isInlineRefining;
+
   return (
-    <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 md:p-6 space-y-4 shadow-sm hover:shadow-md transition-shadow">
+    <div className={`bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 transition-all duration-200 ${shouldShowDetails ? 'space-y-4 shadow-md' : 'hover:shadow-md'}`}>
       {/* Top Post Card Bar */}
-      <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
-        <div className="flex items-center gap-2">
-          <span className="w-6 h-6 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 font-mono text-xs font-bold flex items-center justify-center border border-purple-500/20">
+      <div className={`flex items-center justify-between gap-2 ${shouldShowDetails ? 'border-b border-slate-100 dark:border-slate-800 pb-3' : ''}`}>
+        <div className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer select-none" onClick={onToggleExpand}>
+          <span className="w-6 h-6 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 font-mono text-xs font-bold flex items-center justify-center border border-purple-500/20 shrink-0">
             #{idx + 1}
           </span>
-          <span className="text-xs font-bold text-slate-700 dark:text-slate-300 font-display">
-            {post.day || `Post ${idx + 1}`}
-          </span>
+          <div className="flex flex-col min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono">
+                {post.day || `Post ${idx + 1}`}
+              </span>
+              {!shouldShowDetails && (
+                <div className="flex items-center gap-1.5 ml-1">
+                  {post.imageUrl && (
+                    <span className="p-0.5 bg-purple-500/10 text-purple-500 dark:text-purple-400 rounded border border-purple-500/20" title="Image Generated">
+                      <ImageIcon className="w-3 h-3" />
+                    </span>
+                  )}
+                  {post.videoUrl && (
+                    <span className="p-0.5 bg-cyan-500/10 text-cyan-500 dark:text-cyan-400 rounded border border-cyan-500/20" title="Video Generated">
+                      <Video className="w-3 h-3" />
+                    </span>
+                  )}
+                  {post.audioUrl && (
+                    <span className="p-0.5 bg-emerald-500/10 text-emerald-500 dark:text-emerald-400 rounded border border-emerald-500/20" title="Voiceover Generated">
+                      <Mic className="w-3 h-3" />
+                    </span>
+                  )}
+                  {post.slides && post.slides.length > 0 && (
+                    <span className="px-1 py-0.5 bg-indigo-500/10 text-indigo-500 dark:text-indigo-400 rounded border border-indigo-500/20 text-[9px] font-mono font-bold uppercase" title="Carousel Slides">
+                      Carousel ({post.slides.length})
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            <h4 className="text-xs md:text-sm font-bold text-slate-800 dark:text-white truncate mt-0.5 leading-tight">
+              {post.topic}
+            </h4>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1">
-          {/* Inline AI Refine Single Post Toggle */}
+        <div className="flex items-center gap-1 shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -142,30 +181,39 @@ export const PostCardItem: React.FC<PostCardItemProps> = ({
                 setInlineRefineText('');
               }
             }}
-            className="px-2.5 py-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
+            className="px-2 py-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 rounded-lg text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
           >
             <Wand2 className="w-3 h-3" />
-            <span>AI Refine</span>
+            <span className="hidden sm:inline">AI Refine</span>
           </button>
 
           {!isEditing && (
             <button
               type="button"
               onClick={() => startEditingPost(idx, post)}
-              className="p-1.5 text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 rounded-lg transition-colors cursor-pointer"
+              className="p-1 text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 rounded-lg transition-colors cursor-pointer"
               title="Edit Post Content"
             >
-              <Edit className="w-4 h-4" />
+              <Edit className="w-3.5 h-3.5" />
             </button>
           )}
 
           <button
             type="button"
             onClick={() => handleDeletePost(idx)}
-            className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors cursor-pointer"
+            className="p-1 text-slate-400 hover:text-red-500 rounded-lg transition-colors cursor-pointer"
             title="Delete Post"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+
+          <button
+            type="button"
+            onClick={onToggleExpand}
+            className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-lg transition-all cursor-pointer animate-in duration-205"
+            title={shouldShowDetails ? "Collapse Details" : "Expand Details"}
+          >
+            {shouldShowDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
         </div>
       </div>
@@ -260,10 +308,8 @@ export const PostCardItem: React.FC<PostCardItemProps> = ({
           </div>
         </div>
       ) : (
-        <div className="space-y-4">
-          <div>
-            <h4 className="text-sm font-bold text-slate-900 dark:text-white leading-relaxed">{post.topic}</h4>
-          </div>
+        shouldShowDetails && (
+          <div className="space-y-4 pt-1 animate-in fade-in duration-200">
 
           {/* Multi-Slide Carousel Deck Viewer */}
           {(post.isCarousel || (post.slides && post.slides.length > 0) || post.suggestedStyle === 'Carousel') && (
@@ -493,6 +539,7 @@ export const PostCardItem: React.FC<PostCardItemProps> = ({
             </div>
           </div>
         </div>
+        )
       )}
     </div>
   );

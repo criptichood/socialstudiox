@@ -84,6 +84,9 @@ const App: React.FC = () => {
     // Computed/derived state
     activeProjectImages,
     activeDrafts,
+    campaignCounts,
+    voiceoverCounts,
+    videoCounts,
 
     // Handlers
     handleCreateProject,
@@ -189,6 +192,9 @@ const App: React.FC = () => {
         onViewChange={setCurrentView}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        onSelectProject={setSelectedProjectId}
       />
 
       {/* Main Content Area Offsetted by Sidebar Width */}
@@ -201,8 +207,8 @@ const App: React.FC = () => {
             backgroundSize: '40px 40px'
         }}></div>
 
-        {/* Global Navigation Header bar - Only displayed on Projects Space dashboard view */}
-        {currentView === 'dashboard' && (
+        {/* Global Navigation Header bar - Displayed on all views except presenter-studio */}
+        {currentView !== 'presenter-studio' && (
           <header className="border-b border-slate-200 dark:border-white/10 shrink-0 z-50 backdrop-blur-md bg-white/70 dark:bg-slate-950/60 transition-colors">
             <div className="max-w-[1550px] mx-auto px-4 sm:px-6 h-16 md:h-20 flex items-center justify-between">
               <div className="flex items-center gap-2 md:gap-4 group">
@@ -253,8 +259,8 @@ const App: React.FC = () => {
         )}
 
         <main className={`flex-1 overflow-y-auto ${
-          currentView === 'dashboard'
-            ? 'max-w-[1550px] w-full mx-auto px-3 sm:px-6 py-4 md:py-8'
+          currentView === 'dashboard' || currentView === 'canvas'
+            ? 'max-w-[1550px] w-full mx-auto px-4 sm:px-6 py-6 md:py-8'
             : 'w-full p-0'
         } relative z-10`}>
 
@@ -282,6 +288,9 @@ const App: React.FC = () => {
                 onPresentProject={(proj) => setPresentingProject(proj)}
                 images={imageHistory}
                 onViewChange={setCurrentView}
+                campaignCounts={campaignCounts}
+                voiceoverCounts={voiceoverCounts}
+                videoCounts={videoCounts}
               />
             </ErrorBoundary>
           )}
@@ -294,47 +303,49 @@ const App: React.FC = () => {
                 
                 {/* Left Column: Collapsible Control Deck (col-span-4) - Configured to be stationary/sticky with viewport inner scroll to prevent full-page scrolling offset */}
                 {isControlPanelOpen && (
-                  <div className="lg:col-span-4 xl:col-span-3 lg:sticky lg:top-24 pb-6 space-y-6 order-first animate-in slide-in-from-left-6 duration-300 z-30">
-                    <div className="relative">
+                  <div className="lg:col-span-4 xl:col-span-3 lg:sticky lg:top-24 pb-6 order-first animate-in slide-in-from-left-6 duration-300 z-30">
+                    <div className="relative pt-3">
                       {/* Optional ambient badge/label */}
-                      <div className="absolute -top-3 left-6 z-30 px-3 py-1 bg-gradient-to-r from-cyan-500 to-indigo-500 text-white text-[9px] font-bold uppercase tracking-widest rounded-full shadow-md">
+                      <div className="absolute -top-3 left-6 z-35 px-3 py-1 bg-gradient-to-r from-cyan-500 to-indigo-500 text-white text-[9px] font-bold uppercase tracking-widest rounded-full shadow-md">
                         Control Panel
                       </div>
                       {/* Beautiful Collapse Button */}
                       <button
                         id="collapse-control-panel-btn"
                         onClick={() => setIsControlPanelOpen(false)}
-                        className="absolute -top-3 right-6 z-30 px-3 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 text-[9px] font-bold uppercase tracking-widest rounded-full shadow-md transition-colors border border-slate-200 dark:border-white/5 flex items-center gap-1 cursor-pointer"
+                        className="absolute -top-3 right-6 z-35 px-3 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 text-[9px] font-bold uppercase tracking-widest rounded-full shadow-md transition-colors border border-slate-200 dark:border-white/5 flex items-center gap-1 cursor-pointer"
                         title="Collapse Panel"
                       >
                         <ChevronLeft className="w-3 h-3" />
                         <span>Collapse</span>
                       </button>
-                      <ConfigForm 
-                        topic={topic}
-                        setTopic={setTopic}
-                        complexityLevel={complexityLevel}
-                        setComplexityLevel={setComplexityLevel}
-                        visualStyle={visualStyle}
-                        setVisualStyle={setVisualStyle}
-                        language={language}
-                        setLanguage={setLanguage}
-                        resolution={resolution}
-                        setResolution={setResolution}
-                        subOptions={subOptions}
-                        setSubOptions={setSubOptions}
-                        onSubmit={handleGenerate}
-                        onDraft={handleDraftOnly}
-                        isLoading={isLoading}
-                        referenceImage={referenceImage}
-                        setReferenceImage={setReferenceImage}
-                        referenceMode={referenceMode}
-                        setReferenceMode={setReferenceMode}
-                        lastGeneratedImage={activeProjectImages[0]?.data || null}
-                        drafts={activeDrafts}
-                        onLaunchDraft={handleLaunchDraft}
-                        onDeleteDraft={handleDeleteDraft}
-                      />
+                      <div className="lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto p-1.5 scrollbar-thin rounded-3xl">
+                        <ConfigForm 
+                          topic={topic}
+                          setTopic={setTopic}
+                          complexityLevel={complexityLevel}
+                          setComplexityLevel={setComplexityLevel}
+                          visualStyle={visualStyle}
+                          setVisualStyle={setVisualStyle}
+                          language={language}
+                          setLanguage={setLanguage}
+                          resolution={resolution}
+                          setResolution={setResolution}
+                          subOptions={subOptions}
+                          setSubOptions={setSubOptions}
+                          onSubmit={handleGenerate}
+                          onDraft={handleDraftOnly}
+                          isLoading={isLoading}
+                          referenceImage={referenceImage}
+                          setReferenceImage={setReferenceImage}
+                          referenceMode={referenceMode}
+                          setReferenceMode={setReferenceMode}
+                          lastGeneratedImage={activeProjectImages[0]?.data || null}
+                          drafts={activeDrafts}
+                          onLaunchDraft={handleLaunchDraft}
+                          onDeleteDraft={handleDeleteDraft}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -613,6 +624,7 @@ const App: React.FC = () => {
                   activeProjectId={selectedProjectId}
                   projects={projects}
                   onBackToDashboard={() => setCurrentView('dashboard')}
+                  onSelectProject={setSelectedProjectId}
                 />
               </div>
             </ErrorBoundary>
@@ -628,6 +640,7 @@ const App: React.FC = () => {
                   projects={projects}
                   onBackToDashboard={() => setCurrentView('dashboard')}
                   initialPrompt={videoStudioPrefillPrompt}
+                  onSelectProject={setSelectedProjectId}
                 />
               </div>
             </ErrorBoundary>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GeneratedImage, Project } from '../types';
-import { DBService } from '../services/dbService';
+import { GeneratedImage, Project } from '@/types';
+import { DBService } from '@/services/dbService';
 import { 
   Film, 
   Play, 
@@ -22,8 +22,8 @@ import {
   Eye,
   Video
 } from 'lucide-react';
-import { generateVeoVideo } from '../services/geminiService';
-import { getAi } from '../services/ai/config';
+import { generateVeoVideo } from '@/services/geminiService';
+import { getAi } from '@/services/ai/config';
 
 interface VideoStudioProps {
   images: GeneratedImage[];
@@ -31,6 +31,7 @@ interface VideoStudioProps {
   projects?: Project[];
   onBackToDashboard?: () => void;
   initialPrompt?: string;
+  onSelectProject?: (id: string | null) => void;
 }
 
 interface GeneratedVideo {
@@ -79,7 +80,8 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
   activeProjectId,
   projects,
   onBackToDashboard,
-  initialPrompt
+  initialPrompt,
+  onSelectProject
 }) => {
   // Input states
   const [prompt, setPrompt] = useState(initialPrompt || '');
@@ -384,19 +386,34 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
           </p>
         </div>
 
-        {activeProject && (
+        {onSelectProject && projects && projects.length > 0 ? (
           <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 border border-slate-800 rounded-xl">
-            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse animate-pulse shrink-0"></span>
+            <span className="text-xs text-slate-400 font-medium font-mono hidden sm:inline">Workspace:</span>
+            <select
+              value={activeProjectId || ''}
+              onChange={(e) => onSelectProject(e.target.value || null)}
+              className="text-xs font-semibold px-2 py-0.5 bg-transparent border-none outline-none text-slate-200 cursor-pointer"
+            >
+              <option value="" className="bg-slate-900 text-slate-200">Standalone Space</option>
+              {projects.map(p => (
+                <option key={p.id} value={p.id} className="bg-slate-900 text-slate-200">{p.name}</option>
+              ))}
+            </select>
+          </div>
+        ) : activeProject ? (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/40 border border-slate-800 rounded-xl">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse shrink-0"></span>
             <span className="text-xs text-slate-300 font-medium font-mono">Project: {activeProject.name}</span>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Main Workspace Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Left Column - Input Controls (5 cols) */}
-        <div className="lg:col-span-5 space-y-5 flex flex-col">
+        <div className="lg:col-span-5 space-y-5 flex flex-col lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto pr-1.5 scrollbar-thin">
           
           {/* Section: Directives Input */}
           <div className="bg-slate-900 border border-slate-800/80 rounded-2xl p-5 space-y-4">
@@ -672,7 +689,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
         </div>
 
         {/* Right Column - Active Screen & Archives (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
+        <div className="lg:col-span-7 space-y-6 lg:max-h-[calc(100vh-10rem)] lg:overflow-y-auto pr-1.5 scrollbar-thin">
           
           {/* Section: Live Cinema Screen */}
           <div className="bg-slate-900 border border-slate-800/80 rounded-3xl p-5 md:p-6 overflow-hidden relative min-h-[360px] flex flex-col justify-between shadow-2xl">
