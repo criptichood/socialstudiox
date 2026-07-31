@@ -2,6 +2,23 @@ import { Modality } from "@google/genai";
 import { AspectRatio, ComplexityLevel, VisualStyle, Language } from "@/types";
 import { getAi, IMAGE_MODEL, EDIT_MODEL, getMimeTypeAndData } from "@/services/server/config";
 
+/**
+ * Gemini image models (gemini-*-image) do NOT support the `aspectRatio` config field —
+ * that parameter is only supported by Imagen models. For Gemini image models, orientation
+ * must be driven via the prompt text itself.
+ */
+const buildAspectInstruction = (resolution: AspectRatio): string => {
+  switch (resolution) {
+    case '9:16':
+      return 'IMPORTANT: Generate this image in PORTRAIT orientation (9:16 aspect ratio, taller than wide, like a mobile phone screen / Instagram Story / TikTok frame). The canvas should be significantly taller than it is wide.';
+    case '16:9':
+      return 'IMPORTANT: Generate this image in LANDSCAPE / WIDESCREEN orientation (16:9 aspect ratio, wider than tall, like a YouTube thumbnail or desktop wallpaper). The canvas should be significantly wider than it is tall.';
+    case '1:1':
+    default:
+      return 'IMPORTANT: Generate this image in SQUARE format (1:1 aspect ratio, equal width and height, like an Instagram post or profile picture).';
+  }
+};
+
 export const generateInfographicImage = async (
   prompt: string, 
   resolution: AspectRatio = '16:9',
@@ -9,7 +26,8 @@ export const generateInfographicImage = async (
   referenceMode?: string,
   customApiKey?: string
 ): Promise<string> => {
-  const parts: any[] = [];
+  const aspectInstruction = buildAspectInstruction(resolution);
+  const parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [];
   
   if (referenceImageBase64) {
     const cleanBase64 = referenceImageBase64.replace(/^data:image\/(png|jpeg|jpg);base64,/, '');
@@ -28,9 +46,9 @@ export const generateInfographicImage = async (
     } else {
       modePrompt = "Use this reference image as a layout composition and anatomical skeleton template. Build and annotate on top of this exact composition according to: ";
     }
-    parts.push({ text: modePrompt + prompt });
+    parts.push({ text: `${aspectInstruction}\n\n${modePrompt}${prompt}` });
   } else {
-    parts.push({ text: prompt });
+    parts.push({ text: `${aspectInstruction}\n\n${prompt}` });
   }
 
   const response = await getAi(customApiKey).models.generateContent({
@@ -40,7 +58,6 @@ export const generateInfographicImage = async (
     },
     config: {
       responseModalities: [Modality.IMAGE],
-      aspectRatio: resolution
     } as any
   });
 
@@ -50,6 +67,7 @@ export const generateInfographicImage = async (
   }
   throw new Error("Failed to generate image");
 };
+
 
 export const verifyInfographicAccuracy = async (
   imageBase64: string, 
