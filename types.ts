@@ -131,6 +131,10 @@ export interface SavedCampaign {
   postCount: number;
   customRequirements?: string;
   aiModel?: string;
+  /** User-selected aspect ratio at campaign creation — preserved across re-generations */
+  preferredAspect?: AspectRatio;
+  /** User-selected visual style at campaign creation — preserved across re-generations */
+  preferredStyle?: string;
   posts: SocialPostCampaignItem[];
   createdAt: number;
 }
