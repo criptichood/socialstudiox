@@ -3,7 +3,7 @@ import { AspectRatio, ComplexityLevel, VisualStyle, Language } from "../../types
 import { STYLE_GUIDES } from "../stylesGuide";
 
 export const getAi = () => {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.API_KEY });
 };
 
 export const getMimeTypeAndData = (base64DataString: string) => {
