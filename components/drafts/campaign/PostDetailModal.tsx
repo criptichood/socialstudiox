@@ -369,6 +369,7 @@ export const PostDetailModal: React.FC<PostDetailModalProps> = ({
                       postIdx: postIndex,
                       slideIdx: post.slides ? slideIdx : null
                     });
+                    onClose();
                   }}
                   className="mt-2 px-5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer"
                 >
