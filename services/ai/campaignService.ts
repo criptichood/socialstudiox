@@ -42,29 +42,48 @@ export const generateSocialCampaign = async (
   templateName?: string,
   modelName?: string
 ): Promise<SocialPostCampaignItem[]> => {
-  const response = await fetch("/api/campaign/generate", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      websiteUrl,
-      mainTopic,
-      platform,
-      postCount,
-      refinementInstructions,
-      templateName,
-      modelName
-    })
+  console.log("[Client] Sending campaign generation request:", {
+    websiteUrl,
+    mainTopic,
+    platform,
+    postCount,
+    refinementInstructions,
+    templateName,
+    modelName
   });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.error || "Campaign generation failed");
-  }
+  try {
+    const response = await fetch("/api/campaign/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        websiteUrl,
+        mainTopic,
+        platform,
+        postCount,
+        refinementInstructions,
+        templateName,
+        modelName
+      })
+    });
 
-  const data = await response.json();
-  return data.posts;
+    console.log("[Client] Campaign generation HTTP response status:", response.status);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error("[Client] Campaign generation failed on server:", errorData);
+      throw new Error(errorData.error || "Campaign generation failed");
+    }
+
+    const data = await response.json();
+    console.log("[Client] Campaign generation succeeded, posts count:", data.posts?.length || 0);
+    return data.posts;
+  } catch (error) {
+    console.error("[Client] Error in generateSocialCampaign fetch:", error);
+    throw error;
+  }
 };
 
 export const generateSingleSocialPost = async (
