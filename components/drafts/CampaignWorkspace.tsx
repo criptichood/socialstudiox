@@ -274,34 +274,57 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     return `${postIdx}-${slideIdx !== null ? slideIdx : 'post'}`;
   };
 
+  const updatePostField = (postIdx: number | undefined, slideIdx: number | null | undefined, field: string, value: any) => {
+    if (postIdx === undefined || !campaignPosts || !campaignPosts[postIdx]) return;
+    const updatedPosts = [...campaignPosts];
+    if (slideIdx !== null && slideIdx !== undefined && updatedPosts[postIdx].slides && updatedPosts[postIdx].slides[slideIdx]) {
+      updatedPosts[postIdx].slides![slideIdx] = {
+        ...updatedPosts[postIdx].slides![slideIdx],
+        [field]: value
+      };
+    } else {
+      updatedPosts[postIdx] = {
+        ...updatedPosts[postIdx],
+        [field]: value
+      };
+    }
+    onUpdateCampaignPosts(updatedPosts);
+  };
+
   const handleSelectVoiceActor = (voice: any, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_voice_actor', voice);
     setSelectedVoiceActor(voice);
+    updatePostField(postIdx, slideIdx, 'voiceName', voice);
   };
 
-  const handleSelectAudioEngine = (model: string) => {
+  const handleSelectAudioEngine = (model: string, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_audio_engine', model);
     setSelectedAudioEngine(model);
+    updatePostField(postIdx, slideIdx, 'ttsModel', model);
   };
 
-  const handleSelectAccent = (accent: string) => {
+  const handleSelectAccent = (accent: string, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_voice_accent', accent);
     setSelectedAccent(accent);
+    updatePostField(postIdx, slideIdx, 'accent', accent);
   };
 
-  const handleSelectPersonaStyle = (persona: string) => {
+  const handleSelectPersonaStyle = (persona: string, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_voice_persona', persona);
     setSelectedPersonaStyle(persona);
+    updatePostField(postIdx, slideIdx, 'personaStyle', persona);
   };
 
-  const handleSelectDeliveryTone = (tone: string) => {
+  const handleSelectDeliveryTone = (tone: string, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_voice_tone', tone);
     setSelectedDeliveryTone(tone);
+    updatePostField(postIdx, slideIdx, 'deliveryTone', tone);
   };
 
-  const handleSelectSpeechSpeed = (speed: string) => {
+  const handleSelectSpeechSpeed = (speed: string, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_voice_speed', speed);
     setSelectedSpeechSpeed(speed);
+    updatePostField(postIdx, slideIdx, 'speechSpeed', speed);
   };
 
   const handleSelectCameraAnim = (anim: any) => {
@@ -371,6 +394,12 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         speechSpeed || selectedSpeechSpeed
       );
       
+      const finalVoice = voice || selectedVoiceActor;
+      const finalEngine = engineModel || selectedAudioEngine;
+      const finalAccent = accentStyle || selectedAccent;
+      const finalPersona = personaStyle || selectedPersonaStyle;
+      const finalSpeed = speechSpeed || selectedSpeechSpeed;
+
       const updatedPosts = [...(campaignPosts || [])];
       const post = updatedPosts[postIdx];
 
@@ -378,11 +407,21 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         post.slides[slideIdx] = {
           ...post.slides[slideIdx],
           audioUrl,
+          voiceName: finalVoice,
+          ttsModel: finalEngine,
+          accent: finalAccent,
+          personaStyle: finalPersona,
+          speechSpeed: finalSpeed,
         };
       } else {
         updatedPosts[postIdx] = {
           ...post,
           audioUrl,
+          voiceName: finalVoice,
+          ttsModel: finalEngine,
+          accent: finalAccent,
+          personaStyle: finalPersona,
+          speechSpeed: finalSpeed,
         };
       }
 

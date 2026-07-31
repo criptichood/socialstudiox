@@ -183,6 +183,7 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
   const currentTone = (targetObj as any).deliveryTone || selectedDeliveryTone;
   const currentSpeed = (targetObj as any).speechSpeed || selectedSpeechSpeed;
   const currentAnim = (targetObj as any).animationStyle || selectedCameraAnim;
+  const currentToneDesc = DELIVERY_STYLES.find(d => d.id === currentTone)?.description || currentTone;
 
   const isPlaying = !!playingAudio;
 
@@ -557,7 +558,7 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
                 <div className="flex items-center gap-2 pt-1">
                   <button
                     type="button"
-                    onClick={() => handleSynthesizeVoice(pIdx, sIdx, voiceOver, selectedVoice, currentEngine, currentAccent, currentPersona, currentTone, currentSpeed)}
+                    onClick={() => handleSynthesizeVoice(pIdx, sIdx, voiceOver, selectedVoice, currentEngine, currentAccent, currentPersona, currentToneDesc, currentSpeed)}
                     disabled={isSpeechSynthesizing || !voiceOver.trim()}
                     className="w-full py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-bold uppercase rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
                   >
