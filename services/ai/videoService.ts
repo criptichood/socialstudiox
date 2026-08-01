@@ -39,8 +39,15 @@ export const generateVoiceOverAndVideoPrompt = async (
   topic: string,
   content: string,
   visualPrompt: string,
-  aspectRatio: string = '16:9'
-): Promise<{ voiceOver: string; videoPrompt: string }> => {
+  aspectRatio: string = '16:9',
+  campaignContext?: string
+): Promise<{
+  voiceOver: string;
+  videoPrompt: string;
+  suggestedVoiceCharacter: string;
+  suggestedDeliveryTone: string;
+  suggestedSpeechSpeed: string;
+}> => {
   const response = await fetch("/api/video/voice-prompt", {
     method: "POST",
     headers: {
@@ -50,14 +57,52 @@ export const generateVoiceOverAndVideoPrompt = async (
       topic,
       content,
       visualPrompt,
-      aspectRatio
+      aspectRatio,
+      campaignContext
     })
   });
 
   if (!response.ok) {
     return {
-      voiceOver: `Discover how we can transform ${topic} today. Clean, professional results tailored just for you.`,
-      videoPrompt: `Cinematic camera pans across a modern sleek studio, high-key warm ambient lighting, highly detailed textures, smooth 4k render.`
+      voiceOver: `[Warm, confident open] ${topic} changes the way you see things. [playful pause] Here's why it matters today. [sincere close]`,
+      videoPrompt: `Cinematic camera pans across a modern sleek studio, high-key warm ambient lighting, highly detailed textures, smooth 4k render.`,
+      suggestedVoiceCharacter: '',
+      suggestedDeliveryTone: 'natural',
+      suggestedSpeechSpeed: '1.0'
+    };
+  }
+
+  return await response.json();
+};
+
+export const enhanceVoiceOverWithGuidelines = async (
+  topic: string,
+  existingScript: string,
+  campaignContext?: string
+): Promise<{
+  voiceOver: string;
+  suggestedVoiceCharacter: string;
+  suggestedDeliveryTone: string;
+  suggestedSpeechSpeed: string;
+}> => {
+  const response = await fetch("/api/video/voice-enhance", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      topic,
+      existingScript,
+      campaignContext
+    })
+  });
+
+  if (!response.ok) {
+    return {
+      voiceOver: existingScript,
+      suggestedVoiceCharacter: '',
+      suggestedDeliveryTone: '',
+      suggestedSpeechSpeed: ''
     };
   }
 

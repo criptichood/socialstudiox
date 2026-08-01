@@ -14,6 +14,7 @@ export {
 export {
   generateVeoVideo,
   generateVoiceOverAndVideoPrompt,
+  enhanceVoiceOverWithGuidelines,
   pollVideoOperation
 } from "./ai/videoService";
 export type { VideoGenerationResult } from "@/types";

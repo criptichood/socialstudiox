@@ -89,6 +89,7 @@ export interface CarouselSlide {
   audioUrl?: string;
   subtitles?: SubtitleSegment[];
   srtText?: string;
+  suggestedVoiceCharacter?: string;
 }
 
 export interface SocialPostCampaignItem {
@@ -119,6 +120,7 @@ export interface SocialPostCampaignItem {
   audioUrl?: string;
   subtitles?: SubtitleSegment[];
   srtText?: string;
+  suggestedVoiceCharacter?: string;
 }
 
 export interface SavedCampaign {

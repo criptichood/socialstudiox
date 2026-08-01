@@ -119,28 +119,70 @@ export const pollVideoOperation = async (operation: any, customApiKey?: string):
   }
 };
 
+const DELIVERY_TONE_IDS = ['natural', 'conversational', 'educational', 'high_energy', 'calm_warm', 'dramatic', 'inspirational'];
+const SPEECH_SPEED_IDS = ['0.8', '1.0', '1.25', '1.5', '1.75'];
+
 export const generateVoiceOverAndVideoPrompt = async (
   topic: string,
   content: string,
   visualPrompt: string,
   aspectRatio: string = '16:9',
+  campaignContext?: string,
   customApiKey?: string
-): Promise<{ voiceOver: string; videoPrompt: string }> => {
+): Promise<{
+  voiceOver: string;
+  videoPrompt: string;
+  suggestedVoiceCharacter: string;
+  suggestedDeliveryTone: string;
+  suggestedSpeechSpeed: string;
+}> => {
   const systemPrompt = `
-    You are an elite cinematic director and commercial video scriptwriter.
-    We are creating an engaging social media video for: "${topic}".
-    The visual context is described as: "${visualPrompt}".
+    You are an elite audio narration director and spoken-word screenwriter for social media video.
+    We are producing a spoken voiceover for: "${topic}".
     The main slide/post content or caption is: "${content}".
-
-    Create a compelling 10-15 second voiceover script AND a cinematic video description/prompt that we can pass to an AI video generator like VEO.
+    The visual context is described as: "${visualPrompt}".
     The aspect ratio is ${aspectRatio}.
 
-    Return your output ONLY as a valid JSON object following this format:
+    ${
+      campaignContext
+        ? `THIS NARRATION IS PART OF A LARGER CAMPAIGN. Here is the full campaign context so you can write continuity, emotional flow, and natural transitions across the whole series:\n${campaignContext}`
+        : `This is a standalone clip.`
+    }
+
+    Write a COMPELLING SPOKEN-WORD narration script — NOT plain text-to-speech. It must read like a real voice performance:
+    - Embed short spoken-word direction cues in [square brackets] to guide the performer: mood, energy, pacing, emotion, laughter, suspense, warmth, pauses.
+      Examples: [Warm, confident open], [playful chuckle], [slow down — building suspense], [quick, energetic], [pause for effect], [sincere close].
+      Keep each cue 2-6 words. The plain text between cues is the exact words spoken aloud.
+    - Give the script emotional shape: a hook opening, rising interest, a satisfying payoff, and a call-to-action close.
+    ${
+      campaignContext
+        ? `- Weave this narration into the campaign's overall story: open by connecting to what a listener would have just heard, and naturally set up what comes next. The full series should feel like one clean, flowing spoken presentation, not disconnected clips. If this is the very first episode, include a short welcoming introduction.`
+        : `- Keep it self-contained: hook, body, payoff, close.`
+    }
+    - Target 15-25 seconds of spoken audio for one post/slide (roughly 40-70 words). Never read hashtags, URLs, or alt-text.
+
+    Also cast the performance and return production directions:
+    - suggestedVoiceCharacter: a short casting note (gender-neutral if possible), e.g. "Warm, authoritative female storyteller with a playful spark".
+    - suggestedDeliveryTone: pick ONE id from this exact list: ${DELIVERY_TONE_IDS.join(', ')}.
+    - suggestedSpeechSpeed: pick ONE id from this exact list: ${SPEECH_SPEED_IDS.join(', ')}.
+
+    Return your output ONLY as a valid JSON object:
     {
-      "voiceOver": "The spoken word-for-word voiceover script. Keep it punchy, rhythmic, and perfect for reading aloud.",
-      "videoPrompt": "A highly cinematic, dynamic scene direction prompt for VEO. Describe camera movement (e.g. slow pan, dolly in, camera drift), lighting effects, motion dynamics, and high-fidelity textures."
+      "voiceOver": "The annotated spoken script — direction cues in [square brackets], spoken words as plain text.",
+      "videoPrompt": "A highly cinematic, dynamic scene direction prompt for VEO. Describe camera movement (e.g. slow pan, dolly in, camera drift), lighting effects, motion dynamics, and high-fidelity textures.",
+      "suggestedVoiceCharacter": "casting note",
+      "suggestedDeliveryTone": "one id from the list",
+      "suggestedSpeechSpeed": "one id from the list"
     }
   `;
+
+  const fallback = {
+    voiceOver: `[Warm, confident open] ${topic} changes the way you see things. [playful pause] Here's why it matters today. [sincere close]`,
+    videoPrompt: `Cinematic camera pans across a modern sleek studio, high-key warm ambient lighting, highly detailed textures, smooth 4k render.`,
+    suggestedVoiceCharacter: '',
+    suggestedDeliveryTone: 'natural',
+    suggestedSpeechSpeed: '1.0'
+  };
 
   try {
     const response = await getAi(customApiKey).models.generateContent({
@@ -153,12 +195,109 @@ export const generateVoiceOverAndVideoPrompt = async (
 
     const text = response.text || "{}";
     const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
-    return JSON.parse(cleaned) as { voiceOver: string; videoPrompt: string };
+    const parsed = JSON.parse(cleaned) as any;
+
+    const deliveryTone = DELIVERY_TONE_IDS.includes(parsed?.suggestedDeliveryTone)
+      ? parsed.suggestedDeliveryTone
+      : 'natural';
+    const speechSpeed = SPEECH_SPEED_IDS.includes(parsed?.suggestedSpeechSpeed)
+      ? parsed.suggestedSpeechSpeed
+      : '1.0';
+
+    return {
+      voiceOver: parsed?.voiceOver || fallback.voiceOver,
+      videoPrompt: parsed?.videoPrompt || fallback.videoPrompt,
+      suggestedVoiceCharacter: parsed?.suggestedVoiceCharacter || '',
+      suggestedDeliveryTone: deliveryTone,
+      suggestedSpeechSpeed: speechSpeed
+    };
   } catch (err) {
     console.error("Failed to generate voiceover/video script", err);
+    return fallback;
+  }
+};
+
+export const enhanceVoiceOverWithGuidelines = async (
+  topic: string,
+  existingScript: string,
+  campaignContext?: string,
+  customApiKey?: string
+): Promise<{
+  voiceOver: string;
+  suggestedVoiceCharacter: string;
+  suggestedDeliveryTone: string;
+  suggestedSpeechSpeed: string;
+}> => {
+  const systemPrompt = `
+    You are an elite audio narration director and spoken-word screenwriter for social media video.
+    Here is an existing voiceover script for the topic "${topic}":
+    """
+    ${existingScript}
+    """
+
+    Your job: transform this plain script into a PERFORMANCE-READY spoken-word script by adding narration direction guidelines — WITHOUT changing the meaning, facts, or message. Preserve the spoken content as-is (you may trim fillers and tighten rhythm, but never add new claims).
+
+    Rules:
+    - Keep the spoken lines essentially unchanged. The words between cues are the exact words spoken aloud.
+    - Insert short [square-bracket] direction cues to guide how the AI should speak: mood, energy, pacing, emotion, laughter, suspense, warmth, pauses.
+      Examples: [Warm, confident open], [playful chuckle], [slow down — building suspense], [quick, energetic], [pause for effect], [sincere close].
+      Keep each cue 2-6 words. Spread them through the whole script so the delivery reads like a real performance.
+    - Give the performance emotional shape: a hook opening, rising interest, a satisfying payoff, and a close.
+    ${
+      campaignContext
+        ? `- Consider this campaign context for continuity across the series:\n${campaignContext}`
+        : ''
+    }
+
+    Also direct the performance:
+    - suggestedVoiceCharacter: a short casting note (gender-neutral if possible), e.g. "Warm, authoritative female storyteller with a playful spark".
+    - suggestedDeliveryTone: pick ONE id from this exact list: ${DELIVERY_TONE_IDS.join(', ')}.
+    - suggestedSpeechSpeed: pick ONE id from this exact list: ${SPEECH_SPEED_IDS.join(', ')}.
+
+    Return your output ONLY as a valid JSON object:
+    {
+      "voiceOver": "The annotated spoken script — the ORIGINAL spoken words with direction cues added in [square brackets].",
+      "suggestedVoiceCharacter": "casting note",
+      "suggestedDeliveryTone": "one id from the list",
+      "suggestedSpeechSpeed": "one id from the list"
+    }
+  `;
+
+  const fallback = {
+    voiceOver: existingScript,
+    suggestedVoiceCharacter: '',
+    suggestedDeliveryTone: 'natural',
+    suggestedSpeechSpeed: '1.0'
+  };
+
+  try {
+    const response = await getAi(customApiKey).models.generateContent({
+      model: TEXT_MODEL,
+      contents: systemPrompt,
+      config: {
+        responseMimeType: 'application/json'
+      }
+    });
+
+    const text = response.text || "{}";
+    const cleaned = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(cleaned) as any;
+
+    const deliveryTone = DELIVERY_TONE_IDS.includes(parsed?.suggestedDeliveryTone)
+      ? parsed.suggestedDeliveryTone
+      : 'natural';
+    const speechSpeed = SPEECH_SPEED_IDS.includes(parsed?.suggestedSpeechSpeed)
+      ? parsed.suggestedSpeechSpeed
+      : '1.0';
+
     return {
-      voiceOver: `Discover how we can transform ${topic} today. Clean, professional results tailored just for you.`,
-      videoPrompt: `Cinematic camera pans across a modern sleek studio, high-key warm ambient lighting, highly detailed textures, smooth 4k render.`
+      voiceOver: parsed?.voiceOver || existingScript,
+      suggestedVoiceCharacter: parsed?.suggestedVoiceCharacter || '',
+      suggestedDeliveryTone: deliveryTone,
+      suggestedSpeechSpeed: speechSpeed
     };
+  } catch (err) {
+    console.error("Failed to enhance voiceover script", err);
+    return fallback;
   }
 };

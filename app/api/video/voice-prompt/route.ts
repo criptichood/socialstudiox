@@ -3,7 +3,7 @@ import { generateVoiceOverAndVideoPrompt } from "@/services/server/videoService"
 
 export async function POST(request: Request) {
   try {
-    const { topic, content, visualPrompt, aspectRatio } = await request.json();
+    const { topic, content, visualPrompt, aspectRatio, campaignContext } = await request.json();
     const customApiKey = request.headers.get("x-gemini-api-key") || undefined;
     
     if (!topic || !content || !visualPrompt) {
@@ -15,6 +15,7 @@ export async function POST(request: Request) {
       content,
       visualPrompt,
       aspectRatio,
+      campaignContext,
       customApiKey
     );
     
