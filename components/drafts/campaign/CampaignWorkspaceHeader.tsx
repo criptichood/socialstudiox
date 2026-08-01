@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { SavedCampaign, SocialPostCampaignItem } from '@/components/DraftsPlanner';
 import { AIModelDropdown } from '@/components/CustomDropdown';
+import { CampaignExportDropdown } from '@/components/drafts/campaign/CampaignExportDropdown';
 
 interface CampaignWorkspaceHeaderProps {
   currentCampaign: SavedCampaign;
@@ -39,6 +40,7 @@ interface CampaignWorkspaceHeaderProps {
   showDetails: boolean;
   setShowDetails: (val: boolean) => void;
   onUpdateCampaignModel?: (model: string) => void;
+  triggerToast: (msg: string) => void;
 }
 
 export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = ({
@@ -59,10 +61,12 @@ export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = (
   isGeneratingCampaign,
   campaignStatus,
   campaignError,
+  campaignPosts,
   handleAutoGenerateCampaignPosts,
   showDetails,
   setShowDetails,
   onUpdateCampaignModel,
+  triggerToast,
 }) => {
   return (
     <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 p-3 md:p-4 sticky top-0 z-30 space-y-3">
@@ -197,6 +201,12 @@ export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = (
             <Sparkles className="w-3.5 h-3.5 text-amber-300" />
             <span>Refine</span>
           </button>
+
+          <CampaignExportDropdown
+            campaignName={currentCampaign.name}
+            campaignPosts={campaignPosts}
+            triggerToast={triggerToast}
+          />
 
           <button
             type="button"

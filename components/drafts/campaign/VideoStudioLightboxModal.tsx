@@ -108,6 +108,7 @@ interface VideoStudioLightboxModalProps {
   handleGenerateVideoScriptAI: (postIdx: number, slideIdx: number | null) => Promise<void>;
   handleCompileProgrammaticVideoFrame: (postIdx: number, slideIdx: number | null, imageSrc?: string, promptText?: string, animStyle?: any, aspectRatio?: string, audioUrl?: string) => Promise<void>;
   handleUpdateScriptField: (postIdx: number, slideIdx: number | null, field: 'voiceOver' | 'videoPrompt', val: string) => void;
+  campaignPosts: SocialPostCampaignItem[] | null;
   synthesizingSpeechMap: Record<string, boolean>;
   scriptGeneratingMap: Record<string, boolean>;
   videoRenderingMap: Record<string, boolean>;
@@ -146,6 +147,7 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
   handleGenerateVideoScriptAI,
   handleCompileProgrammaticVideoFrame,
   handleUpdateScriptField,
+  campaignPosts,
   synthesizingSpeechMap,
   scriptGeneratingMap,
   videoRenderingMap,
@@ -163,8 +165,12 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
 }) => {
   if (!previewImageModal) return null;
 
-  const { post, slide, postIdx: pIdx, slideIdx: sIdx } = previewImageModal;
-  const targetObj = slide || post;
+  const { post: _postSnapshot, slide: _slideSnapshot, postIdx: pIdx, slideIdx: sIdx } = previewImageModal;
+  // Read live from campaignPosts so edits (script, audio, tone, etc.) reflect immediately
+  // instead of being stuck on the stale object captured when the modal opened.
+  const post = campaignPosts?.[pIdx] || _postSnapshot;
+  const slide = (sIdx !== null && post.slides && post.slides[sIdx]) ? post.slides[sIdx] : _slideSnapshot;
+  const targetObj: any = slide || post;
 
   const voiceOver = targetObj.voiceOver || post.voiceOver || post.caption || '';
   const videoPrompt = targetObj.videoPrompt || post.videoPrompt || post.visualPrompt || '';
@@ -196,6 +202,18 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
       a.click();
       document.body.removeChild(a);
       triggerToast("Downloading campaign video MP4...");
+    }
+  };
+
+  const handleDownloadAudio = () => {
+    if (savedAudioUrl) {
+      const a = document.createElement('a');
+      a.href = savedAudioUrl;
+      a.download = `campaign-audio-${Date.now()}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      triggerToast("Downloading synthesized audio...");
     }
   };
 
@@ -367,6 +385,17 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
                   >
                     <Download className="w-3 h-3 text-amber-300" />
                     <span>Video</span>
+                  </button>
+                )}
+                {savedAudioUrl && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadAudio}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold uppercase rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
+                    title="Download the synthesized narration audio"
+                  >
+                    <Download className="w-3 h-3 text-white" />
+                    <span>Audio</span>
                   </button>
                 )}
               </div>
@@ -541,9 +570,10 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
                       onClick={() => handleGenerateVideoScriptAI(pIdx, sIdx)}
                       disabled={isScriptGenerating}
                       className="text-[10px] text-purple-400 hover:text-purple-300 font-bold uppercase flex items-center gap-1 cursor-pointer"
+                      title={voiceOver.trim() ? "Re-pass the current script to add spoken-word narration guidelines and auto-cast delivery tone + speech speed" : "Generate a fresh spoken narration script with production notes"}
                     >
                       {isScriptGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-                      <span>Auto-Generate Script</span>
+                      <span>{voiceOver.trim() ? 'Add Speech Guidelines' : 'Auto-Generate Script'}</span>
                     </button>
                   </div>
                   <textarea
@@ -553,6 +583,28 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
                     placeholder="Enter spoken voiceover script text..."
                     className="w-full p-3 bg-slate-900 border border-slate-800 focus:border-purple-500 text-white rounded-xl text-xs leading-relaxed outline-none resize-none"
                   />
+                  {voiceOver.includes('[') && (
+                    <p className="text-[9px] text-slate-500 font-mono leading-snug">
+                      [Square-bracket cues] are narration directions — they are removed from the spoken audio.
+                    </p>
+                  )}
+                  {targetObj?.suggestedVoiceCharacter && (
+                    <div className="flex items-start gap-2 pt-1.5">
+                      <Sparkles className="w-3 h-3 text-purple-400 mt-0.5 shrink-0" />
+                      <div className="flex flex-wrap items-center gap-1.5 text-[9px] font-mono">
+                        <span className="text-purple-400 font-bold uppercase tracking-wide">AI Production Notes</span>
+                        <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-slate-300">
+                          🎙 {targetObj.suggestedVoiceCharacter}
+                        </span>
+                        <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-slate-300">
+                          🎭 {DELIVERY_STYLES.find(d => d.id === (targetObj.deliveryTone || currentTone))?.name || currentTone}
+                        </span>
+                        <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-slate-300">
+                          ⏱ {SPEAKING_SPEEDS.find(s => s.id === (targetObj.speechSpeed || currentSpeed))?.name || currentSpeed}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 pt-1">

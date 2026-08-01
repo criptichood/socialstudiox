@@ -13,7 +13,7 @@ import { CampaignImage } from '@/components/drafts/CampaignImage';
 import { ImageDownloadDropdown } from '@/components/ImageDownloadDropdown';
 import { AIModelDropdown } from '@/components/CustomDropdown';
 
-import { generateInfographicImage, generateVoiceOverAndVideoPrompt, generateVoiceOverSpeech } from '@/services/geminiService';
+import { generateInfographicImage, generateVoiceOverAndVideoPrompt, enhanceVoiceOverWithGuidelines, generateVoiceOverSpeech } from '@/services/geminiService';
 import { compileProgrammaticVideo } from '@/services/programmaticVideoCompiler';
 import { saveVoiceoverSession } from '@/services/audioStorageService';
 import { loadVideoBlobUrl } from '@/services/videoStorageService';
@@ -369,6 +369,9 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     }
   };
 
+  const stripNarrationCues = (script: string) =>
+    script.replace(/\s*\[[^\]]*\]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
   const handleSynthesizeVoice = async (
     postIdx: number, 
     slideIdx: number | null, 
@@ -385,7 +388,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
 
     try {
       const audioUrl = await generateVoiceOverSpeech(
-        text, 
+        stripNarrationCues(text), 
         voice || selectedVoiceActor, 
         deliveryTone || selectedDeliveryTone, 
         engineModel || selectedAudioEngine,
@@ -444,6 +447,34 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     }
   };
 
+  const buildCampaignNarrationContext = (currentPostIdx: number, currentSlideIdx: number | null) => {
+    const posts = campaignPosts || [];
+    const lines: string[] = [];
+    lines.push(`Campaign: ${currentCampaign?.name || ''}`);
+    lines.push(`Main topic: ${currentCampaign?.mainTopic || ''}`);
+    lines.push(`Platform: ${currentCampaign?.platform || ''}`);
+    if (currentCampaign?.customRequirements) {
+      lines.push(`Custom angle / requirements: ${currentCampaign.customRequirements}`);
+    }
+    lines.push('Full campaign outline (in listening order):');
+    posts.forEach((p, i) => {
+      if (p.slides && p.slides.length > 0) {
+        p.slides.forEach((s, si) => {
+          const isCurrent = i === currentPostIdx && si === currentSlideIdx;
+          lines.push(
+            `  - ${isCurrent ? '[<<< THIS IS THE EPISODE BEING NARRATED >>>] ' : ''}${p.topic} / Slide ${s.slideNumber}: ${s.title}${s.contentText ? ' — ' + s.contentText : ''}`
+          );
+        });
+      } else {
+        const isCurrent = i === currentPostIdx && currentSlideIdx === null;
+        lines.push(
+          `  - ${isCurrent ? '[<<< THIS IS THE EPISODE BEING NARRATED >>>] ' : ''}${p.topic}${p.caption ? ' — ' + p.caption : ''}`
+        );
+      }
+    });
+    return lines.join('\n');
+  };
+
   const handleGenerateVideoScriptAI = async (postIdx: number, slideIdx: number | null) => {
     const key = getStudioKey(postIdx, slideIdx);
     setScriptGeneratingMap(prev => ({ ...prev, [key]: true }));
@@ -451,30 +482,60 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     try {
       const post = (campaignPosts || [])[postIdx];
       const slide = (slideIdx !== null && post.slides) ? post.slides[slideIdx] : null;
+      const existingScript = (slide ? slide.voiceOver : post.voiceOver) || '';
+      const campaignContext = buildCampaignNarrationContext(postIdx, slideIdx);
+      const topicLabel = slide ? `${post.topic} — Slide ${slide.slideNumber}` : post.topic;
 
-      const scriptRes = await generateVoiceOverAndVideoPrompt(
-        slide ? `${post.topic} — Slide ${slide.slideNumber}` : post.topic,
-        slide ? slide.visualPrompt : post.visualPrompt,
-        slide ? slide.contentText || post.caption : post.caption
-      );
+      let scriptRes;
+      if (existingScript.trim()) {
+        // Re-pass the existing script so the AI annotates it with spoken-word
+        // narration guidelines and casts delivery tone + speech speed.
+        scriptRes = await enhanceVoiceOverWithGuidelines(topicLabel, existingScript, campaignContext);
+      } else {
+        scriptRes = await generateVoiceOverAndVideoPrompt(
+          topicLabel,
+          slide ? slide.contentText || post.caption : post.caption,
+          slide ? slide.visualPrompt : post.visualPrompt,
+          '16:9',
+          campaignContext
+        );
+      }
 
       const updatedPosts = [...(campaignPosts || [])];
+      const target = (slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx])
+        ? updatedPosts[postIdx].slides![slideIdx]
+        : updatedPosts[postIdx];
+      const patch = {
+        voiceOver: scriptRes.voiceOver,
+        videoPrompt: 'videoPrompt' in scriptRes ? scriptRes.videoPrompt : (target as any)?.videoPrompt,
+        suggestedVoiceCharacter: scriptRes.suggestedVoiceCharacter || (target as any)?.suggestedVoiceCharacter,
+        // When enhancing, the annotated script IS the speech guideline, so the AI's
+        // delivery tone + speed decisions override any manual selection.
+        deliveryTone: existingScript.trim()
+          ? (scriptRes.suggestedDeliveryTone || (target as any)?.deliveryTone)
+          : ((target as any)?.deliveryTone || scriptRes.suggestedDeliveryTone),
+        speechSpeed: existingScript.trim()
+          ? (scriptRes.suggestedSpeechSpeed || (target as any)?.speechSpeed)
+          : ((target as any)?.speechSpeed || scriptRes.suggestedSpeechSpeed),
+      };
       if (slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
         updatedPosts[postIdx].slides![slideIdx] = {
           ...updatedPosts[postIdx].slides![slideIdx],
-          voiceOver: scriptRes.voiceOver,
-          videoPrompt: scriptRes.videoPrompt
+          ...patch
         };
       } else if (updatedPosts[postIdx]) {
         updatedPosts[postIdx] = {
           ...updatedPosts[postIdx],
-          voiceOver: scriptRes.voiceOver,
-          videoPrompt: scriptRes.videoPrompt
+          ...patch
         };
       }
 
       onUpdateCampaignPosts(updatedPosts);
-      triggerToast("AI Script & Directions generated!");
+      triggerToast(
+        existingScript.trim()
+          ? "Speech guidelines & delivery notes added to script!"
+          : "AI narration script & production notes generated!"
+      );
     } catch (err) {
       console.error(err);
       triggerToast("Failed to generate AI video script.");
@@ -633,6 +694,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         showDetails={showCampaignDetails}
         setShowDetails={setShowCampaignDetails}
         onUpdateCampaignModel={onUpdateCampaignModel}
+        triggerToast={triggerToast}
       />
 
       {showCampaignDetails && (
@@ -823,6 +885,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         handleGenerateVideoScriptAI={handleGenerateVideoScriptAI}
         handleCompileProgrammaticVideoFrame={handleCompileProgrammaticVideoFrame}
         handleUpdateScriptField={handleUpdateScriptField}
+        campaignPosts={campaignPosts}
         synthesizingSpeechMap={synthesizingSpeechMap}
         scriptGeneratingMap={scriptGeneratingMap}
         videoRenderingMap={videoRenderingMap}
