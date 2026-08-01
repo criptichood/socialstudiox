@@ -21,7 +21,8 @@ interface DraftsPlannerProps {
   onCreateDraft: (draft: Omit<DraftPrompt, 'id' | 'createdAt'>) => void;
   onDeleteDraft: (id: string) => void;
   onLaunchDraft: (draft: DraftPrompt) => void;
-  initialTab?: 'blueprints' | 'social-campaign';
+  activeTab: 'blueprints' | 'social-campaign';
+  onTabChange: (tab: 'blueprints' | 'social-campaign') => void;
   initialTopic?: string;
   initialPrompt?: string;
   initialWebsite?: string;
@@ -33,13 +34,13 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
   onCreateDraft,
   onDeleteDraft,
   onLaunchDraft,
-  initialTab,
+  activeTab,
+  onTabChange,
   initialTopic,
   initialPrompt,
   initialWebsite
 }) => {
-  // Navigation tabs: 'blueprints' or 'social-campaign'
-  const [activeTab, setActiveTab] = useState<'blueprints' | 'social-campaign'>(initialTab || 'blueprints');
+  // Navigation tabs: 'blueprints' or 'social-campaign' (controlled via URL routing)
   const [showCreateBlueprintModal, setShowCreateBlueprintModal] = useState(false);
   const [showCreateCampaignModal, setShowCreateCampaignModal] = useState(false);
   const [showAddPostModal, setShowAddPostModal] = useState(false);
@@ -115,11 +116,8 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
   } = useCampaigns({ activeProjectId, onCreateDraft, onLaunchDraft });
 
   React.useEffect(() => {
-    if (initialTab) {
-      setActiveTab(initialTab);
-    }
     if (initialTopic || initialPrompt) {
-      setActiveTab('social-campaign');
+      onTabChange('social-campaign');
       if (initialTopic) {
         setNewCampName(`${initialTopic} Campaign`);
         setNewCampTopic(initialTopic);
@@ -132,7 +130,7 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
       }
       setShowCreateCampaignModal(true);
     }
-  }, [initialTab, initialTopic, initialPrompt, initialWebsite]);
+  }, [initialTopic, initialPrompt, initialWebsite, onTabChange]);
 
   const handleCreateBlueprintSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -196,7 +194,7 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
             {/* Segmented Control Tabs */}
             <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-inner">
               <button
-                onClick={() => setActiveTab('blueprints')}
+                onClick={() => onTabChange('blueprints')}
                 className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
                   activeTab === 'blueprints'
                     ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
@@ -208,7 +206,7 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
               </button>
 
               <button
-                onClick={() => setActiveTab('social-campaign')}
+                onClick={() => onTabChange('social-campaign')}
                 className={`px-5 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
                   activeTab === 'social-campaign'
                     ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'

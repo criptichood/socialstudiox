@@ -49,9 +49,10 @@ import {
 
 const App: React.FC = () => {
   const {
-    showIntro, setShowIntro,
+    showIntro, setShowIntro, handleIntroComplete,
     topic, setTopic,
     currentView, setCurrentView,
+    draftsTab, setDraftsTab,
     isSidebarOpen, setIsSidebarOpen,
     projects,
     selectedProjectId, setSelectedProjectId,
@@ -182,7 +183,7 @@ const App: React.FC = () => {
     {!checkingKey && !hasApiKey && <KeySelectionModal />}
 
     {showIntro ? (
-      <IntroScreen onComplete={() => setShowIntro(false)} />
+      <IntroScreen onComplete={handleIntroComplete} />
     ) : (
     <div className="h-[100dvh] flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white relative animate-in fade-in duration-1000 transition-colors">
       
@@ -560,6 +561,8 @@ const App: React.FC = () => {
                   <span>Back to Projects Space</span>
                 </button>
                 <DraftsPlanner 
+                  activeTab={draftsTab === 'social' ? 'social-campaign' : 'blueprints'}
+                  onTabChange={(tab) => setDraftsTab(tab === 'social-campaign' ? 'social' : 'drafts')}
                   activeProjectId={selectedProjectId || 'proj-1'}
                   drafts={activeDrafts}
                   onCreateDraft={handleCreateDraft}

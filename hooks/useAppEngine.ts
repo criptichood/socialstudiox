@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   GeneratedImage, 
   ComplexityLevel, 
@@ -17,7 +18,7 @@ import {
 } from '@/services/geminiService';
 import { DBService } from '@/services/dbService';
 
-// Ensure standard typings for window.aistudio if TypeScript needs it
+// Standard typings for window.aistudio if TypeScript needs it
 declare global {
   interface Window {
     aistudio?: {
@@ -27,13 +28,91 @@ declare global {
   }
 }
 
+export type DraftsTab = 'drafts' | 'social';
+
+interface ParsedLocation {
+  view: ViewType;
+  draftsTab: DraftsTab;
+  isKnown: boolean;
+}
+
+const PATH_TO_VIEW: Record<string, ViewType> = {
+  dashboard: 'dashboard',
+  canvas: 'canvas',
+  research: 'research',
+  gallery: 'gallery',
+  presenter: 'presenter-studio',
+  voiceover: 'voiceover-studio',
+  video: 'video-studio',
+  sound: 'sound-studio',
+  campaign: 'drafts'
+};
+
+const parseLocation = (path: string): ParsedLocation => {
+  const segments = path.split('/').filter(Boolean);
+  const seg0 = segments[0] || '';
+  if (seg0 === '') return { view: 'canvas', draftsTab: 'drafts', isKnown: true };
+  const view = PATH_TO_VIEW[seg0];
+  if (!view) return { view: 'canvas', draftsTab: 'drafts', isKnown: false };
+  if (view === 'drafts') {
+    return { view, draftsTab: segments[1] === 'social' ? 'social' : 'drafts', isKnown: true };
+  }
+  return { view, draftsTab: 'drafts', isKnown: true };
+};
+
+const pathForView = (view: ViewType, draftsTab: DraftsTab): string => {
+  switch (view) {
+    case 'dashboard': return '/dashboard';
+    case 'canvas': return '/canvas';
+    case 'research': return '/research';
+    case 'gallery': return '/gallery';
+    case 'presenter-studio': return '/presenter';
+    case 'voiceover-studio': return '/voiceover';
+    case 'video-studio': return '/video';
+    case 'sound-studio': return '/sound';
+    case 'drafts':
+      return draftsTab === 'social' ? '/campaign/social' : '/campaign/draft';
+  }
+};
+
 export const useAppEngine = () => {
-  const [showIntro, setShowIntro] = useState(true);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const [showIntro, setShowIntro] = useState(pathname === '/');
   const [topic, setTopic] = useState('');
-  
-  // Navigation View & Sidebar state
-  const [currentView, setCurrentView] = useState<ViewType>('canvas');
+
+  // Navigation View & Sidebar state (URL-driven)
+  const initialLocation = parseLocation(pathname);
+  const [currentView, setCurrentViewState] = useState<ViewType>(initialLocation.view);
+  const [draftsTab, setDraftsTabState] = useState<DraftsTab>(initialLocation.draftsTab);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Keep view state in sync with the address bar (refresh, browser back/forward)
+  useEffect(() => {
+    const loc = parseLocation(pathname);
+    if (!loc.isKnown) {
+      router.replace('/dashboard');
+      return;
+    }
+    setCurrentViewState(loc.view);
+    setDraftsTabState(loc.draftsTab);
+  }, [pathname, router]);
+
+  const setCurrentView = (view: ViewType) => {
+    setCurrentViewState(view);
+    router.push(pathForView(view, draftsTab));
+  };
+
+  const setDraftsTab = (tab: DraftsTab) => {
+    setDraftsTabState(tab);
+    router.push(pathForView('drafts', tab));
+  };
+
+  const handleIntroComplete = () => {
+    setShowIntro(false);
+    router.replace('/dashboard');
+  };
 
   // Projects & Drafts State
   const [projects, setProjects] = useState<Project[]>([]);
@@ -629,9 +708,10 @@ export const useAppEngine = () => {
   };
 
   return {
-    showIntro, setShowIntro,
+    showIntro, setShowIntro, handleIntroComplete,
     topic, setTopic,
     currentView, setCurrentView,
+    draftsTab, setDraftsTab,
     isSidebarOpen, setIsSidebarOpen,
     projects, setProjects,
     selectedProjectId, setSelectedProjectId,
