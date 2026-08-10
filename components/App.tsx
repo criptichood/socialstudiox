@@ -25,6 +25,10 @@ import { VideoStudio } from '@/components/VideoStudio';
 import { SoundStudio } from '@/components/SoundStudio';
 import { PresentationDeck } from '@/components/PresentationDeck';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import {
+  getVideoGenerationState,
+  subscribeVideoGeneration
+} from '@/services/videoGenerationManager';
 import { 
   AlertCircle, 
   Compass, 
@@ -44,7 +48,10 @@ import {
   Plus,
   Sparkles,
   Play,
-  Menu
+  Menu,
+  Loader2,
+  Check,
+  X
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -114,6 +121,32 @@ const App: React.FC = () => {
   const [researchPrefillPrompt, setResearchPrefillPrompt] = React.useState<string>('');
   const [researchPrefillWebsite, setResearchPrefillWebsite] = React.useState<string>('');
   const [videoStudioPrefillPrompt, setVideoStudioPrefillPrompt] = React.useState<string>('');
+
+  // Global video generation banner + toasts (managed outside VideoStudio so generation survives navigation).
+  const [videoGenBanner, setVideoGenBanner] = React.useState(getVideoGenerationState);
+  const [genToast, setGenToast] = React.useState<{ kind: 'error' | 'success'; message: string } | null>(null);
+  const prevGenStatusRef = React.useRef<string>(getVideoGenerationState().status);
+
+  React.useEffect(() => {
+    const unsubscribe = subscribeVideoGeneration(setVideoGenBanner);
+    return unsubscribe;
+  }, []);
+
+  React.useEffect(() => {
+    const status = videoGenBanner.status;
+    if (status === prevGenStatusRef.current) return;
+    prevGenStatusRef.current = status;
+    if (status === 'error') {
+      setGenToast({ kind: 'error', message: videoGenBanner.error || 'Video generation failed. Please try again.' });
+      const t = setTimeout(() => setGenToast(null), 8000);
+      return () => clearTimeout(t);
+    }
+    if (status === 'success') {
+      setGenToast({ kind: 'success', message: 'Your generated video has been saved to the archive.' });
+      const t = setTimeout(() => setGenToast(null), 5000);
+      return () => clearTimeout(t);
+    }
+  }, [videoGenBanner.status]);
 
   // Modal for API Key Selection
   const KeySelectionModal = () => (
@@ -682,6 +715,87 @@ const App: React.FC = () => {
         onImportImages={(imageIds) => handleImportImagesToProject(imageIds, presentingProject.id)}
         onClose={() => setPresentingProject(null)}
       />
+    )}
+
+    {/* Persistent "Video Generating" banner — visible from any view */}
+    {videoGenBanner.status === 'running' && (
+      <button
+        type="button"
+        onClick={() => {
+          if (currentView !== 'video-studio') setCurrentView('video-studio');
+        }}
+        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] w-[min(92vw,440px)] bg-slate-900/95 border border-indigo-500/40 rounded-2xl px-4 py-3 shadow-2xl shadow-indigo-500/10 flex items-center gap-3 cursor-pointer hover:border-indigo-400 transition-colors animate-in slide-in-from-bottom-4 duration-200"
+        id="video-generation-banner"
+      >
+        <Loader2 className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
+        <div className="flex-1 min-w-0 space-y-1.5 text-left">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Video Generating</span>
+            <span className="text-[9px] text-slate-400 font-mono truncate">{videoGenBanner.model || 'Video'}</span>
+          </div>
+          <p className="text-[11px] text-slate-300 truncate">{videoGenBanner.step || 'Initializing...'}</p>
+          <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-full transition-all duration-300"
+              style={{ width: `${videoGenBanner.progress}%` }}
+            ></div>
+          </div>
+        </div>
+        {currentView !== 'video-studio' && (
+          <span className="text-[10px] text-slate-400 shrink-0 font-semibold">View</span>
+        )}
+      </button>
+    )}
+
+    {/* Global toast for generation failures / completions */}
+    {genToast && genToast.kind === 'error' && (
+      <div className="fixed bottom-4 right-4 z-[150] w-[min(92vw,380px)] bg-rose-950/95 border border-rose-500/40 rounded-2xl p-4 shadow-2xl shadow-rose-500/10 animate-in slide-in-from-bottom-4 duration-200 space-y-2">
+        <div className="flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-bold text-rose-200 uppercase tracking-wider">Video Generation Failed</p>
+            <p className="text-[11px] text-rose-300/90 mt-1 line-clamp-3 break-words">{genToast.message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setGenToast(null)}
+            className="text-rose-400 hover:text-white shrink-0 p-0.5"
+            aria-label="Dismiss error"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    )}
+    {genToast && genToast.kind === 'success' && (
+      <div className="fixed bottom-4 right-4 z-[150] w-[min(92vw,380px)] bg-emerald-950/95 border border-emerald-500/40 rounded-2xl p-4 shadow-2xl shadow-emerald-500/10 animate-in slide-in-from-bottom-4 duration-200 space-y-2">
+        <div className="flex items-start gap-2.5">
+          <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-bold text-emerald-200 uppercase tracking-wider">Video Ready</p>
+            <p className="text-[11px] text-emerald-300/90 mt-1">{genToast.message}</p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {currentView !== 'video-studio' && (
+              <button
+                type="button"
+                onClick={() => { setGenToast(null); setCurrentView('video-studio'); }}
+                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold rounded-lg"
+              >
+                View
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setGenToast(null)}
+              className="text-emerald-400 hover:text-white p-0.5"
+              aria-label="Dismiss"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
     )}
     </>
   );

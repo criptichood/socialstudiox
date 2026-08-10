@@ -1,4 +1,5 @@
-import { getAi, TEXT_MODEL, getMimeTypeAndData } from "@/services/server/config";
+import { getAi, getGeminiApiKey, getGlobalMap, TEXT_MODEL, getMimeTypeAndData } from "@/services/server/config";
+import { DEFAULT_VIDEO_MODEL, OMNI_FLASH_MODEL, VideoGenerationOptions } from "@/types";
 
 export interface VideoGenerationResult {
   operationName?: string;
@@ -6,14 +7,51 @@ export interface VideoGenerationResult {
   isSimulated?: boolean;
 }
 
-export const generateVeoVideo = async (
+const activeVeoOperations = getGlobalMap<any>("veoVideoOperations");
+
+const resolveVideoUrlFromVideo = async (videoObj: any, customApiKey?: string): Promise<string> => {
+  if (videoObj.videoBytes) {
+    const mime = videoObj.mimeType || "video/mp4";
+    return `data:${mime};base64,${videoObj.videoBytes}`;
+  }
+  if (videoObj.uri) {
+    const apiKey = getGeminiApiKey(customApiKey);
+    const res = await fetch(videoObj.uri, {
+      headers: apiKey ? { "x-goog-api-key": apiKey } : {}
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to download generated video from Gemini API: ${res.status} ${res.statusText}`);
+    }
+    const contentType = res.headers.get("content-type") || videoObj.mimeType || "video/mp4";
+    const buf = Buffer.from(await res.arrayBuffer());
+    return `data:${contentType};base64,${buf.toString("base64")}`;
+  }
+  throw new Error("Video object contains neither videoBytes nor uri. Response: " + JSON.stringify(videoObj));
+};
+
+const buildVideoUrlFromOperation = async (operation: any, customApiKey?: string): Promise<string> => {
+  const generatedVideos = operation.response?.generatedVideos;
+  if (!generatedVideos || generatedVideos.length === 0) {
+    const responseStr = JSON.stringify(operation.response || {}, null, 2);
+    throw new Error(`Video generation completed but returned no video output. Response details:\n${responseStr}`);
+  }
+
+  const videoObj = generatedVideos[0].video;
+  if (!videoObj) {
+    throw new Error("No video element found in response generatedVideos[0].video");
+  }
+
+  return resolveVideoUrlFromVideo(videoObj, customApiKey);
+};
+
+export const startVeoVideoGeneration = async (
   prompt: string,
   imageBase64?: string,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
-  model: string = 'veo-3.1-lite-generate-preview',
-  endImageBase64?: string,
-  customApiKey?: string
-): Promise<any> => {
+  model: string = DEFAULT_VIDEO_MODEL,
+  customApiKey?: string,
+  options: VideoGenerationOptions = {}
+): Promise<{ operationName: string; operation: any }> => {
   let imagePayload: any = undefined;
   if (imageBase64) {
     try {
@@ -28,9 +66,9 @@ export const generateVeoVideo = async (
   }
 
   let lastFramePayload: any = undefined;
-  if (endImageBase64) {
+  if (options.endImageBase64) {
     try {
-      const { mimeType, data } = getMimeTypeAndData(endImageBase64);
+      const { mimeType, data } = getMimeTypeAndData(options.endImageBase64);
       lastFramePayload = {
         imageBytes: data,
         mimeType: mimeType
@@ -40,83 +78,158 @@ export const generateVeoVideo = async (
     }
   }
 
-  try {
-    const op = await getAi(customApiKey).models.generateVideos({
-      model: model,
-      prompt: prompt,
-      image: imagePayload,
-      config: {
-        numberOfVideos: 1,
-        resolution: '720p',
-        aspectRatio: aspectRatio === '1:1' ? '9:16' : aspectRatio,
-        ...(lastFramePayload ? { lastFrame: lastFramePayload } : {})
-      }
-    });
-
-    if (!op) {
-      throw new Error("No operation returned from generateVideos API.");
-    }
-
-    let polledOp = op;
-    const maxRetries = 60;
-    const delayMs = 3000;
-    let attempts = 0;
-
-    while (!polledOp.done && attempts < maxRetries) {
-      attempts++;
-      console.log(`Polling VEO operation (attempt ${attempts}/${maxRetries}):`, polledOp.name);
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-      polledOp = await getAi(customApiKey).operations.getVideosOperation({ operation: polledOp });
-    }
-
-    if (!polledOp.done) {
-      throw new Error(`Video generation timed out after ${maxRetries * delayMs / 1000} seconds.`);
-    }
-
-    if (polledOp.error) {
-      const errDetails = typeof polledOp.error === 'object' ? JSON.stringify(polledOp.error, null, 2) : polledOp.error;
-      throw new Error(`Video generation failed with API error: ${errDetails}`);
-    }
-
-    const generatedVideos = polledOp.response?.generatedVideos;
-    if (!generatedVideos || generatedVideos.length === 0) {
-      const responseStr = JSON.stringify(polledOp.response || {}, null, 2);
-      throw new Error(`Video generation completed but returned no video output. Response details:\n${responseStr}`);
-    }
-
-    const videoObj = generatedVideos[0].video;
-    if (!videoObj) {
-      throw new Error("No video element found in response generatedVideos[0].video");
-    }
-
-    let videoUrl = "";
-    if (videoObj.videoBytes) {
-      const mime = videoObj.mimeType || "video/mp4";
-      videoUrl = `data:${mime};base64,${videoObj.videoBytes}`;
-    } else if (videoObj.uri) {
-      videoUrl = videoObj.uri;
-    } else {
-      throw new Error("Video object contains neither videoBytes nor uri. Response: " + JSON.stringify(videoObj));
-    }
-
-    return {
-      videoUrl,
-      isSimulated: false,
-      response: polledOp.response
-    };
-  } catch (err: any) {
-    console.warn("VEO API failed, throwing error for client control flow", err);
-    throw err;
+  const source: any = { prompt };
+  if (imagePayload) {
+    source.image = imagePayload;
   }
+
+  const op = await getAi(customApiKey).models.generateVideos({
+    model: model,
+    source,
+    config: {
+      numberOfVideos: 1,
+      resolution: options.resolution || '720p',
+      aspectRatio: aspectRatio === '1:1' ? '9:16' : aspectRatio,
+      ...(options.durationSeconds ? { durationSeconds: options.durationSeconds } : {}),
+      ...(options.negativePrompt ? { negativePrompt: options.negativePrompt } : {}),
+      ...(lastFramePayload ? { lastFrame: lastFramePayload } : {})
+    }
+  });
+
+  if (!op || !op.name) {
+    throw new Error("No operation returned from generateVideos API.");
+  }
+
+  activeVeoOperations.set(op.name, op);
+  return { operationName: op.name, operation: op };
 };
 
-export const pollVideoOperation = async (operation: any, customApiKey?: string): Promise<any> => {
+export const pollVideoOperation = async (
+  operationName: string,
+  customApiKey?: string
+): Promise<{ done: boolean; videoUrl?: string; error?: string; isSimulated?: boolean }> => {
+  const op = activeVeoOperations.get(operationName);
+  if (!op) {
+    throw new Error("Video operation not found. The server may have restarted — please try generating again.");
+  }
+
+  let polledOp: any;
   try {
-    return await getAi(customApiKey).operations.getVideosOperation({ operation });
+    polledOp = await getAi(customApiKey).operations.getVideosOperation({ operation: op });
   } catch (err: any) {
     console.error("Error polling video operation:", err);
     throw err;
   }
+
+  activeVeoOperations.set(operationName, polledOp);
+
+  if (!polledOp.done) {
+    return { done: false };
+  }
+
+  activeVeoOperations.delete(operationName);
+
+  if (polledOp.error) {
+    const errDetails = typeof polledOp.error === 'object' ? JSON.stringify(polledOp.error, null, 2) : polledOp.error;
+    return { done: true, error: `Video generation failed with API error: ${errDetails}` };
+  }
+
+  try {
+    const videoUrl = await buildVideoUrlFromOperation(polledOp, customApiKey);
+    return { done: true, videoUrl, isSimulated: false };
+  } catch (err: any) {
+    return { done: true, error: err?.message || "Video generation returned no output." };
+  }
+};
+
+const findVideoContent = (steps: any[]): any => {
+  if (!Array.isArray(steps)) {
+    return undefined;
+  }
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i];
+    if (step?.type !== 'model_output' || !Array.isArray(step.content)) {
+      continue;
+    }
+    for (let j = step.content.length - 1; j >= 0; j--) {
+      if (step.content[j]?.type === 'video') {
+        return step.content[j];
+      }
+    }
+  }
+  return undefined;
+};
+
+const resolveOmniVideoOutput = async (interaction: any, customApiKey?: string): Promise<any> => {
+  let current = interaction;
+  const deadline = Date.now() + 180_000;
+
+  while (true) {
+    if (current.status === 'failed') {
+      throw new Error('Gemini Omni Flash interaction failed.');
+    }
+
+    const videoContent = current.output_video || findVideoContent(current.steps);
+    if (videoContent) {
+      let videoUrl = '';
+      if (videoContent.data) {
+        videoUrl = `data:${videoContent.mime_type || 'video/mp4'};base64,${videoContent.data}`;
+      } else if (videoContent.uri) {
+        videoUrl = videoContent.uri;
+      } else {
+        throw new Error('Gemini Omni Flash video content has neither data nor uri.');
+      }
+      return { videoUrl, isSimulated: false, response: current };
+    }
+
+    if (!current.id || Date.now() > deadline) {
+      throw new Error('Gemini Omni Flash returned no video output. Response: ' + JSON.stringify(current));
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    current = await getAi(customApiKey).interactions.get(current.id);
+  }
+};
+
+export const generateOmniFlashVideo = async (
+  prompt: string,
+  imageBase64?: string,
+  aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
+  customApiKey?: string,
+  durationSeconds?: number
+): Promise<any> => {
+  const input: any[] = [];
+
+  if (imageBase64) {
+    const { mimeType, data } = getMimeTypeAndData(imageBase64);
+    input.push({ type: 'image', data, mime_type: mimeType });
+  }
+
+  input.push({ type: 'text', text: prompt });
+
+  const responseFormat: any = {
+    type: 'video',
+    aspect_ratio: aspectRatio === '16:9' ? '16:9' : '9:16'
+  };
+  if (durationSeconds) {
+    responseFormat.duration = `${durationSeconds}s`;
+  }
+
+  const params: any = {
+    model: OMNI_FLASH_MODEL,
+    input: input.length === 1 ? prompt : input,
+    response_format: responseFormat
+  };
+
+  if (imageBase64) {
+    params.generation_config = {
+      video_config: { task: 'image_to_video' }
+    };
+  }
+
+  const interaction: any = await getAi(customApiKey).interactions.create(params);
+
+  return resolveOmniVideoOutput(interaction, customApiKey);
 };
 
 const DELIVERY_TONE_IDS = ['natural', 'conversational', 'educational', 'high_energy', 'calm_warm', 'dramatic', 'inspirational'];

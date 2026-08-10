@@ -1,12 +1,26 @@
-import { VideoGenerationResult } from "@/types";
+import { DEFAULT_VIDEO_MODEL, VideoGenerationOptions, VideoModelInfo } from "@/types";
 
-export const generateVeoVideo = async (
+export const fetchVideoModelCatalog = async (): Promise<{
+  gatewayConfigured: boolean;
+  models: VideoModelInfo[];
+}> => {
+  const response = await fetch("/api/video/models", { method: "GET", cache: "no-store" });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to load video model catalog");
+  }
+
+  return await response.json();
+};
+
+export const startVideoGeneration = async (
   prompt: string,
   imageBase64?: string,
   aspectRatio: '16:9' | '9:16' | '1:1' = '16:9',
-  model: string = 'veo-3.1-lite-generate-preview',
-  endImageBase64?: string
-): Promise<any> => {
+  model: string = DEFAULT_VIDEO_MODEL,
+  options: VideoGenerationOptions = {}
+): Promise<{ success?: boolean; provider?: 'gemini' | 'gateway'; operationName?: string; videoUrl?: string }> => {
   const response = await fetch("/api/video/generate", {
     method: "POST",
     headers: {
@@ -17,7 +31,7 @@ export const generateVeoVideo = async (
       imageBase64,
       aspectRatio,
       model,
-      endImageBase64
+      ...options
     })
   });
 
@@ -29,10 +43,24 @@ export const generateVeoVideo = async (
   return await response.json();
 };
 
-export const pollVideoOperation = async (operation: any): Promise<any> => {
-  // Since operation polling is now handled server-side within the route handler, 
-  // this is kept for signature compatibility but can return the operation status.
-  return { done: true, response: operation };
+export const pollVideoGeneration = async (
+  operationName: string,
+  provider?: 'gemini' | 'gateway'
+): Promise<{ done?: boolean; videoUrl?: string; error?: string; isSimulated?: boolean }> => {
+  const response = await fetch("/api/video/poll", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ operationName, ...(provider ? { provider } : {}) })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to poll video generation");
+  }
+
+  return await response.json();
 };
 
 export const generateVoiceOverAndVideoPrompt = async (

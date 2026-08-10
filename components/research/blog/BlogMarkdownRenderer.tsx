@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Sparkles, ExternalLink, ImageIcon, Loader2 } from 'lucide-react';
+import { Sparkles, ExternalLink, ImageIcon, Loader2, Copy, Check } from 'lucide-react';
 import { BlogPostResult, SectionImagePrompt } from '../../../services/geminiService';
 
 interface BlogMarkdownRendererProps {
@@ -17,6 +17,7 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
   generatingPromptId,
   onGenerateSectionImage
 }) => {
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
   return (
     <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm leading-relaxed text-slate-800 dark:text-slate-200">
       <ReactMarkdown
@@ -35,16 +36,27 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
             if (promptMatch) {
               const promptText = promptMatch[1].trim();
               return (
-                <div className="my-6 p-4 bg-purple-950/40 dark:bg-purple-950/60 border border-purple-500/30 rounded-2xl space-y-3 shadow-sm">
-                  <div className="flex items-center justify-between text-xs">
+                <div className="my-6 p-4 sm:p-5 bg-purple-950/40 dark:bg-purple-950/60 border border-purple-500/30 rounded-2xl space-y-3 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                     <span className="font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
-                      <span>Section Image Prompt Placeholder</span>
+                      <span>Image Prompt</span>
                     </span>
-                    <span className="text-[10px] text-slate-400 font-mono">16:9 Infographic Aspect Ratio</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(promptText);
+                        setCopiedPrompt(true);
+                        setTimeout(() => setCopiedPrompt(false), 2000);
+                      }}
+                      className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-lg text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer border border-purple-500/20"
+                    >
+                      {copiedPrompt ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedPrompt ? 'Copied' : 'Copy prompt'}</span>
+                    </button>
                   </div>
-                  <p className="text-xs text-purple-200 font-medium italic bg-slate-900/80 p-3 rounded-xl border border-purple-500/20 leading-relaxed">
-                    "{promptText}"
+                  <p className="text-xs sm:text-sm text-purple-200 font-medium bg-slate-900/80 p-3.5 rounded-xl border border-purple-500/20 leading-relaxed whitespace-pre-wrap">
+                    {promptText}
                   </p>
                   {blogResult && onGenerateSectionImage && (
                     <button

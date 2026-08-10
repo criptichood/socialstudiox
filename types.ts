@@ -4,6 +4,212 @@
 */
 export type AspectRatio = '16:9' | '9:16' | '1:1';
 
+export type VideoAspectRatio = '16:9' | '9:16';
+
+export type VideoResolution = '720p' | '1080p';
+
+export const VIDEO_RESOLUTIONS: VideoResolution[] = ['720p', '1080p'];
+
+export const VIDEO_DURATIONS = [4, 5, 6, 8, 10, 12, 15] as const;
+
+export type VideoDuration = (typeof VIDEO_DURATIONS)[number];
+
+export interface VideoGenerationOptions {
+  imageBase64?: string;
+  endImageBase64?: string;
+  resolution?: VideoResolution;
+  durationSeconds?: number;
+  negativePrompt?: string;
+  generateAudio?: boolean;
+  referenceImages?: string[];
+}
+
+export type VideoModelId =
+  | 'veo-3.1-lite-generate-preview'
+  | 'veo-3.1-fast-generate-preview'
+  | 'veo-3.1-generate-preview'
+  | 'gemini-omni-flash-preview';
+
+export const VEO_LITE_MODEL = 'veo-3.1-lite-generate-preview' as const;
+export const VEO_FAST_MODEL = 'veo-3.1-fast-generate-preview' as const;
+export const VEO_QUALITY_MODEL = 'veo-3.1-generate-preview' as const;
+export const OMNI_FLASH_MODEL = 'gemini-omni-flash-preview' as const;
+
+export const VIDEO_MODELS: { id: VideoModelId; label: string }[] = [
+  { id: VEO_LITE_MODEL, label: 'Veo 3.1 Lite (Fast)' },
+  { id: VEO_FAST_MODEL, label: 'Veo 3.1 Fast' },
+  { id: VEO_QUALITY_MODEL, label: 'Veo 3.1 High-Quality' },
+  { id: OMNI_FLASH_MODEL, label: 'Gemini Omni Flash' }
+];
+
+export const DEFAULT_VIDEO_MODEL: VideoModelId = VEO_LITE_MODEL;
+
+export const VIDEO_ASPECT_RATIOS: VideoAspectRatio[] = ['16:9', '9:16'];
+
+/** Which runtime executes the model call. 'gemini' = @google/genai; 'gateway' = Vercel AI Gateway (AI SDK v6). */
+export type VideoBackend = 'gemini' | 'gateway';
+
+/** Capability tags understood by the UI and adapters: t2v/i2v/r2v/first-last-frame. */
+export type VideoCapability = 't2v' | 'i2v' | 'r2v' | 'first-last-frame';
+
+export type VideoImageInput = 'none' | 'single' | 'multiple';
+
+/** Client-safe metadata for a video model. Source of truth lives in this shared file; the server registry adds helpers only. */
+export interface VideoModelInfo {
+  id: string;
+  label: string;
+  provider: string;
+  backend: VideoBackend;
+  capabilities: VideoCapability[];
+  imageInput: VideoImageInput;
+  /** Supports first-last-frame (an end-frame image upload). */
+  endFrame: boolean;
+  /** Can synthesize audio alongside the video. */
+  audio: boolean;
+  /** Audio is always produced and cannot be toggled (e.g. Gemini Omni Flash). */
+  audioLocked?: boolean;
+  resolutions: VideoResolution[];
+  durations: number[];
+  aspectRatios: VideoAspectRatio[];
+  description: string;
+  note?: string;
+}
+
+export const VIDEO_MODEL_CATALOG: VideoModelInfo[] = [
+  {
+    id: VEO_LITE_MODEL,
+    label: 'Veo 3.1 Lite (Fast)',
+    provider: 'Google Gemini',
+    backend: 'gemini',
+    capabilities: ['t2v', 'i2v'],
+    imageInput: 'single',
+    endFrame: false,
+    audio: true,
+    resolutions: ['720p', '1080p'],
+    durations: [4, 6, 8],
+    aspectRatios: ['16:9', '9:16'],
+    description: 'Fastest Veo 3.1 tier on Gemini. Great for quick motion drafts while keeping high visual quality.'
+  },
+  {
+    id: VEO_FAST_MODEL,
+    label: 'Veo 3.1 Fast',
+    provider: 'Google Gemini',
+    backend: 'gemini',
+    capabilities: ['t2v', 'i2v'],
+    imageInput: 'single',
+    endFrame: false,
+    audio: true,
+    resolutions: ['720p', '1080p'],
+    durations: [4, 6, 8],
+    aspectRatios: ['16:9', '9:16'],
+    description: 'Veo 3.1 Fast tier on Gemini — short clips with crisp motion and native audio.'
+  },
+  {
+    id: VEO_QUALITY_MODEL,
+    label: 'Veo 3.1 High-Quality',
+    provider: 'Google Gemini',
+    backend: 'gemini',
+    capabilities: ['t2v', 'i2v', 'first-last-frame'],
+    imageInput: 'single',
+    endFrame: true,
+    audio: true,
+    resolutions: ['720p', '1080p'],
+    durations: [4, 6, 8],
+    aspectRatios: ['16:9', '9:16'],
+    description: 'Highest-quality Veo 3.1 tier on Gemini. Supports first/last-frame control for precise scene transitions.'
+  },
+  {
+    id: OMNI_FLASH_MODEL,
+    label: 'Gemini Omni Flash',
+    provider: 'Google Gemini',
+    backend: 'gemini',
+    capabilities: ['t2v', 'i2v'],
+    imageInput: 'single',
+    endFrame: false,
+    audio: true,
+    audioLocked: true,
+    resolutions: ['720p'],
+    durations: [4, 6, 8],
+    aspectRatios: ['16:9', '9:16'],
+    description: 'Gemini Omni Flash via the Interactions API. Always produces native audio; outputs 720p only.'
+  },
+  {
+    id: 'google/veo-3.1-generate-001',
+    label: 'Veo 3.1 (AI Gateway)',
+    provider: 'Vercel AI Gateway → Google',
+    backend: 'gateway',
+    capabilities: ['t2v', 'i2v', 'first-last-frame'],
+    imageInput: 'single',
+    endFrame: true,
+    audio: true,
+    resolutions: ['720p', '1080p'],
+    durations: [4, 6, 8],
+    aspectRatios: ['16:9', '9:16'],
+    description: 'Veo 3.1 routed through the Vercel AI Gateway with unified video parameters.',
+    note: 'Model ID should be verified against the gateway model list once AI_GATEWAY_API_KEY is configured.'
+  },
+  {
+    id: 'klingai/kling-v2.6-t2v',
+    label: 'Kling 2.6 (Text-to-Video)',
+    provider: 'Vercel AI Gateway → Kling AI',
+    backend: 'gateway',
+    capabilities: ['t2v'],
+    imageInput: 'none',
+    endFrame: false,
+    audio: true,
+    resolutions: ['720p', '1080p'],
+    durations: [5, 10],
+    aspectRatios: ['16:9', '9:16'],
+    description: 'Text-to-video only — builds motion from the narrative prompt without a reference frame.',
+    note: 'Model ID should be verified against the gateway model list once AI_GATEWAY_API_KEY is configured.'
+  },
+  {
+    id: 'alibaba/wan-v2.6-i2v',
+    label: 'Wan 2.6 (Image-to-Video)',
+    provider: 'Vercel AI Gateway → Alibaba',
+    backend: 'gateway',
+    capabilities: ['i2v'],
+    imageInput: 'single',
+    endFrame: false,
+    audio: true,
+    resolutions: ['720p', '1080p'],
+    durations: [5, 10, 15],
+    aspectRatios: ['16:9', '9:16'],
+    description: 'Image-to-video model that animates a single reference frame into motion.',
+    note: 'Model ID should be verified against the gateway model list once AI_GATEWAY_API_KEY is configured.'
+  },
+  {
+    id: 'bytedance/seedance-v1.5-pro',
+    label: 'Seedance 1.5 Pro',
+    provider: 'Vercel AI Gateway → ByteDance',
+    backend: 'gateway',
+    capabilities: ['t2v', 'i2v'],
+    imageInput: 'single',
+    endFrame: false,
+    audio: true,
+    resolutions: ['720p', '1080p'],
+    durations: [4, 8, 12],
+    aspectRatios: ['16:9', '9:16'],
+    description: 'ByteDance Seedance model supporting both text- and image-to-video.',
+    note: 'Model ID should be verified against the gateway model list once AI_GATEWAY_API_KEY is configured.'
+  },
+  {
+    id: 'klingai/kling-v2.6-r2v',
+    label: 'Kling 2.6 (Reference-to-Video)',
+    provider: 'Vercel AI Gateway → Kling AI',
+    backend: 'gateway',
+    capabilities: ['r2v'],
+    imageInput: 'multiple',
+    endFrame: false,
+    audio: true,
+    resolutions: ['720p', '1080p'],
+    durations: [5, 10],
+    aspectRatios: ['16:9', '9:16'],
+    description: 'Reference-to-video: accepts multiple reference images for subject/style consistency across the clip.',
+    note: 'Multi-image reference support is experimental. Model ID should be verified against the gateway model list once AI_GATEWAY_API_KEY is configured.'
+  }
+];
+
 export type ComplexityLevel = 'Default' | 'Elementary' | 'High School' | 'College' | 'Expert';
 
 export type VisualStyle = 'Default' | 'Minimalist' | 'Realistic' | 'Cartoon' | 'Vintage' | 'Futuristic' | '3D Render' | 'Sketch' | 'Carousel';

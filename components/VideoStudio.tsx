@@ -1,13 +1,34 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GeneratedImage, Project } from '@/types';
+import {
+  GeneratedImage,
+  Project,
+  VideoModelInfo,
+  VideoAspectRatio,
+  VideoResolution,
+  VideoDuration,
+  DEFAULT_VIDEO_MODEL,
+  VIDEO_MODEL_CATALOG,
+  VIDEO_ASPECT_RATIOS,
+  VIDEO_RESOLUTIONS,
+  VIDEO_DURATIONS,
+  OMNI_FLASH_MODEL
+} from '@/types';
 import { DBService } from '@/services/dbService';
+import { fetchVideoModelCatalog } from '@/services/geminiService';
+import {
+  getVideoGenerationState,
+  subscribeVideoGeneration,
+  startVideoGenerationJob,
+  loadGeneratedVideos
+} from '@/services/videoGenerationManager';
+import type { GeneratedVideo } from '@/services/videoGenerationManager';
+import { VideoModelBehavior } from '@/components/VideoModelBehavior';
+import JSZip from 'jszip';
 import { 
   Film, 
   Play, 
-  Pause, 
   Download, 
   Loader2, 
-  Sparkles, 
   Wand2, 
   Image as ImageIcon,
   Trash2, 
@@ -15,14 +36,20 @@ import {
   X, 
   ChevronLeft, 
   Upload, 
-  Clock, 
   Sliders, 
   Check, 
   AlertCircle, 
   Eye,
-  Video
+  Video,
+  Copy,
+  Scissors,
+  Layers,
+  ListOrdered,
+  Users,
+  Pencil,
+  RefreshCw,
+  Maximize2
 } from 'lucide-react';
-import { generateVeoVideo } from '@/services/geminiService';
 
 
 interface VideoStudioProps {
@@ -34,46 +61,36 @@ interface VideoStudioProps {
   onSelectProject?: (id: string | null) => void;
 }
 
-interface GeneratedVideo {
-  id: string;
-  projectId: string;
-  videoUrl: string;
+interface VideoSegment {
+  index: number;
+  title: string;
+  estimatedSeconds: number;
   prompt: string;
-  enhancedPrompt?: string;
-  model: string;
-  aspectRatio: '16:9' | '9:16' | '1:1';
-  timestamp: number;
-  referenceImageUrl?: string | null;
-  isSimulated?: boolean;
+  editable?: boolean;
+  refined?: boolean;
+  assetId?: string | null;
 }
 
-const SIMULATED_VIDEOS = [
-  {
-    keywords: ['laser', 'glow', 'abstract', 'neon', 'light', 'future', 'sci-fi', 'cyber'],
-    url: 'https://assets.mixkit.co/videos/preview/mixkit-abstract-laser-lights-background-loop-41851-large.mp4',
-    title: 'Abstract Laser Flow'
-  },
-  {
-    keywords: ['code', 'tech', 'computer', 'laptop', 'developer', 'programming', 'software', 'screen', 'digital'],
-    url: 'https://assets.mixkit.co/videos/preview/mixkit-web-development-programming-on-a-laptop-42171-large.mp4',
-    title: 'Tech Workspace Macro'
-  },
-  {
-    keywords: ['snow', 'forest', 'nature', 'tree', 'aerial', 'drone', 'winter', 'landscape', 'mountain', 'cloud'],
-    url: 'https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-thick-snow-covered-forest-41527-large.mp4',
-    title: 'Aerial Snowy Forest'
-  },
-  {
-    keywords: ['circuit', 'motherboard', 'glow', 'cpu', 'chip', 'technology', 'system', 'cyberpunk'],
-    url: 'https://assets.mixkit.co/videos/preview/mixkit-futuristic-motherboard-and-glowing-circuits-40899-large.mp4',
-    title: 'Micro Circuit Paths'
-  },
-  {
-    keywords: ['tunnel', 'portal', 'infinite', 'loop', 'speed', 'fast', 'lights', 'motion', 'time'],
-    url: 'https://assets.mixkit.co/videos/preview/mixkit-abstract-neon-light-looping-background-41852-large.mp4',
-    title: 'Neon Loop Drift'
-  }
-];
+interface CharacterAsset {
+  id: string;
+  name: string;
+  role: string;
+  description: string;
+  tags: string[];
+  image: string;
+  prompt?: string;
+  createdAt?: number;
+  source?: 'ai' | 'upload';
+}
+
+interface PersistedCascade {
+  cascadeId: string;
+  segments: VideoSegment[];
+  generatedSegments: number[];
+  assets?: CharacterAsset[];
+}
+
+const CASCADE_STORAGE_KEY = 'social_studio_x_active_cascade_v1';
 
 export const VideoStudio: React.FC<VideoStudioProps> = ({
   images,
@@ -91,33 +108,93 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
       setPrompt(initialPrompt);
     }
   }, [initialPrompt]);
-  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
-  const [selectedModel, setSelectedModel] = useState('veo-3.1-lite-generate-preview');
+  const [aspectRatio, setAspectRatio] = useState<VideoAspectRatio>('16:9');
+  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_VIDEO_MODEL);
+  const [videoResolution, setVideoResolution] = useState<VideoResolution>('720p');
+  const [durationSeconds, setDurationSeconds] = useState<VideoDuration>(6);
+  const [negativePrompt, setNegativePrompt] = useState('');
+  const [generateAudio, setGenerateAudio] = useState(true);
+  const [endImageBase64, setEndImageBase64] = useState<string | null>(null);
+  const [endImageName, setEndImageName] = useState<string | null>(null);
   
-  // Reference Image sources
-  const [selectedGalleryImage, setSelectedGalleryImage] = useState<GeneratedImage | null>(null);
-  const [customImageBase64, setCustomImageBase64] = useState<string | null>(null);
-  const [customImageName, setCustomImageName] = useState<string | null>(null);
+  // Reference Image sources (multi-image capable)
+  const [referenceImages, setReferenceImages] = useState<{ data: string; name: string }[]>([]);
+
+  // Model catalog fetched from the server registry (fallback to the shared catalog)
+  const [modelCatalog, setModelCatalog] = useState<VideoModelInfo[]>(VIDEO_MODEL_CATALOG);
+  const [gatewayConfigured, setGatewayConfigured] = useState(true);
 
   // Drag and drop / UI states
   const [isDragging, setIsDragging] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationStep, setGenerationStep] = useState('');
-  const [generationProgress, setGenerationProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [lastGenerationError, setLastGenerationError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Generation progress is owned by the global manager so it survives navigation away.
+  const [videoGenState, setVideoGenState] = useState(getVideoGenerationState);
+  useEffect(() => subscribeVideoGeneration(setVideoGenState), []);
+  const isGenerating = videoGenState.status === 'running';
+  const generationStep = videoGenState.step;
+  const generationProgress = videoGenState.progress;
 
   // Active playing video & vault
   const [activePreviewVideo, setActivePreviewVideo] = useState<GeneratedVideo | null>(null);
   const [savedVideos, setSavedVideos] = useState<GeneratedVideo[]>([]);
   const [isVideoVaultLoaded, setIsVideoVaultLoaded] = useState<boolean>(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [showPreviewPrompt, setShowPreviewPrompt] = useState(false);
+  const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
+
+  // Cascade / segmented generation
+  const [segments, setSegments] = useState<VideoSegment[] | null>(null);
+  const [isSegmenting, setIsSegmenting] = useState(false);
+  const [cascadeId, setCascadeId] = useState<string | null>(null);
+  const [generatedSegments, setGeneratedSegments] = useState<number[]>([]);
+  const [generatingSegmentIndex, setGeneratingSegmentIndex] = useState<number | null>(null);
+  const [queuedSegments, setQueuedSegments] = useState<number[]>([]);
+  const [expandedSegmentId, setExpandedSegmentId] = useState<number | null>(null);
+  const [refiningSegmentIndex, setRefiningSegmentIndex] = useState<number | null>(null);
+  const [assets, setAssets] = useState<CharacterAsset[]>([]);
+  const [isGeneratingAssets, setIsGeneratingAssets] = useState(false);
+  const [assetEditingId, setAssetEditingId] = useState<string | null>(null);
+  const [editingAssetName, setEditingAssetName] = useState('');
+  const [assetViewing, setAssetViewing] = useState<CharacterAsset | null>(null);
+  const assetFileInputRef = useRef<HTMLInputElement>(null);
+  const segmentQueueRef = useRef<number[]>([]);
+  const generatedSegmentsRef = useRef<number[]>([]);
+  const segmentsRef = useRef<VideoSegment[] | null>(null);
+  const assetsRef = useRef<CharacterAsset[]>([]);
+  useEffect(() => { segmentsRef.current = segments; }, [segments]);
+  useEffect(() => { assetsRef.current = assets; }, [assets]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const endFileInputRef = useRef<HTMLInputElement>(null);
   const dragRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const isOmni = selectedModel === OMNI_FLASH_MODEL;
+  const selectedSpec: VideoModelInfo | undefined =
+    modelCatalog.find(m => m.id === selectedModel) ??
+    VIDEO_MODEL_CATALOG.find(m => m.id === selectedModel);
+  const isGatewayModel = selectedSpec?.backend === 'gateway';
+  const isImageInput = (selectedSpec?.imageInput ?? 'single') !== 'none';
+  const isMultiImage = (selectedSpec?.imageInput ?? 'single') === 'multiple';
+  const supportsEndFrame = Boolean(selectedSpec?.endFrame);
+  const supportsAudio = Boolean(selectedSpec?.audio);
+  const audioLocked = Boolean(selectedSpec?.audioLocked) || selectedSpec?.backend === 'gemini';
+  const supportsNegativePrompt = selectedSpec?.backend === 'gemini' && !isOmni;
+  const validSegmentDurations = ((selectedSpec?.durations as number[]) || [8]).slice().sort((a, b) => a - b);
+  const cascadeMaxDuration = Math.max(...validSegmentDurations) as VideoDuration;
+
+  // Snap an estimated seconds value to a valid model duration (Veo only accepts 4/6/8, etc).
+  const snapToValidDuration = (estimated: number | undefined | null): VideoDuration => {
+    const target = estimated && estimated > 0 ? estimated : cascadeMaxDuration;
+    const next = validSegmentDurations.find(d => d >= target);
+    const snapped = next ?? validSegmentDurations[validSegmentDurations.length - 1];
+    return snapped as VideoDuration;
+  };
+
+  const mainCharacterAsset = assets.find(a => a.role === 'main') || assets[0] || null;
 
   const activeProject = projects?.find(p => p.id === activeProjectId);
   const currentProjectImages = images.filter(img => !activeProjectId || img.id.startsWith(activeProjectId) || activeProjectId === 'global');
@@ -127,7 +204,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
     let isMounted = true;
     const loadFromIndexedDB = async () => {
       try {
-        const stored = await DBService.getItem<GeneratedVideo[]>('social_studio_x_generated_videos_v1', []);
+        const stored = await loadGeneratedVideos();
         if (isMounted) {
           setSavedVideos(stored || []);
           setIsVideoVaultLoaded(true);
@@ -138,8 +215,53 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
       }
     };
     loadFromIndexedDB();
+
+    DBService.getItem<PersistedCascade | null>(CASCADE_STORAGE_KEY, null)
+      .then((cascade) => {
+        if (!isMounted || !cascade || !Array.isArray(cascade.segments) || cascade.segments.length === 0) return;
+        setCascadeId(cascade.cascadeId);
+        segmentsRef.current = cascade.segments;
+        setSegments(cascade.segments);
+        if (Array.isArray(cascade.assets)) {
+          assetsRef.current = cascade.assets;
+          setAssets(cascade.assets);
+        }
+        generatedSegmentsRef.current = cascade.generatedSegments || [];
+        setGeneratedSegments(cascade.generatedSegments || []);
+      })
+      .catch((e) => console.warn("Failed to load active cascade:", e));
+
     return () => { isMounted = false; };
   }, []);
+
+  // Load the server-side model catalog (registry is the source of truth).
+  useEffect(() => {
+    let isMounted = true;
+    fetchVideoModelCatalog()
+      .then(({ models, gatewayConfigured: configured }) => {
+        if (!isMounted) return;
+        if (models?.length) setModelCatalog(models);
+        setGatewayConfigured(configured);
+      })
+      .catch((e) => {
+        console.warn("Failed to load video model catalog; using static fallback", e);
+      });
+    return () => { isMounted = false; };
+  }, []);
+
+  // Clamp resolution/duration/aspect when switching to a model that doesn't support the current values.
+  useEffect(() => {
+    const spec = modelCatalog.find(m => m.id === selectedModel);
+    if (!spec) return;
+    setVideoResolution(prev => spec.resolutions.includes(prev) ? prev : (spec.resolutions[0] ?? '720p'));
+    setDurationSeconds(prev => (spec.durations as VideoDuration[]).includes(prev) ? prev : ((spec.durations[0] as VideoDuration) ?? 6));
+    setAspectRatio(prev => spec.aspectRatios.includes(prev) ? prev : (spec.aspectRatios[0] ?? '16:9'));
+    if (spec.imageInput === 'none') {
+      setReferenceImages([]);
+      setEndImageBase64(null);
+    }
+    if (!spec.endFrame) setEndImageBase64(null);
+  }, [selectedModel, modelCatalog]);
 
   // Sync to IndexedDB on change
   const saveVideosToStorage = (updatedList: GeneratedVideo[]) => {
@@ -147,6 +269,23 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
     DBService.setItem('social_studio_x_generated_videos_v1', updatedList).catch(err => {
       console.error("Failed to save videos to IndexedDB:", err);
     });
+  };
+
+  // Persist the active cascade so it survives navigation and refresh.
+  const persistCascade = (cid: string, segList: VideoSegment[] | null, genList: number[]) => {
+    if (!cid || !segList || segList.length === 0) return;
+    DBService.setItem(CASCADE_STORAGE_KEY, {
+      cascadeId: cid,
+      segments: segList,
+      generatedSegments: genList,
+      assets: assetsRef.current
+    }).catch(err => console.warn("Failed to persist cascade:", err));
+  };
+
+  const commitSegments = (next: VideoSegment[]) => {
+    segmentsRef.current = next;
+    setSegments(next);
+    if (cascadeId) persistCascade(cascadeId, next, generatedSegmentsRef.current);
   };
 
   // Enhance prompt with Gemini model
@@ -193,13 +332,38 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
     }
     const reader = new FileReader();
     reader.onload = (e) => {
-      setCustomImageBase64(e.target?.result as string);
-      setCustomImageName(file.name);
-      setSelectedGalleryImage(null); // Deselect gallery if manual uploaded
+      addReferenceImages([{ data: e.target?.result as string, name: file.name }]);
       setError(null);
     };
     reader.onerror = () => {
       setError("Failed to read image file.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Add reference images — single-image models replace the current one; multi-image models append.
+  const addReferenceImages = (images: { data: string; name: string }[]) => {
+    if (images.length === 0) return;
+    setReferenceImages(prev => {
+      if (isMultiImage) return [...prev, ...images];
+      return images;
+    });
+  };
+
+  // Convert File to Base64 for the end frame (lastFrame)
+  const processEndImageFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setError("Please upload an image file (PNG, JPEG, WebP).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setEndImageBase64(e.target?.result as string);
+      setEndImageName(file.name);
+      setError(null);
+    };
+    reader.onerror = () => {
+      setError("Failed to read end frame image file.");
     };
     reader.readAsDataURL(file);
   };
@@ -218,24 +382,11 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
     e.preventDefault();
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processImageFile(e.dataTransfer.files[0]);
+      Array.from(e.dataTransfer.files).forEach(processImageFile);
     }
   };
 
-  // Pick simulation loop based on prompt analysis
-  const getSimulatedVideoUrl = (promptText: string) => {
-    const lower = promptText.toLowerCase();
-    for (const item of SIMULATED_VIDEOS) {
-      if (item.keywords.some(k => lower.includes(k))) {
-        return { url: item.url, title: item.title };
-      }
-    }
-    // Default fallback
-    const idx = Math.floor(Math.random() * SIMULATED_VIDEOS.length);
-    return { url: SIMULATED_VIDEOS[idx].url, title: SIMULATED_VIDEOS[idx].title };
-  };
-
-  // Video Generation trigger
+  // Video Generation trigger — delegated to the global manager so it survives navigation away.
   const handleGenerateVideo = async () => {
     if (!prompt.trim()) {
       setError("Please enter a video description prompt.");
@@ -243,107 +394,37 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
     }
 
     setError(null);
-    setLastGenerationError(null);
-    setIsGenerating(true);
-    setGenerationProgress(5);
-    setGenerationStep("Initializing video model pipeline...");
+    setSuccessMessage(null);
 
-    // Setup visual reference source if available
-    let refImageBase64: string | undefined = undefined;
-    let refImageUrlForVault: string | null = null;
-
-    if (customImageBase64) {
-      refImageBase64 = customImageBase64;
-      refImageUrlForVault = customImageBase64;
-    } else if (selectedGalleryImage) {
-      refImageBase64 = selectedGalleryImage.data;
-      refImageUrlForVault = selectedGalleryImage.data;
+    if (isGatewayModel && !gatewayConfigured) {
+      setError("AI Gateway is not configured. Add AI_GATEWAY_API_KEY to your .env.local to use gateway models.");
+      return;
     }
 
-    // Step-by-step progress simulation for immersive user engagement
-    const steps = [
-      { prg: 20, msg: "Analyzing reference frames and optical boundaries..." },
-      { prg: 40, msg: "Synthesizing dynamic motion paths..." },
-      { prg: 65, msg: "Rendering volumetric lighting and shadow gradients..." },
-      { prg: 85, msg: "Injecting temporal textures and hyperrealistic particles..." },
-      { prg: 95, msg: "Assembling H.264 high-definition video wrapper..." }
-    ];
-
-    let currentStepIdx = 0;
-    const progressTimer = setInterval(() => {
-      if (currentStepIdx < steps.length) {
-        setGenerationProgress(steps[currentStepIdx].prg);
-        setGenerationStep(steps[currentStepIdx].msg);
-        currentStepIdx++;
-      }
-    }, 1500);
+    const refImageBase64 = referenceImages.length > 0 ? referenceImages[0].data : undefined;
 
     try {
-      // Execute live generation
-      const result = await generateVeoVideo(prompt, refImageBase64, aspectRatio, selectedModel);
-      
-      clearInterval(progressTimer);
-      setGenerationProgress(100);
-      setGenerationStep("Cinematic rendering completed!");
-
-      // Store generated video
-      const newVideo: GeneratedVideo = {
-        id: `vid-${Date.now()}`,
-        projectId: activeProjectId || 'global',
-        videoUrl: result.videoUrl || result.url || "",
-        prompt: prompt,
+      const video = await startVideoGenerationJob({
+        prompt,
+        refImageBase64,
+        aspectRatio,
         model: selectedModel,
-        aspectRatio: aspectRatio,
-        timestamp: Date.now(),
-        referenceImageUrl: refImageUrlForVault,
-        isSimulated: false
-      };
+        resolution: videoResolution,
+        durationSeconds,
+        endImageBase64: endImageBase64 || undefined,
+        negativePrompt: supportsNegativePrompt ? (negativePrompt || undefined) : undefined,
+        generateAudio: audioLocked ? undefined : generateAudio,
+        referenceImages: referenceImages.map(r => r.data),
+        projectId: activeProjectId || 'global'
+      });
 
-      const updated = [newVideo, ...savedVideos];
-      saveVideosToStorage(updated);
-      setActivePreviewVideo(newVideo);
-      setSuccessMessage("AI Cinematic Video generated successfully!");
+      setSavedVideos(prev => [video, ...prev]);
+      setActivePreviewVideo(video);
+      setSuccessMessage("AI Video generated successfully!");
       setTimeout(() => setSuccessMessage(null), 4000);
-
     } catch (err: any) {
-      console.warn("Live generation failed or paid billing key absent. Switching to high-fidelity simulated fallback...", err);
-      
-      const errMsg = err?.message || String(err);
-      setLastGenerationError(errMsg);
-
-      // Keep simulator progress running smoothly
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      clearInterval(progressTimer);
-      
-      setGenerationProgress(90);
-      setGenerationStep("Injecting custom cinematic motion physics...");
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setGenerationProgress(100);
-      setGenerationStep("Simulation compiler complete!");
-
-      const mapped = getSimulatedVideoUrl(prompt);
-
-      const simulatedVideo: GeneratedVideo = {
-        id: `vid-sim-${Date.now()}`,
-        projectId: activeProjectId || 'global',
-        videoUrl: mapped.url,
-        prompt: prompt,
-        model: `${selectedModel} (Simulated Fallback)`,
-        aspectRatio: aspectRatio,
-        timestamp: Date.now(),
-        referenceImageUrl: refImageUrlForVault,
-        isSimulated: true
-      };
-
-      const updated = [simulatedVideo, ...savedVideos];
-      saveVideosToStorage(updated);
-      setActivePreviewVideo(simulatedVideo);
-      
-      setSuccessMessage(`Simulated video compilation ready: "${mapped.title}" matches your prompt context!`);
-      setTimeout(() => setSuccessMessage(null), 5000);
-    } finally {
-      setIsGenerating(false);
+      // Generation failures surface as a global toast via the manager state.
+      console.error("Video generation failed:", err);
     }
   };
 
@@ -359,15 +440,489 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
 
   const handleDownloadVideo = (video: GeneratedVideo, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    const url = video.videoUrl;
     const a = document.createElement('a');
-    a.href = video.videoUrl;
-    // Standard download attribute bypass for external URLs
-    a.target = '_blank';
     a.download = `video-generation-${video.id}.mp4`;
+
+    if (url.startsWith('data:')) {
+      fetch(url)
+        .then(res => res.blob())
+        .then(blob => {
+          const objectUrl = URL.createObjectURL(blob);
+          a.href = objectUrl;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(objectUrl), 5000);
+        })
+        .catch(err => console.error("Failed to download video:", err));
+    } else {
+      // External URL (e.g. a hosted render) — open in a new tab.
+      a.href = url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+  };
+
+  const handleCopyVideoPrompt = (id: string, text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedPromptId(id);
+    setTimeout(() => setCopiedPromptId(null), 2000);
+  };
+
+  // Analyze the full prompt and split it into character-consistent, duration-limited segments.
+  const handleSegmentPrompt = async () => {
+    if (!prompt.trim()) {
+      setError("Please write a video description first so AI can split it into segments.");
+      return;
+    }
+    setError(null);
+    setIsSegmenting(true);
+    try {
+      const response = await fetch("/api/video/segment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, maxDurationSeconds: cascadeMaxDuration })
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Segmentation failed");
+      }
+      const res = await response.json();
+      if (!res.segments || res.segments.length === 0) {
+        throw new Error("No segments were returned");
+      }
+      const newCascadeId = `cascade-${Date.now()}`;
+      const firstAsset = assetsRef.current.find(a => a.role === 'main') || assetsRef.current[0] || null;
+      const sortedSegments: VideoSegment[] = [...res.segments].sort((a, b) => a.index - b.index).map(s => ({
+        ...s,
+        editable: false,
+        refined: true,
+        assetId: firstAsset ? firstAsset.id : null
+      }));
+      setCascadeId(newCascadeId);
+      segmentsRef.current = sortedSegments;
+      setSegments(sortedSegments);
+      generatedSegmentsRef.current = [];
+      setGeneratedSegments([]);
+      setExpandedSegmentId(null);
+      segmentQueueRef.current = [];
+      setQueuedSegments([]);
+      persistCascade(newCascadeId, sortedSegments, []);
+      setSuccessMessage(`Split into ${sortedSegments.length} segments (~${res.totalSeconds}s total). Generate them in order for consistency.`);
+      setTimeout(() => setSuccessMessage(null), 5000);
+    } catch (e: any) {
+      console.error("Segmentation failed", e);
+      setError(`Failed to split prompt into segments: ${e?.message || "check API key"}`);
+    } finally {
+      setIsSegmenting(false);
+    }
+  };
+
+  // Generate a single segment's video with full character-consistency anchors preserved.
+  const finishQueue = () => {
+    const next = segmentQueueRef.current.shift();
+    setQueuedSegments([...segmentQueueRef.current]);
+    if (next !== undefined) {
+      setTimeout(() => runSegment(next), 400);
+    }
+  };
+
+  const runSegment = async (index: number) => {
+    const seg = segmentsRef.current?.[index];
+    if (!seg) return;
+    setGeneratingSegmentIndex(index);
+    setError(null);
+    try {
+      let targetPrompt = seg.prompt;
+      // User-authored parts are refined as a continuation of the previous part first.
+      if (seg.editable && !seg.refined) {
+        const ok = await handleRefineSegment(index);
+        if (!ok) { setGeneratingSegmentIndex(null); finishQueue(); return; }
+        targetPrompt = segmentsRef.current?.[index]?.prompt || seg.prompt;
+      }
+      // Pass the assigned character asset as the first frame so the same character is preserved.
+      const segForRef = segmentsRef.current?.[index];
+      const assignedAsset = segForRef?.assetId
+        ? assetsRef.current.find(a => a.id === segForRef.assetId)
+        : null;
+      const assetRef = isImageInput && assignedAsset?.image ? assignedAsset.image : null;
+      const userRefs = referenceImages.map(r => r.data);
+      const refList = assetRef ? [assetRef, ...userRefs] : userRefs;
+      const video = await startVideoGenerationJob({
+        prompt: targetPrompt,
+        refImageBase64: assetRef ?? (userRefs[0] || undefined),
+        aspectRatio,
+        model: selectedModel,
+        resolution: videoResolution,
+        durationSeconds: snapToValidDuration(seg.estimatedSeconds),
+        endImageBase64: endImageBase64 || undefined,
+        negativePrompt: supportsNegativePrompt ? (negativePrompt || undefined) : undefined,
+        generateAudio: audioLocked ? undefined : generateAudio,
+        referenceImages: refList,
+        projectId: activeProjectId || 'global',
+        cascadeId: cascadeId || undefined,
+        segmentIndex: index + 1,
+        assetId: assignedAsset?.id || undefined
+      });
+      setSavedVideos(prev => {
+        const next = [video, ...prev.filter(v => !(cascadeId && v.cascadeId === cascadeId && v.segmentIndex === index + 1))];
+        saveVideosToStorage(next);
+        return next;
+      });
+      setActivePreviewVideo(video);
+      const nextGenerated = generatedSegmentsRef.current.includes(index)
+        ? generatedSegmentsRef.current
+        : [...generatedSegmentsRef.current, index];
+      generatedSegmentsRef.current = nextGenerated;
+      setGeneratedSegments(nextGenerated);
+      if (cascadeId) persistCascade(cascadeId, segmentsRef.current, nextGenerated);
+      setSuccessMessage(`Segment ${index + 1} of ${segmentsRef.current?.length} generated!`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+    } catch (err) {
+      console.error("Segment generation failed:", err);
+    } finally {
+      setGeneratingSegmentIndex(null);
+      finishQueue();
+    }
+  };
+
+  const handleGenerateSegment = (index: number) => {
+    if (videoGenState.status === 'running' || generatingSegmentIndex !== null) {
+      setError("A video is already generating. Wait for it to finish before starting the next segment.");
+      return;
+    }
+    setError(null);
+    runSegment(index);
+  };
+
+  const handleGenerateAllSegments = () => {
+    if (!segments || segments.length === 0) return;
+    if (videoGenState.status === 'running' || generatingSegmentIndex !== null) {
+      setError("A video is already generating. Wait for it to finish before starting the queue.");
+      return;
+    }
+    setError(null);
+    const pending = segments.map((_, i) => i).filter(i => !generatedSegments.includes(i));
+    if (pending.length === 0) {
+      setSuccessMessage("All segments have already been generated.");
+      setTimeout(() => setSuccessMessage(null), 3000);
+      return;
+    }
+    segmentQueueRef.current = pending.slice(1);
+    setQueuedSegments([...segmentQueueRef.current]);
+    runSegment(pending[0]);
+  };
+
+  const handleClearCascade = () => {
+    segmentQueueRef.current = [];
+    generatedSegmentsRef.current = [];
+    segmentsRef.current = null;
+    assetsRef.current = [];
+    setQueuedSegments([]);
+    setSegments(null);
+    setCascadeId(null);
+    setGeneratedSegments([]);
+    setGeneratingSegmentIndex(null);
+    setExpandedSegmentId(null);
+    setAssets([]);
+    DBService.removeItem(CASCADE_STORAGE_KEY).catch(() => {});
+  };
+
+  // Add a new user-authored part at the end of the storyboard.
+  const handleAddSegment = () => {
+    if (!segments) return;
+    const newSegment: VideoSegment = {
+      index: segments.length + 1,
+      title: `Part ${segments.length + 1}`,
+      estimatedSeconds: cascadeMaxDuration,
+      prompt: "",
+      editable: true,
+      refined: false
+    };
+    commitSegments([...segments, newSegment]);
+    setExpandedSegmentId(segments.length);
+    setSuccessMessage("New part added — type the content, refine it as a continuation, then generate.");
+    setTimeout(() => setSuccessMessage(null), 4000);
+  };
+
+  // Delete a part and renumber the rest.
+  const handleDeleteSegment = (index: number) => {
+    if (!segments) return;
+    const next = segments.filter((_, i) => i !== index).map((s, i) => ({ ...s, index: i + 1 }));
+    segmentQueueRef.current = segmentQueueRef.current.filter(q => q !== index).map(q => (q > index ? q - 1 : q));
+    const genNext = generatedSegmentsRef.current.filter(g => g !== index).map(g => (g > index ? g - 1 : g));
+    generatedSegmentsRef.current = genNext;
+    setQueuedSegments([...segmentQueueRef.current]);
+    setGeneratedSegments(genNext);
+    if (generatingSegmentIndex === index) setGeneratingSegmentIndex(null);
+    setExpandedSegmentId(prev => (prev === index ? null : prev === null ? null : prev > index ? prev - 1 : prev));
+    commitSegments(next);
+    if (next.length === 0) {
+      setCascadeId(null);
+      setSegments(null);
+      DBService.removeItem(CASCADE_STORAGE_KEY).catch(() => {});
+    }
+  };
+
+  // Edit a user-authored part (mark as needing refinement once the prompt changes).
+  const handleEditSegment = (index: number, patch: Partial<VideoSegment>) => {
+    if (!segments) return;
+    const next = segments.map((s, i) => (i === index ? { ...s, ...patch, refined: patch.prompt !== undefined ? false : s.refined } : s));
+    commitSegments(next);
+  };
+
+  // Ask AI to turn raw content into a continuation of the previous part (same character/voice).
+  const handleRefineSegment = async (index: number): Promise<boolean> => {
+    const current = segmentsRef.current;
+    if (!current) return false;
+    const seg = current[index];
+    if (!seg) return false;
+    if (!seg.prompt.trim()) {
+      setError("Type some content first so AI can refine it as a continuation.");
+      return false;
+    }
+    setError(null);
+    setRefiningSegmentIndex(index);
+    try {
+      const prevPrompt = index > 0 ? (current[index - 1]?.prompt || "") : "";
+      const response = await fetch("/api/video/segment/continue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lastSegmentPrompt: prevPrompt, content: seg.prompt, maxDurationSeconds: cascadeMaxDuration })
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Continuation refinement failed");
+      }
+      const res = await response.json();
+      const next = current.map((s, i) =>
+        i === index
+          ? { ...s, prompt: res.prompt, title: res.title || s.title, estimatedSeconds: res.estimatedSeconds || s.estimatedSeconds, refined: true }
+          : s
+      );
+      commitSegments(next);
+      setExpandedSegmentId(index);
+      setSuccessMessage(`Part ${index + 1} refined as a continuation of the story.`);
+      setTimeout(() => setSuccessMessage(null), 4000);
+      return true;
+    } catch (e: any) {
+      console.error("Continuation refinement failed", e);
+      setError(`Failed to refine: ${e?.message || "check API key"}`);
+      return false;
+    } finally {
+      setRefiningSegmentIndex(null);
+    }
+  };
+
+  // Analyze the prompt and generate character reference assets (face, clothing, environment).
+  const handleGenerateAssets = async () => {
+    if (!prompt.trim()) {
+      setError("Write a video description first so AI can extract the characters.");
+      return;
+    }
+    setError(null);
+    setIsGeneratingAssets(true);
+    try {
+      const response = await fetch("/api/video/assets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, aspectRatio })
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || "Asset generation failed");
+      }
+      const res = await response.json();
+      if (!res.assets || res.assets.length === 0) {
+        throw new Error("No character assets returned");
+      }
+      const newAssets: CharacterAsset[] = res.assets.map((a: any, i: number) => ({
+        id: a.id || `asset-${Date.now()}-${i}`,
+        name: a.name || `Character ${i + 1}`,
+        role: a.role || 'supporting',
+        description: a.description || '',
+        tags: Array.isArray(a.tags) ? a.tags : [],
+        image: a.image,
+        prompt: a.imagePrompt || a.prompt || '',
+        createdAt: Date.now()
+      }));
+      assetsRef.current = newAssets;
+      setAssets(newAssets);
+      const firstAsset = newAssets.find(a => a.role === 'main') || newAssets[0];
+      if (firstAsset && segmentsRef.current) {
+        const next = segmentsRef.current.map(s => (s.assetId ? s : { ...s, assetId: firstAsset.id }));
+        segmentsRef.current = next;
+        setSegments(next);
+      }
+      if (cascadeId) persistCascade(cascadeId, segmentsRef.current, generatedSegmentsRef.current);
+      setSuccessMessage(`Generated ${newAssets.length} character asset${newAssets.length > 1 ? 's' : ''}. The main character is applied to all parts by default.`);
+      setTimeout(() => setSuccessMessage(null), 5000);
+    } catch (e: any) {
+      console.error("Asset generation failed", e);
+      setError(`Failed to generate character assets: ${e?.message || "check API key"}`);
+    } finally {
+      setIsGeneratingAssets(false);
+    }
+  };
+
+  const handleDeleteAsset = (assetId: string) => {
+    const nextAssets = assetsRef.current.filter(a => a.id !== assetId);
+    assetsRef.current = nextAssets;
+    setAssets(nextAssets);
+    if (segmentsRef.current) {
+      const nextSegments = segmentsRef.current.map(s => (s.assetId === assetId ? { ...s, assetId: null } : s));
+      segmentsRef.current = nextSegments;
+      setSegments(nextSegments);
+      if (cascadeId) persistCascade(cascadeId, nextSegments, generatedSegmentsRef.current);
+    }
+  };
+
+  const handleAssignAssetToSegment = (index: number, assetId: string) => {
+    if (!segmentsRef.current) return;
+    const next = segmentsRef.current.map((s, i) => (i === index ? { ...s, assetId: assetId || null } : s));
+    segmentsRef.current = next;
+    setSegments(next);
+    if (cascadeId) persistCascade(cascadeId, next, generatedSegmentsRef.current);
+  };
+
+  // Import user-provided character assets (base64 images) into the library.
+  const processAssetFiles = (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const imageFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
+    if (imageFiles.length === 0) {
+      setError("Please upload image files (PNG, JPEG, WebP).");
+      return;
+    }
+    setError(null);
+    const hasMain = assetsRef.current.some(a => a.role === 'main');
+    let added = 0;
+    let read = 0;
+    imageFiles.forEach((file, idx) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        read++;
+        const dataUrl = reader.result as string;
+        if (!dataUrl) return;
+        const asset: CharacterAsset = {
+          id: `asset-upload-${Date.now()}-${idx}`,
+          name: file.name.replace(/\.[^.]+$/, '') || `Uploaded Character ${assetsRef.current.length + 1}`,
+          role: !hasMain && added === 0 ? 'main' : 'supporting',
+          description: '',
+          tags: [],
+          image: dataUrl,
+          createdAt: Date.now(),
+          source: 'upload'
+        };
+        added++;
+        assetsRef.current = [...assetsRef.current, asset];
+        setAssets(assetsRef.current);
+        if (cascadeId) persistCascade(cascadeId, segmentsRef.current, generatedSegmentsRef.current);
+        if (read === imageFiles.length && added > 0) {
+          setSuccessMessage(`Imported ${added} character asset${added > 1 ? 's' : ''}. Assign them to parts via each segment's Character selector.`);
+          setTimeout(() => setSuccessMessage(null), 5000);
+        }
+      };
+      reader.onerror = () => {
+        read++;
+        setError("Failed to read one of the uploaded images.");
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRenameAsset = (id: string) => {
+    const name = editingAssetName.trim();
+    if (!name) { setAssetEditingId(null); return; }
+    const next = assetsRef.current.map(a => (a.id === id ? { ...a, name } : a));
+    assetsRef.current = next;
+    setAssets(next);
+    setAssetEditingId(null);
+    if (cascadeId) persistCascade(cascadeId, segmentsRef.current, generatedSegmentsRef.current);
+  };
+
+  const handleSetMainAsset = (id: string) => {
+    const next = assetsRef.current.map(a => (a.id === id ? { ...a, role: 'main' } : a.role === 'main' ? { ...a, role: 'supporting' } : a));
+    assetsRef.current = next;
+    setAssets(next);
+    if (cascadeId) persistCascade(cascadeId, segmentsRef.current, generatedSegmentsRef.current);
+  };
+
+  const assetFileName = (asset: CharacterAsset) => {
+    const safe = (asset.name || 'character').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'character';
+    const mime = asset.image.match(/^data:([^;]+);/)?.[1] || 'image/png';
+    const ext = mime === 'image/jpeg' ? 'jpg' : mime === 'image/webp' ? 'webp' : 'png';
+    return `${safe}.${ext}`;
+  };
+
+  const downloadAssetImage = (asset: CharacterAsset) => {
+    const a = document.createElement('a');
+    a.href = asset.image;
+    a.download = assetFileName(asset);
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
+    a.remove();
   };
+
+  const handleDownloadAllAssets = async () => {
+    const list = assetsRef.current;
+    if (list.length === 0) return;
+    setError(null);
+    try {
+      const zip = new JSZip();
+      const folder = zip.folder('characters');
+      const manifest: { name: string; role: string; description: string; tags: string[]; prompt: string; source: string; file: string }[] = [];
+      list.forEach((asset) => {
+        const fileName = assetFileName(asset);
+        const base64 = asset.image.replace(/^data:image\/[^;]+;base64,/, '');
+        folder?.file(fileName, base64, { base64: true });
+        manifest.push({
+          name: asset.name,
+          role: asset.role,
+          description: asset.description,
+          tags: asset.tags,
+          prompt: asset.prompt || '',
+          source: asset.source || 'ai',
+          file: fileName
+        });
+      });
+      folder?.file('characters.json', JSON.stringify(manifest, null, 2));
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `character-library-${Date.now()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setSuccessMessage(`Downloaded ${list.length} character asset${list.length > 1 ? 's' : ''} as a ZIP (with characters.json manifest).`);
+      setTimeout(() => setSuccessMessage(null), 5000);
+    } catch (e: any) {
+      console.error("ZIP export failed", e);
+      setError(`Failed to download assets: ${e?.message || "unknown error"}`);
+    }
+  };
+
+  const handleCopyAssetPrompt = (asset: CharacterAsset) => {
+    if (!asset.prompt) return;
+    navigator.clipboard.writeText(asset.prompt).then(() => {
+      setCopiedPromptId(`asset-${asset.id}`);
+      setTimeout(() => setCopiedPromptId(null), 2000);
+    }).catch(() => {});
+  };
+
+  useEffect(() => {
+    if (!assetViewing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setAssetViewing(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [assetViewing]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto" id="video-studio-container">
@@ -429,7 +984,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-300 tracking-wider uppercase flex items-center gap-1.5">
                 <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Cinematic Video Prompt</span>
+                <span>Video Prompt</span>
               </label>
               <button
                 type="button"
@@ -488,125 +1043,136 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
           {/* Section: Image Reference & Specs */}
           <div className="bg-slate-900 border border-slate-800/80 rounded-2xl p-5 space-y-4">
             
-            {/* Reference Image Drag/Drop */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-300 tracking-wider uppercase flex items-center gap-1.5">
-                <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
-                <span>Reference Frame (Image-to-Video)</span>
-              </label>
-              
-              <div
-                ref={dragRef}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
-                  isDragging 
-                    ? 'border-indigo-500 bg-indigo-500/5' 
-                    : 'border-slate-800 hover:border-slate-700 bg-slate-950/20'
-                }`}
-                id="dropzone-ref-frame"
-              >
+            {isImageInput && (
+              <>
+              {/* Reference Image Drag/Drop */}
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-300 tracking-wider uppercase flex items-center gap-1.5">
+                  <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>{isMultiImage ? 'Reference Images (Multi-image)' : 'Reference Frame (Image-to-Video)'}</span>
+                </label>
+                
                 <input
                   type="file"
                   ref={fileInputRef}
+                  multiple={isMultiImage}
                   onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      processImageFile(e.target.files[0]);
+                    const files = e.target.files;
+                    if (files && files.length > 0) {
+                      Array.from(files).forEach(processImageFile);
                     }
+                    e.target.value = '';
                   }}
                   accept="image/*"
                   className="hidden"
                 />
 
-                {customImageBase64 ? (
-                  <div className="relative group w-full max-h-36 overflow-hidden rounded-lg flex items-center justify-center bg-slate-950">
-                    <img 
-                      src={customImageBase64 || undefined} 
-                      alt="Uploaded reference" 
-                      className="object-contain max-h-36 w-full"
-                    />
-                    <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="text-[10px] bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-2.5 rounded-lg flex items-center gap-1 shadow transition-transform transform scale-90 group-hover:scale-100">
-                        <Trash2 className="w-3 h-3" />
-                        <span>Remove image</span>
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCustomImageBase64(null);
-                        setCustomImageName(null);
-                      }}
-                      className="absolute top-1.5 right-1.5 p-1 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-full transition-colors border border-white/10"
+                {isMultiImage && referenceImages.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {referenceImages.map((img, idx) => (
+                      <div key={idx} className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-800 bg-slate-950 group">
+                        <img src={img.data || undefined} alt={`Reference ${idx + 1}`} className="object-cover w-full h-full" />
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReferenceImages(prev => prev.filter((_, i) => i !== idx));
+                          }}
+                          className="absolute top-1 right-1 p-0.5 bg-slate-900/90 hover:bg-red-600 text-slate-300 hover:text-white rounded-full transition-colors border border-white/10"
+                          title="Remove reference"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </div>
+                    ))}
+                    <div
+                      onClick={() => fileInputRef.current?.click()}
+                      className="w-20 h-20 rounded-lg border-2 border-dashed border-slate-700 hover:border-indigo-500 bg-slate-950/30 flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-indigo-400 transition-all cursor-pointer"
+                      title="Add reference image"
                     >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : selectedGalleryImage ? (
-                  <div className="relative group w-full max-h-36 overflow-hidden rounded-lg flex items-center justify-center bg-slate-950">
-                    <img 
-                      src={selectedGalleryImage.data || undefined} 
-                      alt="Gallery reference" 
-                      className="object-contain max-h-36 w-full"
-                    />
-                    <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                      <span className="text-[10px] bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-2.5 rounded-lg flex items-center gap-1 shadow transition-transform transform scale-90 group-hover:scale-100">
-                        <Trash2 className="w-3 h-3" />
-                        <span>Remove reference</span>
-                      </span>
+                      <Plus className="w-4 h-4" />
+                      <span className="text-[8px] font-bold uppercase">Add</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedGalleryImage(null);
-                      }}
-                      className="absolute top-1.5 right-1.5 p-1 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-full transition-colors border border-white/10"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
                   </div>
                 ) : (
-                  <div className="space-y-1.5 py-1.5">
-                    <div className="mx-auto w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">
-                      <Upload className="w-4 h-4" />
-                    </div>
-                    <div className="space-y-0.5">
-                      <p className="text-xs text-slate-300 font-bold">Drag reference frame here</p>
-                      <p className="text-[10px] text-slate-500">or click to browse local files</p>
-                    </div>
+                  <div
+                    ref={dragRef}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current?.click()}
+                    className={`border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all ${
+                      isDragging 
+                        ? 'border-indigo-500 bg-indigo-500/5' 
+                        : 'border-slate-800 hover:border-slate-700 bg-slate-950/20'
+                    }`}
+                    id="dropzone-ref-frame"
+                  >
+                    {!isMultiImage && referenceImages.length > 0 ? (
+                      <div className="relative group w-full max-h-36 overflow-hidden rounded-lg flex items-center justify-center bg-slate-950">
+                        <img 
+                          src={referenceImages[0].data || undefined} 
+                          alt="Uploaded reference" 
+                          className="object-contain max-h-36 w-full"
+                        />
+                        <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <span className="text-[10px] bg-red-600 hover:bg-red-500 text-white font-bold py-1 px-2.5 rounded-lg flex items-center gap-1 shadow transition-transform transform scale-90 group-hover:scale-100">
+                            <Trash2 className="w-3 h-3" />
+                            <span>Remove image</span>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReferenceImages([]);
+                          }}
+                          className="absolute top-1.5 right-1.5 p-1 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-full transition-colors border border-white/10"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 py-1.5">
+                        <div className="mx-auto w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center text-slate-400">
+                          <Upload className="w-4 h-4" />
+                        </div>
+                        <div className="space-y-0.5">
+                          <p className="text-xs text-slate-300 font-bold">{isMultiImage ? 'Drag reference images here' : 'Drag reference frame here'}</p>
+                          <p className="text-[10px] text-slate-500">or click to browse local files</p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-            </div>
 
-            {/* Quick Import from Recent project assets */}
-            {currentProjectImages.length > 0 && !customImageBase64 && !selectedGalleryImage && (
-              <div className="space-y-1.5">
-                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Or import from recent project images</span>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {currentProjectImages.slice(0, 4).map((img) => (
-                    <button
-                      key={img.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedGalleryImage(img);
-                        setError(null);
-                      }}
-                      className="relative h-12 rounded-lg overflow-hidden border border-slate-800 hover:border-indigo-500/50 bg-slate-950/50 transition-all flex items-center justify-center cursor-pointer group"
-                      title={img.prompt}
-                    >
-                      <img src={img.data || undefined} alt="Quick pick" className="object-cover w-full h-full" />
-                      <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                        <Plus className="w-3.5 h-3.5 text-white" />
-                      </div>
-                    </button>
-                  ))}
+              {/* Quick Import from Recent project assets */}
+              {currentProjectImages.length > 0 && (
+                <div className="space-y-1.5">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Or import from recent project images</span>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {currentProjectImages.slice(0, 4).map((img) => (
+                      <button
+                        key={img.id}
+                        type="button"
+                        onClick={() => {
+                          addReferenceImages([{ data: img.data, name: img.prompt }]);
+                          setError(null);
+                        }}
+                        className="relative h-12 rounded-lg overflow-hidden border border-slate-800 hover:border-indigo-500/50 bg-slate-950/50 transition-all flex items-center justify-center cursor-pointer group"
+                        title={img.prompt}
+                      >
+                        <img src={img.data || undefined} alt="Quick pick" className="object-cover w-full h-full" />
+                        <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                          <Plus className="w-3.5 h-3.5 text-white" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+              </>
             )}
 
             {/* Model & Aspect ratio config */}
@@ -620,16 +1186,22 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
                   disabled={isGenerating}
                   id="select-video-model"
                 >
-                  <option value="veo-3.1-lite-generate-preview">Veo 3.1 Lite (Fast)</option>
-                  <option value="veo-3.1-generate-preview">Veo 3.1 High-Quality</option>
-                  <option value="gemini-3.5-flash">Gemini 3.5 Omni</option>
+                  {modelCatalog.map((m) => (
+                    <option
+                      key={m.id}
+                      value={m.id}
+                      disabled={m.backend === 'gateway' && !gatewayConfigured}
+                    >
+                      {m.label}{m.backend === 'gateway' ? ' (Gateway)' : ''}{m.backend === 'gateway' && !gatewayConfigured ? ' — needs key' : ''}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               <div className="space-y-1.5">
                 <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Aspect Ratio</span>
                 <div className="flex gap-1" id="aspect-ratio-selector">
-                  {(['16:9', '9:16', '1:1'] as const).map((ratio) => (
+                  {(selectedSpec?.aspectRatios ?? VIDEO_ASPECT_RATIOS).map((ratio) => (
                     <button
                       key={ratio}
                       type="button"
@@ -647,53 +1219,209 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
               </div>
             </div>
 
-          </div>
-
-          {/* Large Primary Action Trigger */}
-          <div className="space-y-2">
-            {error && (
-              <div className="p-3 bg-red-950/30 border border-red-500/20 rounded-xl text-red-200 text-xs flex items-center gap-2 animate-in fade-in duration-200">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                <span className="font-semibold">{error}</span>
-              </div>
-            )}
-            
-            {lastGenerationError && (
-              <div className="p-4 bg-rose-950/45 border border-rose-500/25 rounded-2xl text-rose-200 text-xs flex flex-col gap-2 text-left animate-in fade-in duration-300">
-                <div className="flex items-center gap-2 font-bold uppercase tracking-wider font-mono text-[9px] text-rose-400">
-                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-                  <span>Google VEO Live Compilation Failed</span>
+            {/* Resolution & Duration config */}
+            <div className="grid grid-cols-2 gap-4 pt-1">
+              <div className="space-y-1.5">
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Resolution</span>
+                <div className="flex gap-1" id="resolution-selector">
+                  {(selectedSpec?.resolutions ?? VIDEO_RESOLUTIONS).map((res) => (
+                    <button
+                      key={res}
+                      type="button"
+                      onClick={() => setVideoResolution(res)}
+                      disabled={(selectedSpec?.resolutions ?? VIDEO_RESOLUTIONS).length <= 1 || isGenerating}
+                      title={(selectedSpec?.resolutions ?? VIDEO_RESOLUTIONS).length <= 1 ? `${selectedSpec?.label} outputs ${res} only` : ''}
+                      className={`flex-1 py-2 rounded-xl text-[10px] font-bold font-mono transition-all border cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                        videoResolution === res
+                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/20'
+                          : 'bg-slate-950/50 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
+                      }`}
+                    >
+                      {res}
+                    </button>
+                  ))}
                 </div>
-                <p className="font-medium leading-relaxed font-mono text-[11px] whitespace-pre-wrap bg-rose-950/20 p-2.5 rounded-lg border border-rose-500/10 text-left">
-                  {lastGenerationError}
-                </p>
-                <p className="text-[10px] text-slate-400 leading-normal text-left">
-                  To keep you moving, we compiled a high-fidelity simulated fallback video below matching your prompts. Please ensure your API credentials/billing are configured to enable live generation.
-                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Duration</span>
+                <div className="flex gap-1" id="duration-selector">
+                  {((selectedSpec?.durations ?? [...VIDEO_DURATIONS]) as VideoDuration[]).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDurationSeconds(d)}
+                      disabled={isGenerating}
+                      className={`flex-1 py-2 rounded-xl text-[10px] font-bold font-mono transition-all border cursor-pointer ${
+                        durationSeconds === d
+                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-md shadow-indigo-500/20'
+                          : 'bg-slate-950/50 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border-slate-800'
+                      }`}
+                    >
+                      {d}s
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Native Audio toggle */}
+            {supportsAudio && (
+              <div className="flex items-center justify-between pt-1">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Native Audio</span>
+                  <p className="text-[9px] text-slate-600">{audioLocked ? 'Always generated by this model' : 'Synchronized sound effects & ambience'}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setGenerateAudio(v => !v)}
+                  disabled={audioLocked || isGenerating}
+                  title={audioLocked ? 'This model always generates audio' : ''}
+                  className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${generateAudio ? 'bg-indigo-600' : 'bg-slate-800'}`}
+                  id="toggle-video-audio"
+                >
+                  <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${generateAudio ? 'left-[calc(100%-1.375rem)]' : 'left-0.5'}`} />
+                </button>
               </div>
             )}
 
-            {successMessage && (
-              <div className="p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-emerald-200 text-xs flex items-center gap-2 animate-in fade-in duration-200">
-                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span className="font-semibold">{successMessage}</span>
+            {/* Negative Prompt */}
+            {supportsNegativePrompt && (
+              <div className="space-y-1.5">
+                <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">Negative Prompt <span className="text-slate-600 normal-case">(optional)</span></span>
+                <input
+                  type="text"
+                  value={negativePrompt}
+                  onChange={(e) => setNegativePrompt(e.target.value)}
+                  placeholder="e.g. blurry, low quality, distorted, watermark"
+                  disabled={isGenerating}
+                  className="w-full bg-slate-950/70 border border-slate-800/80 rounded-xl px-2.5 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-all font-medium"
+                  id="input-negative-prompt"
+                />
               </div>
             )}
 
-            <button
-              onClick={handleGenerateVideo}
-              disabled={isGenerating || !prompt.trim()}
-              className="w-full py-4.5 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-bold uppercase tracking-widest rounded-2xl shadow-xl hover:shadow-indigo-500/10 transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed group active:scale-[0.99]"
-              id="btn-generate-video-action"
-            >
-              {isGenerating ? (
-                <Loader2 className="w-4 h-4 animate-spin text-cyan-400" />
-              ) : (
-                <Video className="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform" />
+            {/* Primary Generate Action */}
+            <div className="space-y-2 pt-1.5">
+              {error && (
+                <div className="p-3 bg-red-950/30 border border-red-500/20 rounded-xl text-red-200 text-xs flex items-center gap-2 animate-in fade-in duration-200">
+                  <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+                  <span className="font-semibold">{error}</span>
+                </div>
               )}
-              <span>{isGenerating ? 'Compiling AI Motion...' : 'Generate Cinematic Video'}</span>
-            </button>
+
+              {successMessage && (
+                <div className="p-3 bg-emerald-950/30 border border-emerald-500/20 rounded-xl text-emerald-200 text-xs flex items-center gap-2 animate-in fade-in duration-200">
+                  <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span className="font-semibold">{successMessage}</span>
+                </div>
+              )}
+
+              <button
+                onClick={handleGenerateVideo}
+                disabled={isGenerating || !prompt.trim()}
+                className="group w-full py-3.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 hover:from-indigo-500 hover:via-purple-500 hover:to-indigo-500 text-white text-sm font-bold tracking-wide rounded-xl shadow-lg shadow-indigo-900/30 ring-1 ring-inset ring-white/20 hover:ring-white/30 border border-indigo-400/40 transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0 active:scale-[0.99] hover:-translate-y-0.5"
+                id="btn-generate-video-action"
+              >
+                {isGenerating ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-cyan-300" />
+                ) : (
+                  <Video className="w-4 h-4 text-cyan-300 group-hover:scale-110 transition-transform" />
+                )}
+                <span>{isGenerating ? 'Generating Video...' : 'Generate Video'}</span>
+              </button>
+
+              <button
+                onClick={handleSegmentPrompt}
+                disabled={isSegmenting || !prompt.trim() || isGenerating || generatingSegmentIndex !== null}
+                className="w-full py-2.5 bg-slate-800/60 hover:bg-slate-800 text-indigo-300 hover:text-indigo-200 text-xs font-bold tracking-wide rounded-xl border border-indigo-500/20 hover:border-indigo-500/40 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                id="btn-segment-prompt"
+                title="Break a long prompt into multiple character-consistent, duration-limited segments"
+              >
+                {isSegmenting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Scissors className="w-3.5 h-3.5" />
+                )}
+                <span>{isSegmenting ? 'Analyzing & Splitting...' : segments ? `Re-split into Segments (${segments.length})` : `Split into Segments (max ${cascadeMaxDuration}s each)`}</span>
+              </button>
+
+              <button
+                onClick={handleGenerateAssets}
+                disabled={isGeneratingAssets || !prompt.trim() || isGenerating || generatingSegmentIndex !== null}
+                className="w-full py-2.5 bg-slate-800/60 hover:bg-slate-800 text-cyan-300 hover:text-cyan-200 text-xs font-bold tracking-wide rounded-xl border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                id="btn-generate-assets"
+                title="Analyze the prompt and generate character reference assets (face, clothing, environment) used as first frames to keep characters consistent"
+              >
+                {isGeneratingAssets ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Users className="w-3.5 h-3.5" />
+                )}
+                <span>{isGeneratingAssets ? 'Generating Character Assets...' : assets.length > 0 ? `Re-generate Character Assets (${assets.length})` : 'Generate Character Assets'}</span>
+              </button>
+            </div>
+
+
+            {/* End Frame upload (lastFrame) */}
+            {supportsEndFrame && (
+              <div className="space-y-2">
+              <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">End Frame <span className="text-slate-600 normal-case">(optional, image-to-video)</span></span>
+              <div
+                onClick={() => endFileInputRef.current?.click()}
+                className="border-2 border-dashed rounded-xl p-3 flex items-center gap-3 cursor-pointer transition-all border-slate-800 hover:border-slate-700 bg-slate-950/20"
+                id="dropzone-end-frame"
+              >
+                <input
+                  type="file"
+                  ref={endFileInputRef}
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files[0]) {
+                      processEndImageFile(e.target.files[0]);
+                    }
+                  }}
+                  accept="image/*"
+                  className="hidden"
+                />
+                {endImageBase64 ? (
+                  <div className="flex items-center gap-2 w-full">
+                    <img src={endImageBase64 || undefined} alt="End frame" className="w-14 h-14 object-cover rounded-lg border border-slate-800 bg-slate-950" />
+                    <div className="flex-1 text-left min-w-0">
+                      <p className="text-[10px] text-slate-300 font-bold truncate">{endImageName || 'End frame attached'}</p>
+                      <p className="text-[9px] text-slate-500">Used as the final frame of the video</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEndImageBase64(null);
+                        setEndImageName(null);
+                      }}
+                      className="p-1 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-full transition-colors border border-white/10"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 text-slate-400">
+                    <Upload className="w-4 h-4" />
+                    <span className="text-[10px] font-semibold">Click to attach final frame image</span>
+                  </div>
+                )}
+              </div>
+            </div>
+            )}
+
           </div>
+
+          {/* Section: Model Behavior (capability info from the server registry) */}
+          {selectedSpec && (
+            <VideoModelBehavior
+              spec={selectedSpec}
+              gatewayConfigured={gatewayConfigured}
+              audioLocked={audioLocked}
+            />
+          )}
 
         </div>
 
@@ -707,7 +1435,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-slate-800/40">
               <span className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                <span>AI Cinematic Screen</span>
+                <span>AI Video Screen</span>
               </span>
               
               {activePreviewVideo && (
@@ -728,7 +1456,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
                     <Loader2 className="w-10 h-10 text-indigo-400 animate-spin relative z-10" />
                   </div>
                   <div className="space-y-2 text-center max-w-sm z-10">
-                    <p className="text-sm font-bold text-slate-100 font-display">Rendering Cinematic Video</p>
+                    <p className="text-sm font-bold text-slate-100 font-display">Rendering Video</p>
                     <p className="text-xs text-indigo-400 font-medium font-mono animate-bounce">{generationStep}</p>
                   </div>
                   
@@ -779,9 +1507,40 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
               <div className="pt-3 border-t border-slate-800/40 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
                 <div className="space-y-0.5">
                   <p className="font-bold text-slate-200 line-clamp-1">{activePreviewVideo.prompt}</p>
-                  <p className="text-[10px] text-slate-500 font-medium">Engine: {activePreviewVideo.model} • Ratio: {activePreviewVideo.aspectRatio}</p>
+                  <p className="text-[10px] text-slate-500 font-medium">Engine: {activePreviewVideo.model} • {activePreviewVideo.resolution || '720p'} • Ratio: {activePreviewVideo.aspectRatio}{activePreviewVideo.durationSeconds ? ` • ${activePreviewVideo.durationSeconds}s` : ''}</p>
                 </div>
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowPreviewPrompt(!showPreviewPrompt)}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer border ${
+                      showPreviewPrompt
+                        ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700/50'
+                    }`}
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>{showPreviewPrompt ? 'Hide Prompt' : 'View Prompt'}</span>
+                  </button>
+                  <button
+                    onClick={() => handleCopyVideoPrompt(activePreviewVideo.id, activePreviewVideo.prompt)}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer border ${
+                      copiedPromptId === activePreviewVideo.id
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                        : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700/50'
+                    }`}
+                  >
+                    {copiedPromptId === activePreviewVideo.id ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copy Prompt</span>
+                      </>
+                    )}
+                  </button>
                   <button
                     onClick={() => handleDownloadVideo(activePreviewVideo)}
                     className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg font-bold text-[10px] uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700/50"
@@ -797,6 +1556,34 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
                     <X className="w-3.5 h-3.5" />
                   </button>
                 </div>
+              </div>
+            )}
+            {showPreviewPrompt && activePreviewVideo && (
+              <div className="mt-3 p-4 bg-slate-900 border border-indigo-500/20 rounded-2xl text-left text-xs font-mono text-slate-300 leading-relaxed max-h-[180px] overflow-y-auto break-words animate-in slide-in-from-top-2 duration-200 relative">
+                <div className="flex items-center justify-between mb-2 pb-2 border-b border-white/10">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Generation Prompt</span>
+                  <button
+                    onClick={() => handleCopyVideoPrompt(activePreviewVideo.id, activePreviewVideo.prompt)}
+                    className={`text-[10px] px-2.5 py-1 rounded font-bold transition-all flex items-center gap-1 cursor-pointer ${
+                      copiedPromptId === activePreviewVideo.id
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        : 'bg-white/10 hover:bg-white/20 text-white'
+                    }`}
+                  >
+                    {copiedPromptId === activePreviewVideo.id ? (
+                      <>
+                        <Check className="w-3 h-3 text-emerald-400" />
+                        <span>Copied Prompt!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3 h-3" />
+                        <span>Copy Prompt</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                <p>{activePreviewVideo.prompt}</p>
               </div>
             )}
 
@@ -868,6 +1655,9 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
                           <span className="px-1.5 py-0.5 bg-slate-950/80 backdrop-blur rounded text-[8px] font-bold text-slate-400 font-mono uppercase">
                             {vid.aspectRatio}
                           </span>
+                          <span className="px-1.5 py-0.5 bg-slate-950/80 backdrop-blur rounded text-[8px] font-bold text-slate-400 font-mono uppercase">
+                            {vid.resolution || '720p'}{vid.durationSeconds ? ` • ${vid.durationSeconds}s` : ''}
+                          </span>
                           {vid.isSimulated && (
                             <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 backdrop-blur rounded text-[8px] font-bold font-mono">
                               Simulated
@@ -902,6 +1692,16 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                handleCopyVideoPrompt(vid.id, vid.prompt);
+                              }}
+                              className="p-1 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-indigo-400 rounded-md border border-white/10 shadow"
+                              title="Copy prompt"
+                            >
+                              {copiedPromptId === vid.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 handleDownloadVideo(vid);
                               }}
                               className="p-1 bg-slate-900/90 hover:bg-slate-800 text-slate-300 hover:text-emerald-400 rounded-md border border-white/10 shadow"
@@ -927,7 +1727,14 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
                       <div className="p-3 space-y-1">
                         <p className="text-xs font-bold text-slate-200 line-clamp-1 group-hover:text-indigo-400 transition-colors">{vid.prompt}</p>
                         <div className="flex justify-between items-center text-[9px] text-slate-500 font-mono">
-                          <span>{new Date(vid.timestamp).toLocaleDateString()}</span>
+                          <span className="flex items-center gap-1.5">
+                            {vid.cascadeId && vid.segmentIndex ? (
+                              <span className="px-1.5 py-0.5 bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 rounded text-[8px] font-bold uppercase tracking-wider">
+                                Part {vid.segmentIndex}
+                              </span>
+                            ) : null}
+                            <span>{new Date(vid.timestamp).toLocaleDateString()}</span>
+                          </span>
                           <span className="text-indigo-400 font-bold uppercase tracking-wider flex items-center gap-0.5">
                             <Eye className="w-2.5 h-2.5" />
                             <span>Preview</span>
@@ -947,6 +1754,456 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
 
       </div>
 
+      {/* Production Board: Character Asset Library + Cascade Storyboard */}
+      {(assets.length > 0 || (segments && segments.length > 0)) && (
+        <div className="space-y-5">
+          {/* Character Asset Library */}
+          {assets.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                    <Users className="w-4 h-4 text-cyan-400" />
+                    <span>Character Asset Library</span>
+                  </span>
+                  <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                    Generated reference sheets (face, clothing, environment) in {aspectRatio}. Each part uses an asset as its first frame so the character stays identical. Pick a different asset per part if another character takes over.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <input
+                    ref={assetFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => { processAssetFiles(e.target.files); e.target.value = ''; }}
+                  />
+                  <button
+                    onClick={handleDownloadAllAssets}
+                    disabled={assets.length === 0 || isGeneratingAssets}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-extrabold uppercase tracking-wider rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                    title="Download all character assets as a ZIP (with a characters.json manifest)"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Download All</span>
+                  </button>
+                  <button
+                    onClick={() => assetFileInputRef.current?.click()}
+                    disabled={isGeneratingAssets || isGenerating || generatingSegmentIndex !== null}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[10px] font-extrabold uppercase tracking-wider rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                    title="Upload your own reference images"
+                  >
+                    <Upload className="w-3 h-3" />
+                    <span>Upload</span>
+                  </button>
+                  <button
+                    onClick={handleGenerateAssets}
+                    disabled={isGeneratingAssets || !prompt.trim() || isGenerating || generatingSegmentIndex !== null}
+                    className="px-3 py-1.5 bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-200 border border-cyan-500/30 text-[10px] font-extrabold uppercase tracking-wider rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                  >
+                    {isGeneratingAssets ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
+                    <span>Re-generate</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 max-h-[420px] overflow-y-auto scrollbar-thin pr-1">
+                {assets.map((asset) => (
+                  <div key={asset.id} className={`group rounded-2xl overflow-hidden border transition-all bg-slate-900/70 ${mainCharacterAsset?.id === asset.id ? 'border-cyan-500/50 ring-1 ring-cyan-500/20' : 'border-slate-800 hover:border-slate-600'}`}>
+                    <button
+                      onClick={() => setAssetViewing(asset)}
+                      className="relative block w-full aspect-[3/4] bg-slate-950 overflow-hidden cursor-zoom-in text-left"
+                      title="Click to zoom and view the full prompt"
+                    >
+                      <img src={asset.image || undefined} alt={asset.name} className="object-cover w-full h-full group-hover:scale-105 transition-transform duration-500" loading="lazy" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2">
+                        <span className="p-1.5 bg-slate-900/80 backdrop-blur rounded-md border border-white/10 text-slate-200">
+                          <Maximize2 className="w-3.5 h-3.5" />
+                        </span>
+                      </div>
+                      <div className="absolute top-2 left-2 flex gap-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleSetMainAsset(asset.id); }}
+                          className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider backdrop-blur border transition-colors cursor-pointer ${asset.role === 'main' ? 'bg-cyan-500/20 text-cyan-200 border-cyan-500/40' : 'bg-slate-900/80 text-slate-300 border-white/15 hover:border-cyan-500/40'}`}
+                          title={asset.role === 'main' ? 'Main character (click to unset)' : 'Set as main character'}
+                        >
+                          {asset.role === 'main' ? 'Main' : 'Supporting'}
+                        </button>
+                        {mainCharacterAsset?.id === asset.id && (
+                          <span className="px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 backdrop-blur">Default</span>
+                        )}
+                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider backdrop-blur border ${asset.source === 'upload' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'}`}>
+                          {asset.source === 'upload' ? 'Uploaded' : 'AI'}
+                        </span>
+                      </div>
+                      <span
+                        onClick={(e) => { e.stopPropagation(); handleDeleteAsset(asset.id); }}
+                        className="absolute top-2 right-2 p-1 bg-slate-900/90 hover:bg-red-600/80 text-slate-300 hover:text-white rounded-md border border-white/10 transition-colors cursor-pointer"
+                        title="Delete asset"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </span>
+                    </button>
+                    <div className="p-2.5 space-y-1.5">
+                      <div className="flex items-center gap-1.5">
+                        {assetEditingId === asset.id ? (
+                          <div className="flex items-center gap-1 flex-1">
+                            <input
+                              value={editingAssetName}
+                              onChange={(e) => setEditingAssetName(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') handleRenameAsset(asset.id); if (e.key === 'Escape') setAssetEditingId(null); }}
+                              className="flex-1 w-full min-w-0 bg-slate-950 border border-cyan-500/40 rounded px-1.5 py-0.5 text-[10px] text-slate-200 outline-none"
+                              autoFocus
+                              placeholder="Name"
+                            />
+                            <button onClick={() => handleRenameAsset(asset.id)} className="text-emerald-400 hover:text-emerald-300 cursor-pointer" title="Save"><Check className="w-3 h-3" /></button>
+                            <button onClick={() => setAssetEditingId(null)} className="text-slate-500 hover:text-slate-300 cursor-pointer" title="Cancel"><X className="w-3 h-3" /></button>
+                          </div>
+                        ) : (
+                          <>
+                            <p className="text-[11px] font-bold text-slate-200 truncate flex-1">{asset.name}</p>
+                            <button
+                              onClick={() => setAssetViewing(asset)}
+                              className="text-slate-500 hover:text-cyan-400 transition-colors cursor-pointer"
+                              title="View full prompt"
+                            >
+                              <Eye className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => downloadAssetImage(asset)}
+                              className="text-slate-500 hover:text-emerald-400 transition-colors cursor-pointer"
+                              title="Download this asset image"
+                            >
+                              <Download className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={() => { setAssetEditingId(asset.id); setEditingAssetName(asset.name); }}
+                              className="text-slate-500 hover:text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                              title="Rename"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                      {asset.description && (
+                        <p className="text-[9px] text-slate-500 leading-relaxed line-clamp-2">{asset.description}</p>
+                      )}
+                      {asset.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {asset.tags.slice(0, 4).map((tag, ti) => (
+                            <span key={ti} className="px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded text-[8px] font-mono">{tag}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cascade Storyboard */}
+          {segments && segments.length > 0 && (
+            <div className="space-y-3 border border-indigo-500/20 bg-indigo-950/10 rounded-2xl p-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                <div>
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-indigo-400" />
+                    <span>Cascade Storyboard</span>
+                  </span>
+                  <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
+                    {generatedSegments.length}/{segments.length} parts rendered. Generate in order — each part reuses its character asset and continuation anchors, so face, clothing, voice and flow stay consistent.
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={handleGenerateAllSegments}
+                    disabled={isGenerating || generatingSegmentIndex !== null}
+                    className="px-2.5 py-1 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 border border-indigo-500/30 text-[10px] font-extrabold uppercase tracking-wider rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                    title="Generate all remaining segments in order"
+                  >
+                    {isGenerating || generatingSegmentIndex !== null ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <ListOrdered className="w-3 h-3" />
+                    )}
+                    <span>Generate All Remaining</span>
+                  </button>
+                  <button
+                    onClick={handleAddSegment}
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/50 text-[10px] font-extrabold uppercase tracking-wider rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Add a new part to the storyboard"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Add Part</span>
+                  </button>
+                  <button
+                    onClick={handleClearCascade}
+                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-colors border border-slate-700/50"
+                    title="Clear cascade segments"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-2 max-h-[440px] overflow-y-auto scrollbar-thin pr-1">
+                {segments.map((seg, i) => {
+                  const isDone = generatedSegments.includes(i);
+                  const isGeneratingThis = generatingSegmentIndex === i;
+                  const isQueued = queuedSegments.includes(i);
+                  const needsRefine = Boolean(seg.editable) && !seg.refined;
+                  const segAsset = seg.assetId ? assets.find(a => a.id === seg.assetId) : null;
+                  return (
+                    <div key={i} className={`rounded-xl border overflow-hidden ${isDone ? 'border-emerald-500/30 bg-emerald-950/10' : isGeneratingThis ? 'border-indigo-500/50 bg-indigo-950/20' : 'border-slate-800 bg-slate-900/60'}`}>
+                      <div className="flex items-center justify-between gap-2 p-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-extrabold shrink-0 ${isDone ? 'bg-emerald-500/20 text-emerald-300' : 'bg-indigo-500/15 text-indigo-300'}`}>
+                            {isDone ? <Check className="w-3.5 h-3.5" /> : seg.index}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-bold text-slate-200 truncate">{seg.title || `Part ${seg.index}`}</p>
+                            <p className="text-[9px] text-slate-500 font-mono">
+                              ~{snapToValidDuration(seg.estimatedSeconds)}s{needsRefine ? ' • not refined yet' : segAsset ? ` • ${segAsset.name}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {isDone ? (
+                            <button
+                              onClick={() => handleGenerateSegment(i)}
+                              disabled={isGenerating || generatingSegmentIndex !== null}
+                              className="px-2 py-1 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/40 rounded-md text-[10px] font-bold flex items-center gap-1 transition-colors disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                              title="Regenerate this segment (replaces its previous render)"
+                            >
+                              <RefreshCw className="w-3 h-3" />
+                              Regenerate
+                            </button>
+                          ) : isGeneratingThis ? (
+                            <span className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-indigo-300">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              {refiningSegmentIndex === i ? 'Refining' : 'Rendering'}
+                            </span>
+                          ) : isQueued ? (
+                            <span className="text-[9px] font-bold uppercase tracking-wider text-amber-400">Queued</span>
+                          ) : (
+                            <button
+                              onClick={() => handleGenerateSegment(i)}
+                              disabled={isGenerating || generatingSegmentIndex !== null}
+                              className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-md text-[10px] font-bold flex items-center gap-1 transition-colors disabled:opacity-40 disabled:pointer-events-none cursor-pointer"
+                              title="Generate this segment"
+                            >
+                              <Play className="w-3 h-3" />
+                              {needsRefine ? 'Refine & Generate' : 'Generate'}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleCopyVideoPrompt(`seg-${i}`, seg.prompt)}
+                            className={`p-1 rounded-md border transition-colors ${
+                              copiedPromptId === `seg-${i}`
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border-slate-700/50'
+                            }`}
+                            title="Copy this segment's prompt"
+                          >
+                            {copiedPromptId === `seg-${i}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          </button>
+                          <button
+                            onClick={() => setExpandedSegmentId(expandedSegmentId === i ? null : i)}
+                            className={`p-1 rounded-md border transition-colors ${
+                              expandedSegmentId === i
+                                ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                                : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border-slate-700/50'
+                            }`}
+                            title="Edit this part's prompt and title"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSegment(i)}
+                            className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-red-400 rounded-md border border-slate-700/50 transition-colors cursor-pointer"
+                            title="Delete this part"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Character asset selector */}
+                      <div className="mx-2.5 mb-2 flex items-center gap-2">
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1 shrink-0">
+                          <Users className="w-3 h-3" />
+                          Character
+                        </span>
+                        <select
+                          value={seg.assetId || ''}
+                          onChange={(e) => handleAssignAssetToSegment(i, e.target.value)}
+                          disabled={isGenerating || generatingSegmentIndex !== null}
+                          className="flex-1 bg-slate-950/70 border border-slate-800 rounded-md px-2 py-1 text-[10px] text-slate-300 focus:outline-none focus:border-indigo-500/50 transition-all disabled:opacity-50 cursor-pointer"
+                          title="Which character asset to use as this part's first frame"
+                        >
+                          <option value="">No reference image</option>
+                          {assets.map((a) => (
+                            <option key={a.id} value={a.id}>{a.name}{a.role === 'main' ? ' (main)' : ''}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {expandedSegmentId === i && (
+                        <div className="mx-2.5 mb-2.5 space-y-2">
+                          <input
+                            value={seg.title}
+                            onChange={(e) => handleEditSegment(i, { title: e.target.value })}
+                            placeholder="Part title"
+                            className="w-full bg-slate-950/70 border border-slate-800/80 rounded-lg px-2.5 py-1.5 text-[11px] font-bold text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-all"
+                          />
+                          <textarea
+                            value={seg.prompt}
+                            onChange={(e) => handleEditSegment(i, { prompt: e.target.value })}
+                            placeholder={seg.editable ? "Paste the next part's content here — AI will refine it as a continuation of the story (same character & voice)." : "Edit this segment's prompt — tweak the text, then Generate. Use Refine as Continuation to re-polish it against the previous part."}
+                            className="w-full h-28 bg-slate-950/70 border border-slate-800/80 rounded-lg p-2.5 text-[10px] text-slate-300 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition-all resize-none font-mono leading-relaxed"
+                          />
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleRefineSegment(i)}
+                              disabled={refiningSegmentIndex !== null || isGenerating || generatingSegmentIndex !== null}
+                              className="px-2.5 py-1.5 bg-indigo-500/15 hover:bg-indigo-500/25 text-indigo-200 border border-indigo-500/30 text-[10px] font-extrabold uppercase tracking-wider rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-50 disabled:pointer-events-none cursor-pointer"
+                            >
+                              {refiningSegmentIndex === i ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Wand2 className="w-3 h-3 text-cyan-400" />
+                              )}
+                              <span>{refiningSegmentIndex === i ? 'Refining...' : 'Refine as Continuation'}</span>
+                            </button>
+                            <span className="text-[9px] text-slate-500 hidden sm:block">
+                              {seg.editable ? 'Manual edits are preserved; Generate applies them as-is.' : 'Edited text is used verbatim on Generate; no extra AI rewriting.'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={handleAddSegment}
+                className="w-full py-2.5 border-2 border-dashed border-slate-700 hover:border-indigo-500/50 hover:bg-indigo-500/5 rounded-xl text-slate-400 hover:text-indigo-300 text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                title="Append a new part to continue the story"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add Part to Cascade</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Character asset lightbox */}
+      {assetViewing && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-slate-950/90 backdrop-blur-sm"
+          onClick={() => setAssetViewing(null)}
+        >
+          <div
+            className="relative w-full max-w-3xl max-h-[90vh] overflow-y-auto scrollbar-thin rounded-2xl border border-slate-700/60 bg-slate-900 shadow-2xl shadow-black/60"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setAssetViewing(null)}
+              className="absolute top-3 right-3 z-10 p-1.5 bg-slate-900/90 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-white/10 transition-colors cursor-pointer"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex flex-col md:flex-row gap-0 md:gap-5">
+              <div className="md:w-1/2 shrink-0 bg-slate-950 flex items-center justify-center">
+                <img
+                  src={assetViewing.image || undefined}
+                  alt={assetViewing.name}
+                  className="w-full h-auto md:h-full md:max-h-[70vh] object-cover"
+                />
+              </div>
+
+              <div className="flex-1 p-5 md:p-6 space-y-3 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-extrabold text-slate-100">{assetViewing.name}</h3>
+                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border ${assetViewing.role === 'main' ? 'bg-cyan-500/20 text-cyan-200 border-cyan-500/40' : 'bg-slate-800 text-slate-300 border-white/15'}`}>
+                    {assetViewing.role === 'main' ? 'Main' : 'Supporting'}
+                  </span>
+                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border ${assetViewing.source === 'upload' ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'}`}>
+                    {assetViewing.source === 'upload' ? 'Uploaded' : 'AI Generated'}
+                  </span>
+                </div>
+
+                {assetViewing.description && (
+                  <p className="text-[11px] text-slate-400 leading-relaxed">{assetViewing.description}</p>
+                )}
+
+                {assetViewing.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {assetViewing.tags.map((tag, ti) => (
+                      <span key={ti} className="px-1.5 py-0.5 bg-slate-800 text-slate-400 rounded text-[9px] font-mono">{tag}</span>
+                    ))}
+                  </div>
+                )}
+
+                {assetViewing.prompt ? (
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Image prompt</span>
+                      <button
+                        onClick={() => handleCopyAssetPrompt(assetViewing)}
+                        className={`flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider rounded-md border px-1.5 py-0.5 transition-colors cursor-pointer ${
+                          copiedPromptId === `asset-${assetViewing.id}`
+                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white border-slate-700/50'
+                        }`}
+                        title="Copy full prompt"
+                      >
+                        {copiedPromptId === `asset-${assetViewing.id}` ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
+                        <span>{copiedPromptId === `asset-${assetViewing.id}` ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
+                    <p className="p-2.5 bg-slate-950/80 border border-slate-800 rounded-lg text-[10px] font-mono text-slate-300 leading-relaxed max-h-40 overflow-y-auto break-words scrollbar-thin">
+                      {assetViewing.prompt}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-500 italic">
+                    {assetViewing.source === 'upload' ? 'This asset was uploaded by you, so no generation prompt exists.' : 'No prompt saved for this asset.'}
+                  </p>
+                )}
+
+                <div className="flex items-center gap-2 pt-2 border-t border-slate-800">
+                  <button
+                    onClick={() => downloadAssetImage(assetViewing)}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                    title="Download this asset image"
+                  >
+                    <Download className="w-3 h-3" />
+                    <span>Download Image</span>
+                  </button>
+                  {assetViewing.role !== 'main' && (
+                    <button
+                      onClick={() => { handleSetMainAsset(assetViewing.id); setAssetViewing({ ...assetViewing, role: 'main' }); }}
+                      className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Make this the main (default) character"
+                    >
+                      <Users className="w-3 h-3" />
+                      <span>Set as Main</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

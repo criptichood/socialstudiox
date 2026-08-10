@@ -12,10 +12,11 @@ export {
 } from "./ai/imageService";
 
 export {
-  generateVeoVideo,
+  fetchVideoModelCatalog,
+  startVideoGeneration,
+  pollVideoGeneration,
   generateVoiceOverAndVideoPrompt,
-  enhanceVoiceOverWithGuidelines,
-  pollVideoOperation
+  enhanceVoiceOverWithGuidelines
 } from "./ai/videoService";
 export type { VideoGenerationResult } from "@/types";
 

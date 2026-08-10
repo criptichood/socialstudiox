@@ -2,9 +2,28 @@ import { GoogleGenAI } from "@google/genai";
 import { AspectRatio, ComplexityLevel, VisualStyle, Language } from "@/types";
 import { STYLE_GUIDES } from "@/services/stylesGuide";
 
-export const getAi = (customApiKey?: string) => {
-  return new GoogleGenAI({ apiKey: customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY });
+export const getGeminiApiKey = (customApiKey?: string) =>
+  customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+
+/** Process-wide in-memory store shared across route handler bundles (dev compiles each route separately). */
+export const getGlobalMap = <T = any>(key: string): Map<string, T> => {
+  const g = globalThis as any;
+  if (!g.__socialStudioGlobalMaps) g.__socialStudioGlobalMaps = {};
+  if (!g.__socialStudioGlobalMaps[key]) g.__socialStudioGlobalMaps[key] = new Map<string, T>();
+  return g.__socialStudioGlobalMaps[key] as Map<string, T>;
 };
+
+export const getAi = (customApiKey?: string) => {
+  return new GoogleGenAI({ apiKey: getGeminiApiKey(customApiKey) });
+};
+
+/** Vercel AI Gateway credentials. `AI_GATEWAY_API_KEY` matches the AI SDK default; `AI_GATEWAY_BASE_URL` overrides the hosted gateway. */
+export const getGatewayConfig = () => ({
+  apiKey: process.env.AI_GATEWAY_API_KEY,
+  baseURL: process.env.AI_GATEWAY_BASE_URL
+});
+
+export const isGatewayConfigured = () => Boolean(getGatewayConfig().apiKey);
 
 export const getMimeTypeAndData = (base64DataString: string) => {
   const match = base64DataString.match(/^data:(image\/[a-zA-Z+.-]+);base64,(.*)$/);
