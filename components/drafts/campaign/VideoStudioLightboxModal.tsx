@@ -23,6 +23,7 @@ import {
 import { SocialPostCampaignItem } from '../../DraftsPlanner';
 import { CampaignImage } from '../CampaignImage';
 import { ImageDownloadDropdown } from '../../ImageDownloadDropdown';
+import { useModelOptions } from '@/hooks/useModelOptions';
 
 const TTS_MODELS = [
   { id: 'gemini-3.1-flash-tts-preview', name: 'Gemini 3.1 tts-preview (Recommended)', description: 'Ultra-realistic native audio speech synthesizer' },
@@ -163,6 +164,13 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
   handleLaunchPost,
   triggerToast,
 }) => {
+  const { options: voiceModelOptions, loading: voiceModelsLoading } = useModelOptions('voice');
+  const effectiveTTSModels = voiceModelOptions.length > 0 ? voiceModelOptions.map(m => ({
+    id: m.id,
+    name: m.backend === 'gateway' ? `${m.label} (Gateway)` : m.label,
+    description: m.description || m.provider || (m.backend === 'gateway' ? 'AI Gateway neural voice' : 'Gemini native voice'),
+  })) : TTS_MODELS;
+
   if (!previewImageModal) return null;
 
   const { post: _postSnapshot, slide: _slideSnapshot, postIdx: pIdx, slideIdx: sIdx } = previewImageModal;
@@ -501,7 +509,10 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
                       onChange={(e) => handleSelectAudioEngine(e.target.value, pIdx, sIdx)}
                       className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-500"
                     >
-                      {TTS_MODELS.map((m) => (
+                      {voiceModelsLoading && (
+                        <option value={currentEngine}>Loading models…</option>
+                      )}
+                      {effectiveTTSModels.map((m) => (
                         <option key={m.id} value={m.id}>{m.name}</option>
                       ))}
                     </select>

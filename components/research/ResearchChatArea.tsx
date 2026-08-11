@@ -22,6 +22,7 @@ import { BlogMarkdownRenderer } from './blog/BlogMarkdownRenderer';
 interface ResearchChatAreaProps {
   activeSession: ResearchSession | undefined;
   isLoading: boolean;
+  loadingStatus?: string;
   copiedId: string | null;
   setCopiedId: (id: string | null) => void;
   editingMessageId: string | null;
@@ -42,6 +43,7 @@ interface ResearchChatAreaProps {
 export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
   activeSession,
   isLoading,
+  loadingStatus = 'Thinking…',
   copiedId,
   setCopiedId,
   editingMessageId,
@@ -195,7 +197,21 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
                       </div>
                     )}
                     {isUser ? (
-                      <p className="text-xs sm:text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
+                      <div className="space-y-2">
+                        {msg.imageUrls && msg.imageUrls.length > 0 && (
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {msg.imageUrls.map((src, idx) => (
+                              <img
+                                key={idx}
+                                src={src}
+                                alt={`Uploaded image ${idx + 1}`}
+                                className="max-w-[160px] max-h-40 object-cover rounded-xl border border-purple-400/40 shadow-sm"
+                              />
+                            ))}
+                          </div>
+                        )}
+                        <p className="text-xs sm:text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
+                      </div>
                     ) : (
                       <BlogMarkdownRenderer content={msg.content} />
                     )}
@@ -302,9 +318,14 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-sm animate-pulse">
             <Bot className="w-4 h-4" />
           </div>
-          <div className="p-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center gap-2 text-xs text-purple-600 dark:text-purple-300 font-medium">
+          <div className="p-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center gap-2.5 text-xs text-purple-600 dark:text-purple-300 font-medium">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Formulating strategic insights & synthesizing response...</span>
+            <span>{loadingStatus}</span>
+            <span className="ml-1 inline-flex gap-1">
+              <span className="w-1 h-1 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-1 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1 h-1 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
           </div>
         </div>
       )}

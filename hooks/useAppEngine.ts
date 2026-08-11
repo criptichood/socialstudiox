@@ -9,8 +9,7 @@ import {
   SearchResultItem, 
   Project, 
   DraftPrompt,
-  ViewType,
-  ImageModelId
+  ViewType
 } from '@/types';
 import { 
   researchTopicForPrompt, 
@@ -18,6 +17,7 @@ import {
   editInfographicImage,
 } from '@/services/geminiService';
 import { DBService } from '@/services/dbService';
+import { loadModelSettings } from '@/services/ai/modelService';
 
 // Standard typings for window.aistudio if TypeScript needs it
 declare global {
@@ -46,6 +46,7 @@ const PATH_TO_VIEW: Record<string, ViewType> = {
   voiceover: 'voiceover-studio',
   video: 'video-studio',
   sound: 'sound-studio',
+  models: 'models',
   campaign: 'drafts'
 };
 
@@ -71,6 +72,7 @@ const pathForView = (view: ViewType, draftsTab: DraftsTab): string => {
     case 'voiceover-studio': return '/voiceover';
     case 'video-studio': return '/video';
     case 'sound-studio': return '/sound';
+    case 'models': return '/models';
     case 'drafts':
       return draftsTab === 'social' ? '/campaign/social' : '/campaign/draft';
   }
@@ -230,7 +232,7 @@ export const useAppEngine = () => {
   const [visualStyle, setVisualStyle] = useState<VisualStyle>('Default');
   const [language, setLanguage] = useState<Language>('Default');
   const [resolution, setResolution] = useState<AspectRatio>('16:9');
-  const [imageModel, setImageModel] = useState<ImageModelId>('gemini-3.1-flash-image');
+  const [imageModel, setImageModel] = useState<string>(() => loadModelSettings().image || 'gemini-3.1-flash-image');
   const [subOptions, setSubOptions] = useState<Record<string, string>>({});
   
   // Interactive Prompt Studio State

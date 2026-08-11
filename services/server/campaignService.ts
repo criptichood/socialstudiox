@@ -1,12 +1,21 @@
-import { AspectRatio, ComplexityLevel, VisualStyle, ResearchResult, SearchResultItem, Language, SocialPostCampaignItem } from "../../types";
+import { AspectRatio, ComplexityLevel, VisualStyle, ResearchResult, SearchResultItem, Language, SocialPostCampaignItem, ModelBackend, GATEWAY_TEXT_DEFAULT } from "../../types";
 import { 
   getAi, 
   TEXT_MODEL, 
+  SEARCH_MODEL, 
   getLevelInstruction, 
   getStyleInstruction, 
   getLanguageInstruction, 
   getResolutionInstruction 
 } from "./config";
+import { generateTextViaGateway } from "./gatewayText";
+
+/** Parse a `data:image/...;base64,...` URL into an inline part for @google/genai. */
+const imageDataUrlToInlinePart = (dataUrl: string): { mimeType: string; data: string } | null => {
+  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
+  if (!match) return null;
+  return { mimeType: match[1], data: match[2] };
+};
 
 export const researchTopicForPrompt = async (
   topic: string, 
@@ -364,13 +373,23 @@ export const refineSingleSocialPost = async (
   }
 };
 
+export type ResearchChatPhase =
+  | { type: 'searching' }
+  | { type: 'found'; count: number }
+  | { type: 'synthesizing' }
+  | { type: 'done' };
+
 export const conductResearchChat = async (
   messages: { role: 'user' | 'model'; content: string }[],
   companyInfo?: string,
   mode: 'grounded' | 'deep' = 'grounded',
   competitorWebsite?: string,
   model?: string,
-  customApiKey?: string
+  customApiKey?: string,
+  groundingEnabled: boolean = true,
+  backend: ModelBackend = 'gemini',
+  imageUrls: string[] = [],
+  onPhase?: (phase: ResearchChatPhase) => void
 ): Promise<{
   reply: string;
   searchResults?: SearchResultItem[];
@@ -380,6 +399,7 @@ export const conductResearchChat = async (
   suggestedVideoScript?: string;
 }> => {
   const isDeepMode = mode === 'deep';
+  const useGrounding = groundingEnabled;
 
   const systemInstruction = `
     You are an elite AI Multipurpose Content, Video & Competitor Intelligence Strategist for Social Studio X.
@@ -388,8 +408,8 @@ export const conductResearchChat = async (
     RESEARCH MODE: ${isDeepMode ? '🔬 DEEP MARKET & COMPETITOR RESEARCH (Exhaustive Analysis)' : '⚡ REAL-TIME SEARCH GROUNDED (Fast Interactive Strategy)'}
 
     CRITICAL OPERATIONAL RULES:
-    1. **Dynamic Google Search Execution**: Do NOT use the Google Search tool for simple greetings (e.g., "hello", "hi", "hey"), small talk, generic queries, or general prompts that do not require real-time information or competitor intelligence. Only call Google Search when the request asks for specific, current, or external factual data.
-    2. **Conversational Pacing & Matching**: Match the length and complexity of your response to the user's input. For a simple greeting (e.g. "hello"), respond with a warm, concise professional welcome (1-2 sentences) and ask how you can help with their brand strategy today. Do NOT dump your capabilities, list features, or write long essays unless explicitly asked.
+    1. **Live Search Grounding**: Live Google search results (when present) are injected above and must be treated as the authoritative factual basis for current/external information. If the user greets you, engages in small talk, or asks a general question that does not require real-time facts, ignore the injected search results and simply respond conversationally.
+    2. **Conversational Pacing & Matching**: Match the length and complexity of your response to the user's input. For a simple greeting (e.g. "hello"), respond with a warm, concise professional welcome (1-2 sentences) and ask how they can help with their brand strategy today. Do NOT dump your capabilities, list features, or write long essays unless explicitly asked.
     3. **Context & History Awareness**: Review the message history carefully. Avoid repeating greetings, instructions, summaries of capabilities, or general intros that have already occurred in the thread. Keep the conversation rolling naturally.
     4. **Conditional Strategy & Video Extractor Blocks**: Only append the campaign or video extractor markdown boxes (### 🚀 Recommended Campaign Strategy or ### 🎥 Recommended Video Script & Scene Setup) when the user is explicitly asking to generate, draft, or refine a campaign strategy or video script. Never append these boxes for greetings, casual talk, or standard research questions.
 
@@ -399,8 +419,8 @@ export const conductResearchChat = async (
        - Outline multi-slide educational carousels, B2B thought leadership posts, and high-converting ad concepts.
 
     2. **Competitor & Market Intelligence**:
-       - Actively search Google using your integrated Google Search tool to scan competitor websites, social media content strategies, posting schedules, and viral hooks in the target industry.
-       - If no competitor website is explicitly provided, infer top industry competitors and perform search queries for best-performing social media campaigns in that niche.
+       - Leverage the injected live search results to scan competitor websites, social media content strategies, posting schedules, and viral hooks in the target industry.
+       - If no competitor website is explicitly provided, infer top industry competitors and reason from the search results for best-performing social media campaigns in that niche.
        - Analyze how competitors drive audience growth and recommend strategies to resonate with the community.
 
     3. **Proactive & Conversational Agent Behavior**:
@@ -440,40 +460,113 @@ export const conductResearchChat = async (
     ---
   `;
 
-  // Format chat history for Gemini API
-  const contents = messages.map(m => ({
-    role: m.role,
-    parts: [{ text: m.content }]
-  }));
+  // Step 1 (optional): Gather live search grounding via the dedicated Google
+  // Search tool model. Results feed the selected model (Gemini or gateway) for
+  // final synthesis, so grounding no longer requires the selected model to be a Gemini model.
+  let searchResults: SearchResultItem[] = [];
+  let groundingContext = '';
 
-  const response = await getAi(customApiKey).models.generateContent({
-    model: model || TEXT_MODEL,
-    contents,
-    config: {
-      systemInstruction,
-      tools: [{ googleSearch: {} }],
-    },
-  });
+  if (useGrounding) {
+    try {
+      onPhase?.({ type: 'searching' });
+      const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
+      const query = [
+        companyInfo ? `Company / Brand context: ${companyInfo}` : '',
+        competitorWebsite ? `Competitor / Benchmark: ${competitorWebsite}` : '',
+        lastUserMsg?.content
+      ].filter(Boolean).join('\n');
 
-  const text = response.text || "I have completed the market and video content research based on current intelligence.";
-
-  // Extract grounding metadata search results if present
-  const searchResults: SearchResultItem[] = [];
-  try {
-    const candidate = response.candidates?.[0];
-    const groundingChunks = (candidate as any)?.groundingMetadata?.groundingChunks;
-    if (Array.isArray(groundingChunks)) {
-      groundingChunks.forEach((chunk: any) => {
-        if (chunk.web?.uri && chunk.web?.title) {
-          searchResults.push({
-            title: chunk.web.title,
-            url: chunk.web.uri
-          });
-        }
+      const searchResponse = await getAi(customApiKey).models.generateContent({
+        model: SEARCH_MODEL,
+        contents: [{
+          role: 'user',
+          parts: [
+            ...imageUrls
+              .map(imageDataUrlToInlinePart)
+              .filter((p): p is { mimeType: string; data: string } => Boolean(p))
+              .map((p) => ({
+                inlineData: { mimeType: p.mimeType, data: p.data },
+              })),
+            { text: query },
+          ],
+        }],
+        config: {
+          tools: [{ googleSearch: {} }],
+        },
       });
+
+      const candidate = searchResponse.candidates?.[0];
+      const groundingChunks = (candidate as any)?.groundingMetadata?.groundingChunks;
+      if (Array.isArray(groundingChunks)) {
+        groundingChunks.forEach((chunk: any) => {
+          if (chunk.web?.uri && chunk.web?.title) {
+            searchResults.push({
+              title: chunk.web.title,
+              url: chunk.web.uri
+            });
+          }
+        });
+      }
+
+      if (searchResults.length > 0) {
+        groundingContext = `
+        LIVE GOOGLE SEARCH GROUNDING RESULTS (collected by ${SEARCH_MODEL}):
+        ${searchResults.map((r, i) => `${i + 1}. ${r.title} — ${r.url}`).join('\n')}
+
+        Use these search results as the factual basis for your response. Cite sources inline where relevant.`;
+      }
+      onPhase?.({ type: 'found', count: searchResults.length });
+    } catch (e) {
+      console.warn("Could not collect search grounding, continuing ungrounded", e);
+      onPhase?.({ type: 'found', count: 0 });
     }
-  } catch (e) {
-    console.warn("Could not extract search grounding metadata", e);
+  }
+
+  // Step 2: Final synthesis on the selected model (Gemini or gateway). The
+  // googleSearch tool is intentionally NOT attached here — grounding context is
+  // injected instead, so gateway text models work for grounded research too.
+  onPhase?.({ type: 'synthesizing' });
+  const groundingInstruction = systemInstruction + (groundingContext ? `\n${groundingContext}` : '');
+
+  let text: string;
+  if (backend === 'gateway') {
+    const prompt = messages
+      .map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
+      .join('\n\n');
+    text = await generateTextViaGateway(
+      model || GATEWAY_TEXT_DEFAULT,
+      prompt,
+      groundingInstruction,
+      undefined,
+      imageUrls
+    );
+  } else {
+    type ResearchContent = { role: 'user' | 'model'; parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> };
+    const contents: ResearchContent[] = messages.map(m => ({
+      role: m.role,
+      parts: [{ text: m.content }]
+    }));
+    // Attach uploaded images to the latest user turn for vision-capable models.
+    if (imageUrls.length > 0 && contents.length > 0) {
+      const last = contents[contents.length - 1];
+      if (last.role === 'user') {
+        const imageParts = imageUrls
+          .map(imageDataUrlToInlinePart)
+          .filter((p): p is { mimeType: string; data: string } => Boolean(p))
+          .map((p) => ({
+            inlineData: { mimeType: p.mimeType, data: p.data },
+          }));
+        last.parts = [...imageParts, ...last.parts];
+      }
+    }
+    const response = await getAi(customApiKey).models.generateContent({
+      model: model || TEXT_MODEL,
+      contents,
+      config: {
+        systemInstruction: groundingInstruction,
+      },
+    });
+    text = response.text || "I have completed the market and video content research based on current intelligence.";
   }
 
   // Parse suggested strategy from text if structured section exists
@@ -501,6 +594,8 @@ export const conductResearchChat = async (
   if (videoScriptMatch) {
     suggestedVideoScript = videoScriptMatch[1].trim();
   }
+
+  onPhase?.({ type: 'done' });
 
   return {
     reply: text,
@@ -541,7 +636,9 @@ export const generateBlogPostFromCampaign = async (
   targetWordCount: number = 1200,
   targetAudience: string = 'General / Mixed Audience',
   seoKeywords: string[] = [],
-  customApiKey?: string
+  customApiKey?: string,
+  backend: ModelBackend = 'gemini',
+  model?: string
 ): Promise<BlogPostResult> => {
   const imagesListText = availableImages.length > 0
     ? availableImages.map((img, i) => `Image #${i + 1}: Title: "${img.title}", URL: "${img.url}"`).join('\n')
@@ -610,13 +707,19 @@ export const generateBlogPostFromCampaign = async (
     Output ONLY the raw Markdown blog post. Do not add introductory conversational filler before or after the markdown text.
   `;
 
-  const response = await getAi(customApiKey).models.generateContent({
-    model: TEXT_MODEL,
-    contents: systemInstruction,
-  });
+  let rawText = "";
+  if (backend === 'gateway') {
+    const { generateTextViaGateway } = await import("@/services/server/gatewayText");
+    rawText = (await generateTextViaGateway(model || GATEWAY_TEXT_DEFAULT, systemInstruction)).trim();
+  } else {
+    const response = await getAi(customApiKey).models.generateContent({
+      model: model || TEXT_MODEL,
+      contents: systemInstruction,
+    });
+    rawText = (response.text || "").trim();
+  }
 
   // Clean raw text and strictly eliminate any em-dashes
-  let rawText = (response.text || "").trim();
   rawText = rawText.replace(/—/g, ' - ').replace(/--/g, ' - ');
 
   let markdownContent = rawText;

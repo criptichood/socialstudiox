@@ -42,6 +42,8 @@ export const getMimeTypeAndData = (base64DataString: string) => {
 export const TEXT_MODEL = 'gemini-3.5-flash';
 export const IMAGE_MODEL = 'gemini-3.1-flash-image';
 export const EDIT_MODEL = 'gemini-3.1-flash-image';
+/** Google Search tool model — runs the googleSearch tool on behalf of any selected model (incl. gateway text models). */
+export const SEARCH_MODEL = 'gemini-2.5-flash';
 
 export const getLevelInstruction = (level: ComplexityLevel): string => {
   switch (level) {

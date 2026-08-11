@@ -165,8 +165,9 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
               </figure>
             );
           },
-          strong: ({ children }) => <strong className="font-bold text-slate-900 dark:text-white bg-purple-500/10 px-1 py-0.5 rounded border border-purple-500/20">{children}</strong>,
+          strong: ({ children }) => <strong className="font-bold text-slate-900 dark:text-white">{children}</strong>,
           em: ({ children }) => <em className="italic text-purple-600 dark:text-purple-300">{children}</em>,
+          del: ({ children }) => <del className="line-through text-slate-500 dark:text-slate-400">{children}</del>,
           ul: ({ children }) => <ul className="list-disc pl-6 space-y-2.5 my-5 text-slate-800 dark:text-slate-200 text-sm sm:text-base">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal pl-6 space-y-2.5 my-5 text-slate-800 dark:text-slate-200 text-sm sm:text-base">{children}</ol>,
           li: ({ children }) => <li className="pl-1 leading-relaxed">{children}</li>,
@@ -189,7 +190,7 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
           code: ({ inline, className, children, ...props }: any) => {
             if (inline) {
               return (
-                <code className="px-2 py-0.5 bg-purple-500/15 text-purple-700 dark:text-purple-300 font-mono text-xs font-semibold rounded-md border border-purple-500/20" {...props}>
+                <code className="px-1.5 text-purple-700 dark:text-purple-300 font-mono text-xs font-semibold" {...props}>
                   {children}
                 </code>
               );

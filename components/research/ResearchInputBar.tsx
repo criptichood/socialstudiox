@@ -7,8 +7,12 @@ import {
   Video, 
   Compass, 
   ArrowRight, 
-  Layers 
+  Layers,
+  ImagePlus,
+  X 
 } from 'lucide-react';
+import { useModelOptions } from '@/hooks/useModelOptions';
+import { textModelSupportsVision } from '@/types';
 
 interface ResearchInputBarProps {
   inputMessage: string;
@@ -18,8 +22,13 @@ interface ResearchInputBarProps {
   setResearchMode: (val: 'grounded' | 'deep') => void;
   selectedModelAlias: string;
   setSelectedModelAlias: (val: string) => void;
+  groundingEnabled: boolean;
+  setGroundingEnabled: (val: boolean) => void;
   handleSendMessage: (customPrompt?: string) => void;
   samplePrompts: { icon: any; badge: string; title: string; prompt: string }[];
+  attachedImages: string[];
+  onAddImages: (files: FileList) => void;
+  onRemoveImage: (index: number) => void;
 }
 
 export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
@@ -30,9 +39,24 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
   setResearchMode,
   selectedModelAlias,
   setSelectedModelAlias,
+  groundingEnabled,
+  setGroundingEnabled,
   handleSendMessage,
   samplePrompts,
+  attachedImages,
+  onAddImages,
+  onRemoveImage,
 }) => {
+  const { options: modelOptions, loading: modelsLoading } = useModelOptions('text', selectedModelAlias);
+  const fallbackOptions = [
+    { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', backend: 'gemini' as const, vision: true },
+    { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', backend: 'gemini' as const, vision: true },
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', backend: 'gemini' as const, vision: true },
+  ];
+  const options = modelOptions.length > 0 ? modelOptions : fallbackOptions;
+  const selectedSupportsVision = modelOptions.find((o) => o.id === selectedModelAlias)?.vision ?? textModelSupportsVision(selectedModelAlias);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
   return (
     <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md space-y-3">
       {/* Model Selector, Mode Toggle & Google Search Grounding Bar */}
@@ -46,10 +70,30 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
             onChange={(e) => setSelectedModelAlias(e.target.value)}
             className="px-2.5 py-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none"
           >
-            <option value="gemini-3.6-flash">Gemini 3.6 Flash (Fast Strategy)</option>
-            <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Deep Reasoning)</option>
-            <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (Ultra-Fast)</option>
+            {modelsLoading && (
+              <option value={selectedModelAlias}>Loading models…</option>
+            )}
+            {options.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}{m.backend === 'gateway' ? ' (Gateway)' : ''}{m.vision ? ' (Vision)' : ''}
+              </option>
+            ))}
           </select>
+          {selectedSupportsVision ? (
+            <span
+              className="hidden lg:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono bg-cyan-100/70 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-500/20"
+              title="This model accepts image uploads for analysis"
+            >
+              <ImagePlus className="w-3 h-3" /> Vision Ready
+            </span>
+          ) : (
+            <span
+              className="hidden lg:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700"
+              title="This model does not accept image uploads"
+            >
+              <ImagePlus className="w-3 h-3" /> No Image Input
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -78,18 +122,98 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
             </button>
           </div>
 
-          <span
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 bg-cyan-500/10"
-            title="Research always answers with up-to-date Google Search grounding"
+          <div
+            role="switch"
+            aria-checked={groundingEnabled}
+            tabIndex={0}
+            onClick={() => setGroundingEnabled(!groundingEnabled)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setGroundingEnabled(!groundingEnabled);
+              }
+            }}
+            className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer select-none ${
+              groundingEnabled
+                ? 'text-cyan-600 dark:text-cyan-400 border-cyan-500/40 bg-cyan-500/10 hover:bg-cyan-500/20'
+                : 'text-slate-400 dark:text-slate-500 border-slate-300/60 dark:border-slate-700 bg-slate-100/60 dark:bg-slate-900/40 hover:text-slate-600 dark:hover:text-slate-300'
+            }`}
+            title={
+              groundingEnabled
+                ? 'Google Search grounding is ON — a Gemini 2.5 Flash search tool feeds live results to the selected model'
+                : 'Google Search grounding is OFF — chat runs on the selected model only'
+            }
           >
-            <Globe className="w-3.5 h-3.5 text-cyan-500" />
-            <span>Live Search Grounded</span>
-          </span>
+            <Globe className={`w-3.5 h-3.5 ${groundingEnabled ? 'text-cyan-500' : 'text-slate-400 dark:text-slate-500'}`} />
+            <span>Live Search</span>
+            <span
+              className={`relative inline-flex items-center h-4 w-7 rounded-full transition-colors ${
+                groundingEnabled ? 'bg-cyan-500' : 'bg-slate-300 dark:bg-slate-700'
+              }`}
+            >
+              <span
+                className={`inline-block h-3 w-3 rounded-full bg-white shadow transform transition-transform ${
+                  groundingEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
+                }`}
+              />
+            </span>
+          </div>
         </div>
       </div>
 
+      {/* Attached image previews */}
+      {attachedImages.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {attachedImages.map((src, idx) => (
+            <div key={idx} className="relative group">
+              <img
+                src={src}
+                alt={`Attachment ${idx + 1}`}
+                className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-700"
+              />
+              <button
+                type="button"
+                onClick={() => onRemoveImage(idx)}
+                className="absolute -top-1.5 -right-1.5 p-1 bg-rose-500 text-white rounded-full shadow-sm hover:bg-rose-600 transition-colors cursor-pointer"
+                title="Remove image"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Main Textarea Input Form */}
       <div className="relative flex items-center">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files) onAddImages(e.target.files);
+            e.target.value = '';
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={isLoading || !selectedSupportsVision}
+          title={
+            selectedSupportsVision
+              ? 'Attach image(s) for the model to analyze'
+              : 'This model does not support image input — pick a vision-capable model first'
+          }
+          className={`absolute left-3 p-2 rounded-xl transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
+            attachedImages.length > 0 || selectedSupportsVision
+              ? 'text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10'
+              : 'text-slate-300 dark:text-slate-600'
+          }`}
+        >
+          <ImagePlus className="w-4 h-4" />
+        </button>
         <textarea
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
@@ -100,8 +224,12 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
             }
           }}
           rows={2}
-          placeholder="Ask anything or paste a URL/topic (e.g., 'Research viral hooks for SaaS launching next week')..."
-          className="w-full pl-4 pr-14 py-3 bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 focus:border-purple-500 rounded-2xl text-xs text-slate-900 dark:text-white outline-none resize-none focus:ring-2 focus:ring-purple-500/20"
+          placeholder={
+            selectedSupportsVision
+              ? 'Ask anything, paste a URL/topic, or attach an image to analyze (e.g., a competitor ad or a visual draft)...'
+              : 'Ask anything or paste a URL/topic (e.g., \'Research viral hooks for SaaS launching next week\')...'
+          }
+          className="w-full pl-12 pr-14 py-3 bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 focus:border-purple-500 rounded-2xl text-xs text-slate-900 dark:text-white outline-none resize-none focus:ring-2 focus:ring-purple-500/20"
         />
 
         <button

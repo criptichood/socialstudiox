@@ -16,6 +16,7 @@ import {
 import { SavedCampaign, SocialPostCampaignItem } from '@/components/DraftsPlanner';
 import { AIModelDropdown } from '@/components/CustomDropdown';
 import { CampaignExportDropdown } from '@/components/drafts/campaign/CampaignExportDropdown';
+import { useModelOptions } from '@/hooks/useModelOptions';
 
 interface CampaignWorkspaceHeaderProps {
   currentCampaign: SavedCampaign;
@@ -68,6 +69,12 @@ export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = (
   onUpdateCampaignModel,
   triggerToast,
 }) => {
+  const { options: modelOptions, loading: modelsLoading } = useModelOptions('text', currentCampaign.aiModel || 'gemini-3.6-flash');
+  const headerModelOptions = modelOptions.length > 0 ? modelOptions : [
+    { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', backend: 'gemini' as const },
+    { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', backend: 'gemini' as const },
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', backend: 'gemini' as const },
+  ];
   return (
     <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 p-3 md:p-4 sticky top-0 z-30 space-y-3">
       {/* Top Navigation & Actions Bar */}
@@ -164,10 +171,12 @@ export const CampaignWorkspaceHeader: React.FC<CampaignWorkspaceHeaderProps> = (
                 onChange={(e) => onUpdateCampaignModel(e.target.value)}
                 className="bg-transparent text-[11px] font-bold text-slate-700 dark:text-slate-300 outline-none cursor-pointer min-w-0"
               >
-                <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
-                <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro</option>
-                <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite</option>
-                <option value="gemini-flash-latest">Gemini Flash Latest</option>
+                {modelsLoading && (
+                  <option value={currentCampaign.aiModel || 'gemini-3.6-flash'}>Loading…</option>
+                )}
+                {headerModelOptions.map((m) => (
+                  <option key={m.id} value={m.id}>{m.label}{m.backend === 'gateway' ? ' (Gateway)' : ''}</option>
+                ))}
               </select>
             </div>
           )}

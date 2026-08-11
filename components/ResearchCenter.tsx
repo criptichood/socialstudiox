@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { DBService } from '../services/dbService';
 import { conductResearchChat, generateBlogPostFromCampaign, generateInfographicImage, BlogPostResult, SectionImagePrompt } from '../services/geminiService';
+import { loadModelSettings } from '@/services/ai/modelService';
+import { gatewayBackendForId, textModelSupportsVision } from '@/types';
 import { ResearchSession, ChatMessageItem, SavedCampaign, PublishEndpointConfig, SavedBlogDraft, CronScheduleItem } from '../types';
 
 import { ResearchSidebar } from './research/ResearchSidebar';
@@ -45,6 +47,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   const [inputMessage, setInputMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState<string>('Thinking…');
 
   // Campaign to Blog Post Converter & Webhook Publishing State
   const [isBlogStudioOpen, setIsBlogStudioOpen] = useState<boolean>(false);
@@ -111,8 +114,17 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   const [publishResponse, setPublishResponse] = useState<{ success: boolean; message: string; status?: number } | null>(null);
 
   // AI model settings
-  const [selectedModelAlias, setSelectedModelAlias] = useState<string>('gemini-3.6-flash');
+  const [selectedModelAlias, setSelectedModelAlias] = useState<string>(() => loadModelSettings().text || 'gemini-3.6-flash');
   const [researchMode, setResearchMode] = useState<'grounded' | 'deep'>('grounded');
+  const [groundingEnabled, setGroundingEnabled] = useState<boolean>(true);
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
+
+  // Adaptive loading status: derived from real server-side phases emitted via
+  // SSE (searching → found → synthesizing → done), so the user always sees what
+  // the assistant is actually doing on any backend model.
+  useEffect(() => {
+    if (!isLoading) setLoadingStatus('Thinking…');
+  }, [isLoading]);
 
   // Inline Title Edit State
   const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
@@ -187,7 +199,60 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   }, [activeSessionId]);
 
   // Handlers for session management
+  const MAX_ATTACH_DIMENSION = 1280;
+  const ATTACH_JPEG_QUALITY = 0.85;
+
+  /** Downscale + re-encode an image client-side so uploads stay small and fast. */
+  const compressImage = (dataUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, MAX_ATTACH_DIMENSION / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(dataUrl);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', ATTACH_JPEG_QUALITY));
+        } catch (e) {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => reject(new Error('Failed to load image for compression'));
+      img.src = dataUrl;
+    });
+  };
+
+  const handleAddImages = (files: FileList) => {
+    const fileList = Array.from(files);
+    if (fileList.length === 0) return;
+    const readers = fileList.map((file) => {
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Failed to read image file'));
+        reader.readAsDataURL(file);
+      });
+    });
+    Promise.all(readers)
+      .then((urls) => Promise.all(urls.map(compressImage)))
+      .then((compressed) => setAttachedImages(prev => [...prev, ...compressed].slice(0, 4)))
+      .catch((err) => console.error("Failed to read attachment(s):", err));
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setAttachedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleNewSession = async () => {
+    setAttachedImages([]);
     const newSession: ResearchSession = {
       id: `session_${Date.now()}`,
       title: 'New Research Topic',
@@ -229,14 +294,34 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     const promptToUse = customPrompt || inputMessage.trim();
     if (!promptToUse || isLoading || !activeSessionId) return;
 
+    const visionSupported = textModelSupportsVision(selectedModelAlias);
+    if (attachedImages.length > 0 && !visionSupported) {
+      const warnMsg: ChatMessageItem = {
+        id: `msg_warn_${Date.now()}`,
+        role: 'model',
+        content: `⚠️ **Image input not supported**: The selected model (${selectedModelAlias}) does not accept image uploads. Switch to a vision-capable model (e.g. a Gemini or GPT model) or remove the attached image(s) to continue.`,
+        timestamp: Date.now()
+      };
+      setSessions(prev => prev.map(s => {
+        if (s.id === activeSessionId) {
+          return { ...s, updatedAt: Date.now(), messages: [...s.messages, warnMsg] };
+        }
+        return s;
+      }));
+      return;
+    }
+
+    const imageUrlsForSend = [...attachedImages];
     if (!customPrompt) setInputMessage('');
+    setAttachedImages([]);
     setIsLoading(true);
 
     const userMsg: ChatMessageItem = {
       id: `msg_user_${Date.now()}`,
       role: 'user',
       content: promptToUse,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      imageUrls: imageUrlsForSend.length > 0 ? imageUrlsForSend : undefined
     };
 
     const currentSession = sessions.find(s => s.id === activeSessionId) || activeSession;
@@ -271,7 +356,30 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         currentSession.companyContext || '',
         researchMode,
         currentSession.competitorWebsite || '',
-        selectedModelAlias
+        selectedModelAlias,
+        groundingEnabled,
+        gatewayBackendForId('text', selectedModelAlias),
+        imageUrlsForSend,
+        (phase) => {
+          switch (phase.type) {
+            case 'searching':
+              setLoadingStatus('Searching Google for the latest information…');
+              break;
+            case 'found':
+              setLoadingStatus(
+                phase.count > 0
+                  ? `Found ${phase.count} live source${phase.count === 1 ? '' : 's'} — reviewing…`
+                  : 'No live sources found — reasoning from knowledge…'
+              );
+              break;
+            case 'synthesizing':
+              setLoadingStatus('Synthesizing findings into a response…');
+              break;
+            case 'done':
+              setLoadingStatus('Finalizing response…');
+              break;
+          }
+        }
       );
 
       const aiMsg: ChatMessageItem = {
@@ -788,7 +896,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   ];
 
   return (
-    <div className="flex h-screen w-full bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans overflow-hidden">
+    <div className="flex h-full w-full bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans overflow-hidden">
       {/* Sidebar Component */}
       <ResearchSidebar
         isSidebarOpen={isSidebarOpen}
@@ -812,6 +920,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         <ResearchChatArea
           activeSession={activeSession}
           isLoading={isLoading}
+          loadingStatus={loadingStatus}
           copiedId={copiedId}
           setCopiedId={setCopiedId}
           editingMessageId={editingMessageId}
@@ -837,8 +946,13 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           setResearchMode={setResearchMode}
           selectedModelAlias={selectedModelAlias}
           setSelectedModelAlias={setSelectedModelAlias}
+          groundingEnabled={groundingEnabled}
+          setGroundingEnabled={setGroundingEnabled}
           handleSendMessage={handleSendMessage}
           samplePrompts={samplePrompts}
+          attachedImages={attachedImages}
+          onAddImages={handleAddImages}
+          onRemoveImage={handleRemoveImage}
         />
       </div>
 

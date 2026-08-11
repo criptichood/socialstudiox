@@ -1,3 +1,5 @@
+import { gatewayBackendForId } from "@/types";
+
 export const generateVoiceOverSpeech = async (
   text: string,
   voiceName: 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede' = 'Puck',
@@ -19,7 +21,8 @@ export const generateVoiceOverSpeech = async (
       modelName,
       personaStyle,
       accent,
-      speechSpeed
+      speechSpeed,
+      backend: gatewayBackendForId('voice', modelName)
     })
   });
 

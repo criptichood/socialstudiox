@@ -25,6 +25,7 @@ import { VideoStudio } from '@/components/VideoStudio';
 import { SoundStudio } from '@/components/SoundStudio';
 import { PresentationDeck } from '@/components/PresentationDeck';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ModelsSettings } from '@/components/ModelsSettings';
 import {
   getVideoGenerationState,
   subscribeVideoGeneration
@@ -219,7 +220,7 @@ const App: React.FC = () => {
     {showIntro ? (
       <IntroScreen onComplete={handleIntroComplete} />
     ) : (
-    <div className="h-[100dvh] flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white relative animate-in fade-in duration-1000 transition-colors">
+    <div className="h-[100dvh] flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white relative transition-colors">
       
       {/* Collapsible Sidebar */}
       <Sidebar 
@@ -681,6 +682,13 @@ const App: React.FC = () => {
               <div className="p-4 md:p-6">
                 <SoundStudio />
               </div>
+            </ErrorBoundary>
+          )}
+
+          {/* View 10: Model Management */}
+          {currentView === 'models' && (
+            <ErrorBoundary fallbackTitle="Model Management Display Interrupted">
+              <ModelsSettings onBackToDashboard={() => setCurrentView('dashboard')} />
             </ErrorBoundary>
           )}
           </>

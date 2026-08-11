@@ -1,4 +1,5 @@
-import { AspectRatio, ComplexityLevel, VisualStyle, ResearchResult, Language, SocialPostCampaignItem, BlogPostResult, SearchResultItem } from "@/types";
+import { AspectRatio, ComplexityLevel, VisualStyle, ResearchResult, Language, SocialPostCampaignItem, BlogPostResult, SearchResultItem, gatewayBackendForId } from "@/types";
+import { loadModelSettings } from "@/services/ai/modelService";
 
 export type { BlogPostResult, SearchResultItem };
 
@@ -148,20 +149,32 @@ export const refineSingleSocialPost = async (
   return data.post;
 };
 
-export const conductResearchChat = async (
-  messages: { role: 'user' | 'model'; content: string }[],
-  companyInfo?: string,
-  mode: 'grounded' | 'deep' = 'grounded',
-  competitorWebsite?: string,
-  model?: string
-): Promise<{
+export type ResearchChatPhaseEvent =
+  | { type: 'searching' }
+  | { type: 'found'; count: number }
+  | { type: 'synthesizing' }
+  | { type: 'done' };
+
+export interface ResearchChatResult {
   reply: string;
   searchResults?: SearchResultItem[];
   suggestedCampaignTopic?: string;
   suggestedPrompt?: string;
   suggestedVideoPrompt?: string;
   suggestedVideoScript?: string;
-}> => {
+}
+
+export const conductResearchChat = async (
+  messages: { role: 'user' | 'model'; content: string }[],
+  companyInfo?: string,
+  mode: 'grounded' | 'deep' = 'grounded',
+  competitorWebsite?: string,
+  model?: string,
+  groundingEnabled: boolean = true,
+  backend?: 'gemini' | 'gateway',
+  imageUrls?: string[],
+  onPhase?: (phase: ResearchChatPhaseEvent) => void
+): Promise<ResearchChatResult> => {
   const response = await fetch("/api/campaign/research-chat", {
     method: "POST",
     headers: {
@@ -172,7 +185,10 @@ export const conductResearchChat = async (
       companyInfo,
       mode,
       competitorWebsite,
-      model
+      model,
+      groundingEnabled,
+      backend,
+      imageUrls
     })
   });
 
@@ -180,8 +196,46 @@ export const conductResearchChat = async (
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || "Research chat failed");
   }
+  if (!response.body) {
+    throw new Error("Research chat failed: no response stream");
+  }
 
-  return await response.json();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: ResearchChatResult | undefined;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n');
+    buffer = events.pop() || '';
+
+    for (const event of events) {
+      const line = event.trim().replace(/^data: ?/, '');
+      if (!line) continue;
+      let data: any;
+      try {
+        data = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (data.phase) {
+        onPhase?.(data.phase);
+        continue;
+      }
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      result = data;
+    }
+  }
+
+  if (!result?.reply) {
+    throw new Error("Research chat failed: no reply");
+  }
+  return result;
 };
 
 export const generateBlogPostFromCampaign = async (
@@ -192,8 +246,11 @@ export const generateBlogPostFromCampaign = async (
   targetTone: string = 'Informative, Authoritative & Actionable Guide',
   targetWordCount: number = 1200,
   targetAudience: string = 'General / Mixed Audience',
-  seoKeywords: string[] = []
+  seoKeywords: string[] = [],
+  modelName?: string,
+  backend?: 'gemini' | 'gateway'
 ): Promise<BlogPostResult> => {
+  const effModel = modelName || loadModelSettings().text || 'gemini-3.5-flash';
   const response = await fetch("/api/campaign/blog", {
     method: "POST",
     headers: {
@@ -207,7 +264,9 @@ export const generateBlogPostFromCampaign = async (
       targetTone,
       targetWordCount,
       targetAudience,
-      seoKeywords
+      seoKeywords,
+      model: effModel,
+      backend: backend || gatewayBackendForId('text', effModel)
     })
   });
 

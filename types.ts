@@ -9,7 +9,8 @@ export type ImageModelId =
   | 'gemini-3-pro-image'
   | 'gemini-3.1-flash-lite-image'
   | 'imagen-3.0-generate-002'
-  | 'gemini-2.5-flash-image';
+  | 'gemini-2.5-flash-image'
+  | (string & {});
 
 export interface ImageModelOption {
   value: ImageModelId;
@@ -189,6 +190,20 @@ export const VIDEO_MODEL_CATALOG: VideoModelInfo[] = [
     description: 'Gemini Omni Flash via the Interactions API. Always produces native audio; outputs 720p only.'
   },
   {
+    id: 'google/veo-3.1-fast-generate-001',
+    label: 'Veo 3.1 Fast (AI Gateway)',
+    provider: 'Vercel AI Gateway → Google',
+    backend: 'gateway',
+    capabilities: ['t2v', 'i2v', 'first-last-frame'],
+    imageInput: 'single',
+    endFrame: true,
+    audio: true,
+    resolutions: ['720p', '1080p'],
+    durations: [4, 6, 8],
+    aspectRatios: ['16:9', '9:16'],
+    description: 'Fast Veo 3.1 tier routed through the Vercel AI Gateway for quicker turnaround.'
+  },
+  {
     id: 'google/veo-3.1-generate-001',
     label: 'Veo 3.1 (AI Gateway)',
     provider: 'Vercel AI Gateway → Google',
@@ -200,8 +215,7 @@ export const VIDEO_MODEL_CATALOG: VideoModelInfo[] = [
     resolutions: ['720p', '1080p'],
     durations: [4, 6, 8],
     aspectRatios: ['16:9', '9:16'],
-    description: 'Veo 3.1 routed through the Vercel AI Gateway with unified video parameters.',
-    note: 'Model ID should be verified against the gateway model list once AI_GATEWAY_API_KEY is configured.'
+    description: 'Veo 3.1 routed through the Vercel AI Gateway with unified video parameters.'
   },
   {
     id: 'klingai/kling-v2.6-t2v',
@@ -215,8 +229,7 @@ export const VIDEO_MODEL_CATALOG: VideoModelInfo[] = [
     resolutions: ['720p', '1080p'],
     durations: [5, 10],
     aspectRatios: ['16:9', '9:16'],
-    description: 'Text-to-video only — builds motion from the narrative prompt without a reference frame.',
-    note: 'Model ID should be verified against the gateway model list once AI_GATEWAY_API_KEY is configured.'
+    description: 'Text-to-video only — builds motion from the narrative prompt without a reference frame.'
   },
   {
     id: 'alibaba/wan-v2.6-i2v',
@@ -230,8 +243,7 @@ export const VIDEO_MODEL_CATALOG: VideoModelInfo[] = [
     resolutions: ['720p', '1080p'],
     durations: [5, 10, 15],
     aspectRatios: ['16:9', '9:16'],
-    description: 'Image-to-video model that animates a single reference frame into motion.',
-    note: 'Model ID should be verified against the gateway model list once AI_GATEWAY_API_KEY is configured.'
+    description: 'Image-to-video model that animates a single reference frame into motion.'
   },
   {
     id: 'bytedance/seedance-v1.5-pro',
@@ -245,8 +257,7 @@ export const VIDEO_MODEL_CATALOG: VideoModelInfo[] = [
     resolutions: ['720p', '1080p'],
     durations: [4, 8, 12],
     aspectRatios: ['16:9', '9:16'],
-    description: 'ByteDance Seedance model supporting both text- and image-to-video.',
-    note: 'Model ID should be verified against the gateway model list once AI_GATEWAY_API_KEY is configured.'
+    description: 'ByteDance Seedance model supporting both text- and image-to-video.'
   },
   {
     id: 'klingai/kling-v2.6-r2v',
@@ -261,9 +272,123 @@ export const VIDEO_MODEL_CATALOG: VideoModelInfo[] = [
     durations: [5, 10],
     aspectRatios: ['16:9', '9:16'],
     description: 'Reference-to-video: accepts multiple reference images for subject/style consistency across the clip.',
-    note: 'Multi-image reference support is experimental. Model ID should be verified against the gateway model list once AI_GATEWAY_API_KEY is configured.'
+    note: 'Multi-image reference support is experimental.'
   }
 ];
+
+/** Which runtime executes a model call. 'gemini' = @google/genai; 'gateway' = Vercel AI Gateway (AI SDK). */
+export type ModelBackend = 'gemini' | 'gateway';
+
+export type ModelModality = 'text' | 'image' | 'image-edit' | 'voice' | 'video';
+
+/** Client-safe metadata for a non-video model (text/image/voice). Video models use the richer VideoModelInfo. */
+export interface ModelEntry {
+  id: string;
+  label: string;
+  provider: string;
+  backend: ModelBackend;
+  description?: string;
+  /** Model accepts image inputs for analysis (multimodal vision). */
+  vision?: boolean;
+}
+
+/** Curated Vercel AI Gateway text models (mirrors the @ai-sdk/gateway GatewayModelId list). */
+export const GATEWAY_TEXT_MODELS: ModelEntry[] = [
+  { id: 'google/gemini-3.6-flash', label: 'Gemini 3.6 Flash', provider: 'AI Gateway → Google', backend: 'gateway', description: 'Fast multimodal reasoning through the gateway.', vision: true },
+  { id: 'google/gemini-3.5-flash', label: 'Gemini 3.5 Flash', provider: 'AI Gateway → Google', backend: 'gateway', description: 'Balanced speed and quality text model.', vision: true },
+  { id: 'google/gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', provider: 'AI Gateway → Google', backend: 'gateway', description: 'High-reasoning gateway model for deep tasks.', vision: true },
+  { id: 'google/gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', provider: 'AI Gateway → Google', backend: 'gateway', description: 'Ultra-fast lite gateway model.', vision: true },
+  { id: 'openai/gpt-5.6-luna', label: 'GPT-5.6 Luna', provider: 'AI Gateway → OpenAI', backend: 'gateway', description: 'Flagship OpenAI reasoning model.', vision: true },
+  { id: 'openai/gpt-5.6-sol', label: 'GPT-5.6 Sol', provider: 'AI Gateway → OpenAI', backend: 'gateway', description: 'OpenAI fast-reasoning tier.', vision: true },
+  { id: 'openai/gpt-5.4', label: 'GPT-5.4', provider: 'AI Gateway → OpenAI', backend: 'gateway', description: 'General-purpose OpenAI chat model.', vision: true },
+  { id: 'openai/gpt-5.4-mini', label: 'GPT-5.4 Mini', provider: 'AI Gateway → OpenAI', backend: 'gateway', description: 'Compact, low-latency OpenAI model.', vision: true },
+  { id: 'anthropic/claude-opus-5', label: 'Claude Opus 5', provider: 'AI Gateway → Anthropic', backend: 'gateway', description: 'Anthropic flagship writing/reasoning model.', vision: true },
+  { id: 'anthropic/claude-sonnet-5', label: 'Claude Sonnet 5', provider: 'AI Gateway → Anthropic', backend: 'gateway', description: 'Balanced Anthropic model for long-form content.', vision: true },
+  { id: 'anthropic/claude-haiku-4.5', label: 'Claude Haiku 4.5', provider: 'AI Gateway → Anthropic', backend: 'gateway', description: 'Fast Anthropic model for quick drafts.', vision: true },
+  { id: 'deepseek/deepseek-v4-pro', label: 'DeepSeek V4 Pro', provider: 'AI Gateway → DeepSeek', backend: 'gateway', description: 'High-performance open-weights reasoning model.' },
+  { id: 'deepseek/deepseek-v4-flash', label: 'DeepSeek V4 Flash', provider: 'AI Gateway → DeepSeek', backend: 'gateway', description: 'Fast DeepSeek tier for everyday generation.' },
+  { id: 'xai/grok-4.5', label: 'Grok 4.5', provider: 'AI Gateway → xAI', backend: 'gateway', description: 'xAI general-purpose conversational model.', vision: true },
+  { id: 'meta/llama-4-maverick', label: 'Llama 4 Maverick', provider: 'AI Gateway → Meta', backend: 'gateway', description: 'Open-weight Meta multimodal model.', vision: true },
+  { id: 'mistral/mistral-large-3', label: 'Mistral Large 3', provider: 'AI Gateway → Mistral', backend: 'gateway', description: 'European frontier model for structured output.' },
+  { id: 'minimax/minimax-m3', label: 'MiniMax M3', provider: 'AI Gateway → MiniMax', backend: 'gateway', description: 'Cost-efficient general text model.' },
+  { id: 'alibaba/qwen3.7-max', label: 'Qwen3.7 Max', provider: 'AI Gateway → Alibaba', backend: 'gateway', description: 'Alibaba flagship large model.' },
+  { id: 'zai/glm-5', label: 'GLM-5', provider: 'AI Gateway → Zhipu AI', backend: 'gateway', description: 'Zhipu general-purpose reasoning model.' }
+];
+
+/** Curated Vercel AI Gateway image models (mirrors the @ai-sdk/gateway GatewayImageModelId list). */
+export const GATEWAY_IMAGE_MODELS: ModelEntry[] = [
+  { id: 'openai/gpt-image-2', label: 'GPT Image 2', provider: 'AI Gateway → OpenAI', backend: 'gateway', description: 'Latest OpenAI image generation model.' },
+  { id: 'openai/gpt-image-1.5', label: 'GPT Image 1.5', provider: 'AI Gateway → OpenAI', backend: 'gateway', description: 'High-quality OpenAI image model.' },
+  { id: 'openai/gpt-image-1', label: 'GPT Image 1', provider: 'AI Gateway → OpenAI', backend: 'gateway', description: 'Original OpenAI gpt-image tier.' },
+  { id: 'google/imagen-4.0-ultra-generate-001', label: 'Imagen 4.0 Ultra', provider: 'AI Gateway → Google', backend: 'gateway', description: 'Photorealistic Imagen flagship.' },
+  { id: 'google/imagen-4.0-generate-001', label: 'Imagen 4.0', provider: 'AI Gateway → Google', backend: 'gateway', description: 'Balanced Imagen generation tier.' },
+  { id: 'google/imagen-4.0-fast-generate-001', label: 'Imagen 4.0 Fast', provider: 'AI Gateway → Google', backend: 'gateway', description: 'Low-latency Imagen tier.' },
+  { id: 'bfl/flux-2-pro', label: 'FLUX 2 Pro', provider: 'AI Gateway → BFL', backend: 'gateway', description: 'Black Forest Labs professional tier.' },
+  { id: 'bfl/flux-2-flex', label: 'FLUX 2 Flex', provider: 'AI Gateway → BFL', backend: 'gateway', description: 'Flexible fast FLUX tier.' },
+  { id: 'bfl/flux-2-max', label: 'FLUX 2 Max', provider: 'AI Gateway → BFL', backend: 'gateway', description: 'Maximum quality FLUX generation.' },
+  { id: 'recraft/recraft-v4.1-pro', label: 'Recraft V4.1 Pro', provider: 'AI Gateway → Recraft', backend: 'gateway', description: 'Brand/vector-friendly generation model.' },
+  { id: 'recraft/recraft-v4', label: 'Recraft V4', provider: 'AI Gateway → Recraft', backend: 'gateway', description: 'Recraft standard image tier.' },
+  { id: 'bytedance/seedream-4.5', label: 'Seedream 4.5', provider: 'AI Gateway → ByteDance', backend: 'gateway', description: 'ByteDance high-fidelity image model.' },
+  { id: 'bytedance/seedream-5.0-pro', label: 'Seedream 5.0 Pro', provider: 'AI Gateway → ByteDance', backend: 'gateway', description: 'ByteDance flagship image tier.' },
+  { id: 'xai/grok-imagine-image', label: 'Grok Imagine', provider: 'AI Gateway → xAI', backend: 'gateway', description: 'xAI image generation model.' },
+  { id: 'prodia/flux-fast-schnell', label: 'FLUX Schnell (Prodia)', provider: 'AI Gateway → Prodia', backend: 'gateway', description: 'Very fast open FLUX tier.' }
+];
+
+/** Curated Vercel AI Gateway speech models (mirrors the @ai-sdk/gateway GatewaySpeechModelId list). */
+export const GATEWAY_VOICE_MODELS: ModelEntry[] = [
+  { id: 'openai/tts-1-hd', label: 'OpenAI TTS HD', provider: 'AI Gateway → OpenAI', backend: 'gateway', description: 'High-fidelity OpenAI neural voice.' },
+  { id: 'openai/tts-1', label: 'OpenAI TTS', provider: 'AI Gateway → OpenAI', backend: 'gateway', description: 'Standard OpenAI neural voice tier.' },
+  { id: 'xai/grok-tts', label: 'Grok TTS', provider: 'AI Gateway → xAI', backend: 'gateway', description: 'xAI text-to-speech model.' }
+];
+
+export const GATEWAY_TEXT_DEFAULT = 'google/gemini-3.6-flash';
+export const GATEWAY_IMAGE_DEFAULT = 'openai/gpt-image-1.5';
+export const GATEWAY_VOICE_DEFAULT = 'openai/tts-1-hd';
+
+/** Resolve the runtime backend for a model id from the shared catalogs. Falls back to 'gemini' for unknown/custom ids. */
+export const gatewayBackendForId = (modality: ModelModality, id?: string): ModelBackend => {
+  if (!id) return 'gemini';
+  if (modality === 'video') {
+    return VIDEO_MODEL_CATALOG.find(v => v.id === id)?.backend || 'gemini';
+  }
+  const list =
+    modality === 'image' || modality === 'image-edit'
+      ? GATEWAY_IMAGE_MODELS
+      : modality === 'voice'
+        ? GATEWAY_VOICE_MODELS
+        : GATEWAY_TEXT_MODELS;
+  return list.some(m => m.id === id) ? 'gateway' : 'gemini';
+};
+
+/**
+ * Client-safe: does the given text/research model accept image input?
+ * Gemini-native text ids always support vision; gateway entries declare it via
+ * the `vision` flag on GATEWAY_TEXT_MODELS.
+ */
+export const textModelSupportsVision = (id?: string): boolean => {
+  if (!id) return false;
+  if (gatewayBackendForId('text', id) === 'gemini') return true;
+  return Boolean(GATEWAY_TEXT_MODELS.find(m => m.id === id)?.vision);
+};
+
+export interface ModelCatalogDefaults {
+  text: string;
+  image: string;
+  imageEdit: string;
+  voice: string;
+  video: string;
+}
+
+export interface ModelCatalogResponse {
+  gatewayConfigured: boolean;
+  gatewayBaseURL?: string;
+  defaults: ModelCatalogDefaults;
+  text: ModelEntry[];
+  image: ModelEntry[];
+  imageEdit: ModelEntry[];
+  voice: ModelEntry[];
+  video: ModelEntry[];
+}
 
 export type ComplexityLevel = 'Default' | 'Elementary' | 'High School' | 'College' | 'Expert';
 
@@ -414,6 +539,8 @@ export interface ChatMessageItem {
   suggestedVideoPrompt?: string;
   suggestedVideoScript?: string;
   isDeepResearch?: boolean;
+  /** Data-URL images attached to a user message for vision-capable models. */
+  imageUrls?: string[];
 }
 
 export interface ResearchSession {
@@ -460,7 +587,7 @@ export interface PresenterSlide {
   slideDuration?: number; // in seconds
 }
 
-export type ViewType = 'dashboard' | 'canvas' | 'drafts' | 'gallery' | 'research' | 'presenter-studio' | 'voiceover-studio' | 'video-studio' | 'sound-studio';
+export type ViewType = 'dashboard' | 'canvas' | 'drafts' | 'gallery' | 'research' | 'presenter-studio' | 'voiceover-studio' | 'video-studio' | 'sound-studio' | 'models';
 
 export interface DraftPrompt {
   id: string;

@@ -12,7 +12,8 @@ import {
   Sparkles,
   Zap
 } from 'lucide-react';
-import { AspectRatio, ComplexityLevel, VisualStyle, Language, ImageModelId, IMAGE_MODELS, DEFAULT_IMAGE_MODEL } from '../types';
+import { AspectRatio, ComplexityLevel, VisualStyle, Language, DEFAULT_IMAGE_MODEL } from '../types';
+import { useModelOptions } from '@/hooks/useModelOptions';
 
 interface DropdownOption<T extends string> {
   value: T;
@@ -226,27 +227,35 @@ interface AIModelDropdownProps {
 }
 
 export const AIModelDropdown: React.FC<AIModelDropdownProps> = ({ value, onChange, className = '' }) => {
-  const options: DropdownOption<string>[] = [
-    { value: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', sublabel: 'Fast & Intelligent (Recommended)', icon: <Sparkles className="w-4 h-4 text-purple-400" /> },
-    { value: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', sublabel: 'High Reasoning & Creative Depth', icon: <Cpu className="w-4 h-4 text-amber-400" /> },
-    { value: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', sublabel: 'Ultra-Fast Execution', icon: <Zap className="w-4 h-4 text-cyan-400" /> },
-    { value: 'gemini-flash-latest', label: 'Gemini Flash Latest', sublabel: 'Latest Flash Build Alias', icon: <Sparkles className="w-4 h-4 text-emerald-400" /> }
-  ];
+  const { options: curatedOptions } = useModelOptions('text', value);
+  const options: DropdownOption<string>[] = (curatedOptions.length > 0 ? curatedOptions : [
+    { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', backend: 'gemini' as const },
+    { id: 'gemini-3.1-pro-preview', label: 'Gemini 3.1 Pro', backend: 'gemini' as const },
+    { id: 'gemini-3.1-flash-lite', label: 'Gemini 3.1 Flash Lite', backend: 'gemini' as const },
+  ]).map(m => ({
+    value: m.id,
+    label: m.label,
+    sublabel: m.backend === 'gateway' ? m.provider || 'AI Gateway model' : undefined,
+    icon: m.backend === 'gateway' ? <Sparkles className="w-4 h-4 text-indigo-400" /> : <Sparkles className="w-4 h-4 text-purple-400" />
+  }));
 
   return <GenericDropdown value={value || 'gemini-3.6-flash'} onChange={onChange} options={options} className={className} />;
 };
 
 interface ImageModelDropdownProps {
-  value: ImageModelId;
-  onChange: (value: ImageModelId) => void;
+  value: string;
+  onChange: (value: string) => void;
   className?: string;
 }
 
 export const ImageModelDropdown: React.FC<ImageModelDropdownProps> = ({ value, onChange, className = '' }) => {
-  const options: DropdownOption<ImageModelId>[] = IMAGE_MODELS.map(m => ({
-    value: m.value,
+  const { options: curatedOptions } = useModelOptions('image', value);
+  const options: DropdownOption<string>[] = (curatedOptions.length > 0 ? curatedOptions : [
+    { id: DEFAULT_IMAGE_MODEL, label: 'Gemini 3.1 Flash Image', backend: 'gemini' as const },
+  ]).map(m => ({
+    value: m.id,
     label: m.label,
-    sublabel: m.sublabel,
+    sublabel: m.backend === 'gateway' ? m.provider || 'AI Gateway model' : undefined,
     icon: <Sparkles className="w-4 h-4 text-cyan-400" />
   }));
 

@@ -1,17 +1,21 @@
 import { DEFAULT_VIDEO_MODEL, VideoGenerationOptions, VideoModelInfo } from "@/types";
 
+let cachedVideoCatalog: { gatewayConfigured: boolean; models: VideoModelInfo[] } | null = null;
+
 export const fetchVideoModelCatalog = async (): Promise<{
   gatewayConfigured: boolean;
   models: VideoModelInfo[];
 }> => {
-  const response = await fetch("/api/video/models", { method: "GET", cache: "no-store" });
+  if (cachedVideoCatalog) return cachedVideoCatalog;
+  const response = await fetch("/api/video/models", { method: "GET" });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
     throw new Error(errorData.error || "Failed to load video model catalog");
   }
 
-  return await response.json();
+  cachedVideoCatalog = await response.json();
+  return cachedVideoCatalog!;
 };
 
 export const startVideoGeneration = async (

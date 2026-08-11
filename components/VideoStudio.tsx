@@ -14,6 +14,7 @@ import {
   OMNI_FLASH_MODEL
 } from '@/types';
 import { DBService } from '@/services/dbService';
+import { loadModelSettings, getEnabledModelIds } from '@/services/ai/modelService';
 import { fetchVideoModelCatalog } from '@/services/geminiService';
 import {
   getVideoGenerationState,
@@ -109,7 +110,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
     }
   }, [initialPrompt]);
   const [aspectRatio, setAspectRatio] = useState<VideoAspectRatio>('16:9');
-  const [selectedModel, setSelectedModel] = useState<string>(DEFAULT_VIDEO_MODEL);
+  const [selectedModel, setSelectedModel] = useState<string>(() => loadModelSettings().video || DEFAULT_VIDEO_MODEL);
   const [videoResolution, setVideoResolution] = useState<VideoResolution>('720p');
   const [durationSeconds, setDurationSeconds] = useState<VideoDuration>(6);
   const [negativePrompt, setNegativePrompt] = useState('');
@@ -122,6 +123,8 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
 
   // Model catalog fetched from the server registry (fallback to the shared catalog)
   const [modelCatalog, setModelCatalog] = useState<VideoModelInfo[]>(VIDEO_MODEL_CATALOG);
+  const enabledVideoIds = getEnabledModelIds('video');
+  const curatedModelCatalog = modelCatalog.filter(m => enabledVideoIds.includes(m.id));
   const [gatewayConfigured, setGatewayConfigured] = useState(true);
 
   // Drag and drop / UI states
@@ -1186,7 +1189,7 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
                   disabled={isGenerating}
                   id="select-video-model"
                 >
-                  {modelCatalog.map((m) => (
+                  {curatedModelCatalog.map((m) => (
                     <option
                       key={m.id}
                       value={m.id}

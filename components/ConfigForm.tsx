@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import React, { useEffect, useRef, useState } from 'react';
-import { ComplexityLevel, VisualStyle, Language, AspectRatio, DraftPrompt, ImageModelId } from '../types';
+import { ComplexityLevel, VisualStyle, Language, AspectRatio, DraftPrompt } from '../types';
 import { STYLE_GUIDES } from '../services/stylesGuide';
 import { 
   CustomDropdown, 
@@ -47,8 +47,8 @@ interface ConfigFormProps {
   setLanguage: (l: Language) => void;
   resolution: AspectRatio;
   setResolution: (r: AspectRatio) => void;
-  imageModel?: ImageModelId;
-  setImageModel?: (m: ImageModelId) => void;
+  imageModel?: string;
+  setImageModel?: (m: string) => void;
   subOptions: Record<string, string>;
   setSubOptions: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onSubmit: (e: React.FormEvent) => void;

@@ -12,7 +12,8 @@ import {
   Presentation,
   Mic,
   Film,
-  Music
+  Music,
+  Cpu
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -76,6 +77,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       label: 'Sound Effects Studio', 
       description: 'Ambient tracks & WAV exporter',
       icon: Music 
+    },
+    { 
+      id: 'models' as const, 
+      label: 'Models', 
+      description: 'AI model management',
+      icon: Cpu 
     },
     { 
       id: 'drafts' as const, 

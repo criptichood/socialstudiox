@@ -1,4 +1,5 @@
-import { AspectRatio, ComplexityLevel, VisualStyle, Language } from "@/types";
+import { AspectRatio, ComplexityLevel, VisualStyle, Language, gatewayBackendForId } from "@/types";
+import { loadModelSettings } from "@/services/ai/modelService";
 
 export const generateInfographicImage = async (
   prompt: string, 
@@ -17,7 +18,8 @@ export const generateInfographicImage = async (
       resolution,
       referenceImageBase64,
       referenceMode,
-      model: imageModel
+      model: imageModel,
+      backend: gatewayBackendForId('image', imageModel)
     })
   });
 
@@ -43,7 +45,8 @@ export const verifyInfographicAccuracy = async (
   };
 };
 
-export const fixInfographicImage = async (currentImageBase64: string, correctionPrompt: string): Promise<string> => {
+export const fixInfographicImage = async (currentImageBase64: string, correctionPrompt: string, model?: string): Promise<string> => {
+  const effModel = model || loadModelSettings().imageEdit;
   const response = await fetch("/api/image/edit", {
     method: "POST",
     headers: {
@@ -51,7 +54,9 @@ export const fixInfographicImage = async (currentImageBase64: string, correction
     },
     body: JSON.stringify({
       currentImageBase64,
-      correctionPrompt
+      correctionPrompt,
+      model: effModel,
+      backend: gatewayBackendForId('image', effModel)
     })
   });
 
@@ -64,7 +69,8 @@ export const fixInfographicImage = async (currentImageBase64: string, correction
   return data.imageUrl;
 };
 
-export const editInfographicImage = async (currentImageBase64: string, editInstruction: string): Promise<string> => {
+export const editInfographicImage = async (currentImageBase64: string, editInstruction: string, model?: string): Promise<string> => {
+  const effModel = model || loadModelSettings().imageEdit;
   const response = await fetch("/api/image/edit", {
     method: "POST",
     headers: {
@@ -72,7 +78,9 @@ export const editInfographicImage = async (currentImageBase64: string, editInstr
     },
     body: JSON.stringify({
       currentImageBase64,
-      editInstruction
+      editInstruction,
+      model: effModel,
+      backend: gatewayBackendForId('image', effModel)
     })
   });
 
