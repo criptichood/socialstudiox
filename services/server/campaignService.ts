@@ -369,6 +369,7 @@ export const conductResearchChat = async (
   companyInfo?: string,
   mode: 'grounded' | 'deep' = 'grounded',
   competitorWebsite?: string,
+  model?: string,
   customApiKey?: string
 ): Promise<{
   reply: string;
@@ -446,7 +447,7 @@ export const conductResearchChat = async (
   }));
 
   const response = await getAi(customApiKey).models.generateContent({
-    model: TEXT_MODEL,
+    model: model || TEXT_MODEL,
     contents,
     config: {
       systemInstruction,
@@ -538,11 +539,17 @@ export const generateBlogPostFromCampaign = async (
   companyContext: string = '',
   targetTone: string = 'Informative, Authoritative & Actionable Guide',
   targetWordCount: number = 1200,
+  targetAudience: string = 'General / Mixed Audience',
+  seoKeywords: string[] = [],
   customApiKey?: string
 ): Promise<BlogPostResult> => {
   const imagesListText = availableImages.length > 0
     ? availableImages.map((img, i) => `Image #${i + 1}: Title: "${img.title}", URL: "${img.url}"`).join('\n')
     : 'No pre-generated images available.';
+
+  const seoKeywordsText = seoKeywords.length > 0
+    ? seoKeywords.map((k, i) => `#${i + 1} "${k}"`).join(', ')
+    : 'auto-derive 3-5 relevant keywords from the topic';
 
   const systemInstruction = `
     You are a world-class technology blogger, content strategist, and technical writer.
@@ -553,17 +560,30 @@ export const generateBlogPostFromCampaign = async (
     - Business / Brand Context: "${companyContext || 'Innovative Tech & Digital Brand'}"
     - Tone / Style: "${targetTone}"
     - Target Word Count: approximately ${targetWordCount} words
+    - Target Audience Persona: "${targetAudience}"
+    - Target SEO Keywords: ${seoKeywordsText}
     - Research / Campaign Context:
     ${campaignSummary}
     
     AVAILABLE CAMPAIGN VISUAL ASSETS:
     ${imagesListText}
 
+    AUDIENCE & REGISTER RULES:
+    - Write for the persona: "${targetAudience}".
+    - Adjust depth of explanation, jargon, framework detail, and examples to match this audience. Beginners need foundational explanations and no unexplained jargon; technical/developer readers want precise mechanisms and concrete reference details; executive/B2B readers want strategic takeaways, business impact, and ROI framing.
+
+    SEO KEYWORD RULES (CRITICAL):
+    - Naturally weave the Target SEO Keywords into H2 headings and body copy where they fit without breaking reading flow. Do not keyword-stuff or force them.
+    - If keywords are auto-derived, keep them relevant to the topic and H2 headings.
+
     PUNCTUATION & STYLE CONSTRAINT (CRITICAL):
     - NEVER use em-dashes (— or --) under ANY circumstances anywhere in the blog post. Use hyphens with spaces, colons, commas, or parentheses instead to ensure natural, human-grade prose.
 
     LENGTH & DENSITY GUIDELINES:
     - Write a comprehensive, high-density, authoritative blog post aiming for ~${targetWordCount} words.
+    - Short posts (~600w): concise, focused, scannable with tight sections.
+    - Standard guides (~1200w): full deep-dive with structured practical guidance.
+    - Whitepaper-grade (~2500w): exhaustive multi-part structure with heavy sub-sectioning, frameworks, tables, and step-by-step playbooks.
     - Focus on practical, structured value with distinct double-line breaks (\n\n) between all sections. Do NOT cut off mid-thought.
 
     FORMATTING & STRUCTURE REQUIREMENTS:
@@ -574,7 +594,7 @@ export const generateBlogPostFromCampaign = async (
        - ALWAYS place a double newline (\n\n) between paragraphs, headings, list blocks, quotes, and image blocks.
        - Start with a compelling H1 title: "# [Title]"
        - An engaging opening hook establishing the core problem & solution.
-       - 3 to 5 clear H2 section headings ("## Section Title").
+       - 3 to 5 clear H2 section headings ("## Section Title"). For 2500-word posts use more H2s + H3 sub-sections.
        - Bulleted key insights or step-by-step framework takeaways with spaces before and after list groups.
        - A quote callout box ("> Key Insight...") or prompt code block if applicable.
        - A concluding summary with a strategic call-to-action.
@@ -585,7 +605,7 @@ export const generateBlogPostFromCampaign = async (
          
          [IMAGE_PROMPT: Detailed prompt describing a high-quality 16:9 infographic/illustration for this section]
          
-       - Limit image prompts to 1 or 2 strategic section breaks so the user can generate images on demand.
+       - Limit image prompts to 1 or 2 strategic section breaks so the user can generate images on demand (3 for 2500-word whitepapers).
 
     Output ONLY the raw Markdown blog post. Do not add introductory conversational filler before or after the markdown text.
   `;

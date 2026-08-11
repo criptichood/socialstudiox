@@ -14,8 +14,8 @@ interface ResearchInputBarProps {
   inputMessage: string;
   setInputMessage: (val: string) => void;
   isLoading: boolean;
-  useGoogleSearchGrounding: boolean;
-  setUseGoogleSearchGrounding: (val: boolean) => void;
+  researchMode: 'grounded' | 'deep';
+  setResearchMode: (val: 'grounded' | 'deep') => void;
   selectedModelAlias: string;
   setSelectedModelAlias: (val: string) => void;
   handleSendMessage: (customPrompt?: string) => void;
@@ -26,8 +26,8 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
   inputMessage,
   setInputMessage,
   isLoading,
-  useGoogleSearchGrounding,
-  setUseGoogleSearchGrounding,
+  researchMode,
+  setResearchMode,
   selectedModelAlias,
   setSelectedModelAlias,
   handleSendMessage,
@@ -35,7 +35,7 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
 }) => {
   return (
     <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md space-y-3">
-      {/* Model Selector & Grounding Toggle Bar */}
+      {/* Model Selector, Mode Toggle & Google Search Grounding Bar */}
       <div className="flex items-center justify-between gap-3 text-xs flex-wrap">
         <div className="flex items-center gap-2">
           <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider font-mono">
@@ -46,24 +46,46 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
             onChange={(e) => setSelectedModelAlias(e.target.value)}
             className="px-2.5 py-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none"
           >
-            <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast Search)</option>
-            <option value="gemini-2.5-pro">Gemini 2.5 Pro (In-depth Analysis)</option>
-            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+            <option value="gemini-3.6-flash">Gemini 3.6 Flash (Fast Strategy)</option>
+            <option value="gemini-3.1-pro-preview">Gemini 3.1 Pro (Deep Reasoning)</option>
+            <option value="gemini-3.1-flash-lite">Gemini 3.1 Flash Lite (Ultra-Fast)</option>
           </select>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setUseGoogleSearchGrounding(!useGoogleSearchGrounding)}
-          className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
-            useGoogleSearchGrounding
-              ? 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/30'
-              : 'bg-slate-100 dark:bg-slate-900 text-slate-500 border-slate-200 dark:border-slate-800'
-          }`}
-        >
-          <Globe className={`w-3.5 h-3.5 ${useGoogleSearchGrounding ? 'text-cyan-500 animate-pulse' : ''}`} />
-          <span>Google Search Grounding: {useGoogleSearchGrounding ? 'ON' : 'OFF'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+            <button
+              type="button"
+              onClick={() => setResearchMode('grounded')}
+              className={`px-3 py-1 rounded-[10px] text-xs font-bold transition-all cursor-pointer border ${
+                researchMode === 'grounded'
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                  : 'bg-transparent text-slate-500 border-transparent hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              ⚡ Grounded
+            </button>
+            <button
+              type="button"
+              onClick={() => setResearchMode('deep')}
+              className={`px-3 py-1 rounded-[10px] text-xs font-bold transition-all cursor-pointer border ${
+                researchMode === 'deep'
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                  : 'bg-transparent text-slate-500 border-transparent hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              🔬 Deep Research
+            </button>
+          </div>
+
+          <span
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold text-cyan-600 dark:text-cyan-400 border border-cyan-500/30 bg-cyan-500/10"
+            title="Research always answers with up-to-date Google Search grounding"
+          >
+            <Globe className="w-3.5 h-3.5 text-cyan-500" />
+            <span>Live Search Grounded</span>
+          </span>
+        </div>
       </div>
 
       {/* Main Textarea Input Form */}

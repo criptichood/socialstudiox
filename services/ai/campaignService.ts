@@ -152,7 +152,8 @@ export const conductResearchChat = async (
   messages: { role: 'user' | 'model'; content: string }[],
   companyInfo?: string,
   mode: 'grounded' | 'deep' = 'grounded',
-  competitorWebsite?: string
+  competitorWebsite?: string,
+  model?: string
 ): Promise<{
   reply: string;
   searchResults?: SearchResultItem[];
@@ -170,7 +171,8 @@ export const conductResearchChat = async (
       messages,
       companyInfo,
       mode,
-      competitorWebsite
+      competitorWebsite,
+      model
     })
   });
 
@@ -188,7 +190,9 @@ export const generateBlogPostFromCampaign = async (
   availableImages: { title: string; url: string }[] = [],
   companyContext: string = '',
   targetTone: string = 'Informative, Authoritative & Actionable Guide',
-  targetWordCount: number = 1200
+  targetWordCount: number = 1200,
+  targetAudience: string = 'General / Mixed Audience',
+  seoKeywords: string[] = []
 ): Promise<BlogPostResult> => {
   const response = await fetch("/api/campaign/blog", {
     method: "POST",
@@ -201,7 +205,9 @@ export const generateBlogPostFromCampaign = async (
       availableImages,
       companyContext,
       targetTone,
-      targetWordCount
+      targetWordCount,
+      targetAudience,
+      seoKeywords
     })
   });
 

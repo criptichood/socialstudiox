@@ -38,7 +38,13 @@ interface BlogStudioModalProps {
   setBlogTopicOverride: (val: string) => void;
   blogTone: string;
   setBlogTone: (val: string) => void;
-  handleGenerateBlogPost: (forcedTopic?: string) => Promise<void>;
+  blogWordCount: number;
+  setBlogWordCount: (val: number) => void;
+  blogAudience: string;
+  setBlogAudience: (val: string) => void;
+  blogSeoKeywords: string;
+  setBlogSeoKeywords: (val: string) => void;
+  handleGenerateBlogPost: (forcedTopic?: string, forcedContext?: string) => Promise<void>;
   isBlogCopied: boolean;
   setIsBlogCopied: (val: boolean) => void;
   isSavingDraft: boolean;
@@ -106,6 +112,12 @@ export const BlogStudioModal: React.FC<BlogStudioModalProps> = ({
   setBlogTopicOverride,
   blogTone,
   setBlogTone,
+  blogWordCount,
+  setBlogWordCount,
+  blogAudience,
+  setBlogAudience,
+  blogSeoKeywords,
+  setBlogSeoKeywords,
   handleGenerateBlogPost,
   isBlogCopied,
   setIsBlogCopied,
@@ -294,6 +306,52 @@ export const BlogStudioModal: React.FC<BlogStudioModalProps> = ({
                   <option value="Technical & Developer Oriented Breakdown">Technical & Code Breakdown</option>
                   <option value="Persuasive & High Converting Sales Copy">Persuasive & Sales Focused</option>
                 </select>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-200 dark:border-slate-800 pt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Target Word Count:
+                </label>
+                <select
+                  value={blogWordCount}
+                  onChange={(e) => setBlogWordCount(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none"
+                >
+                  <option value={600}>Short Post (~600 words)</option>
+                  <option value={1200}>Standard Guide (~1,200 words)</option>
+                  <option value={2500}>Deep-Dive Whitepaper (~2,500 words)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Target Audience Persona:
+                </label>
+                <select
+                  value={blogAudience}
+                  onChange={(e) => setBlogAudience(e.target.value)}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 outline-none"
+                >
+                  <option value="Beginner / General Audience">Beginner / General</option>
+                  <option value="Technical / Developer Audience">Technical / Developer</option>
+                  <option value="Executive / B2B Decision Makers">Executive / B2B</option>
+                  <option value="General / Mixed Audience">General / Mixed</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                  Target SEO Keywords (comma-separated):
+                </label>
+                <input
+                  type="text"
+                  value={blogSeoKeywords}
+                  onChange={(e) => setBlogSeoKeywords(e.target.value)}
+                  placeholder="e.g. ai content strategy, B2B marketing automation"
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-800 dark:text-slate-200 outline-none"
+                />
               </div>
             </div>
           </div>

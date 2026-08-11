@@ -32,7 +32,7 @@ interface ResearchChatAreaProps {
   onSendToSocialCampaign?: (topic: string, prompt: string, companyContext: string) => void;
   onSendToVideoStudio?: (videoPrompt: string, scriptText?: string) => void;
   onSaveToDraftPlanner?: (topic: string, prompt: string) => void;
-  handleGenerateBlogPost: (forcedTopic?: string) => Promise<void>;
+  handleGenerateBlogPost: (forcedTopic?: string, forcedContext?: string) => Promise<void>;
   setIsBlogStudioOpen: (val: boolean) => void;
   setBlogViewMode: (mode: any) => void;
   samplePrompts: { icon: any; badge: string; title: string; prompt: string }[];
@@ -188,6 +188,12 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
                         <span>Grounded via Google Search</span>
                       </div>
                     )}
+                    {!isUser && msg.isDeepResearch && (
+                      <div className="inline-flex items-center gap-1 mb-2.5 px-2 py-0.5 rounded-full bg-indigo-100/70 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 text-[9px] font-bold uppercase tracking-wider font-mono border border-indigo-200 dark:border-indigo-500/20 shadow-xs">
+                        <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        <span>Deep Research Mode</span>
+                      </div>
+                    )}
                     {isUser ? (
                       <p className="text-xs sm:text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
                     ) : (
@@ -277,7 +283,7 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
                     onClick={() => {
                       setIsBlogStudioOpen(true);
                       setBlogViewMode('preview');
-                      handleGenerateBlogPost(msg.suggestedCampaignTopic || activeSession.title);
+                      handleGenerateBlogPost(msg.suggestedCampaignTopic || activeSession.title, msg.content);
                     }}
                     className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg text-[11px] font-bold shadow-xs transition-all flex items-center gap-1 cursor-pointer"
                   >

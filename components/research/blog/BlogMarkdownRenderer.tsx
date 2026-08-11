@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Sparkles, ExternalLink, ImageIcon, Loader2, Copy, Check } from 'lucide-react';
+import { Sparkles, ExternalLink, ImageIcon, Loader2, Copy, Check, RefreshCw } from 'lucide-react';
 import { BlogPostResult, SectionImagePrompt } from '../../../services/geminiService';
 
 interface BlogMarkdownRendererProps {
@@ -18,6 +18,24 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
   onGenerateSectionImage
 }) => {
   const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [ratioMap, setRatioMap] = useState<Record<string, string>>({});
+
+  const ratioFor = (key: string, fallback?: string) => ratioMap[key] || fallback || '16:9';
+  const setRatioFor = (key: string, val: string) => setRatioMap(prev => ({ ...prev, [key]: val }));
+
+  const ratioSelect = (ratioKey: string, initialRatio?: string) => (
+    <select
+      value={ratioFor(ratioKey, initialRatio)}
+      onChange={(e) => setRatioFor(ratioKey, e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      className="px-1.5 py-1 bg-slate-900 text-slate-200 border border-purple-500/25 rounded-lg text-[10px] font-bold outline-none cursor-pointer"
+      title="Image aspect ratio"
+    >
+      <option value="16:9">16:9 Landscape</option>
+      <option value="1:1">1:1 Square</option>
+      <option value="9:16">9:16 Portrait</option>
+    </select>
+  );
   return (
     <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm leading-relaxed text-slate-800 dark:text-slate-200">
       <ReactMarkdown
@@ -42,18 +60,21 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                       <Sparkles className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
                       <span>Image Prompt</span>
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(promptText);
-                        setCopiedPrompt(true);
-                        setTimeout(() => setCopiedPrompt(false), 2000);
-                      }}
-                      className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-lg text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer border border-purple-500/20"
-                    >
-                      {copiedPrompt ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedPrompt ? 'Copied' : 'Copy prompt'}</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {blogResult && onGenerateSectionImage && ratioSelect(promptText, blogResult.sectionImagePrompts.find(p => p.prompt === promptText)?.aspectRatio)}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(promptText);
+                          setCopiedPrompt(true);
+                          setTimeout(() => setCopiedPrompt(false), 2000);
+                        }}
+                        className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-slate-300 rounded-lg text-[10px] font-bold transition-colors flex items-center gap-1 cursor-pointer border border-purple-500/20"
+                      >
+                        {copiedPrompt ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedPrompt ? 'Copied' : 'Copy prompt'}</span>
+                      </button>
+                    </div>
                   </div>
                   <p className="text-xs sm:text-sm text-purple-200 font-medium bg-slate-900/80 p-3.5 rounded-xl border border-purple-500/20 leading-relaxed whitespace-pre-wrap">
                     {promptText}
@@ -66,7 +87,8 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                         const promptObj: SectionImagePrompt = {
                           id: `prompt_${Date.now()}`,
                           prompt: promptText,
-                          tag: promptMatch[0]
+                          tag: promptMatch[0],
+                          aspectRatio: ratioFor(promptText)
                         };
                         onGenerateSectionImage(promptObj);
                       }}
@@ -93,6 +115,7 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
           },
           img: ({ src, alt }: any) => {
             if (!src) return null;
+            const matchedPrompt = blogResult?.sectionImagePrompts?.find((p: any) => p.generatedUrl && p.generatedUrl === src);
             return (
               <figure className="my-6 space-y-2">
                 <div className="relative group overflow-hidden rounded-2xl border border-purple-500/30 bg-slate-900 shadow-xl max-w-2xl mx-auto">
@@ -100,7 +123,7 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                     src={src}
                     alt={alt || "Blog section visual"}
                     referrerPolicy="no-referrer"
-                    className="w-full h-auto object-cover max-h-[460px] transition-transform duration-300 group-hover:scale-[1.01]"
+                    className={`w-full h-auto object-cover max-h-[460px] transition-transform duration-300 group-hover:scale-[1.01] ${matchedPrompt?.aspectRatio === '9:16' ? 'max-h-[640px]' : ''}`}
                     onError={(e) => {
                       const target = e.currentTarget;
                       target.style.display = 'none';
@@ -122,6 +145,23 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                     </div>
                   )}
                 </div>
+                {matchedPrompt && onGenerateSectionImage && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 max-w-2xl mx-auto">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">🎨 {matchedPrompt.aspectRatio || '16:9'} {matchedPrompt.aspectRatio === '1:1' ? 'Square' : matchedPrompt.aspectRatio === '9:16' ? 'Portrait' : 'Landscape'}</span>
+                    <div className="flex items-center gap-1.5">
+                      {ratioSelect(matchedPrompt.prompt, matchedPrompt.aspectRatio)}
+                      <button
+                        type="button"
+                        disabled={generatingPromptId !== null}
+                        onClick={() => onGenerateSectionImage({ ...matchedPrompt, aspectRatio: ratioFor(matchedPrompt.prompt) })}
+                        className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        {generatingPromptId !== null ? <Loader2 className="w-3 h-3 animate-spin text-purple-200" /> : <RefreshCw className="w-3 h-3" />}
+                        <span>Regenerate Section Image</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </figure>
             );
           },

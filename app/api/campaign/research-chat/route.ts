@@ -3,7 +3,7 @@ import { conductResearchChat } from "@/services/server/campaignService";
 
 export async function POST(request: Request) {
   try {
-    const { messages, companyInfo, mode, competitorWebsite } = await request.json();
+    const { messages, companyInfo, mode, competitorWebsite, model } = await request.json();
     const customApiKey = request.headers.get("x-gemini-api-key") || undefined;
     
     if (!messages || !Array.isArray(messages)) {
@@ -15,6 +15,7 @@ export async function POST(request: Request) {
       companyInfo,
       mode,
       competitorWebsite,
+      model,
       customApiKey
     );
     

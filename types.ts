@@ -422,6 +422,7 @@ export interface ResearchSession {
   companyContext?: string;
   competitorWebsite?: string;
   mode?: 'grounded' | 'deep';
+  model?: string;
   createdAt: number;
   updatedAt: number;
   messages: ChatMessageItem[];
@@ -494,6 +495,7 @@ export interface SectionImagePromptItem {
   prompt: string;
   tag: string;
   generatedUrl?: string;
+  aspectRatio?: string;
 }
 
 export interface SavedBlogDraft {
@@ -524,6 +526,7 @@ export interface SectionImagePrompt {
   prompt: string;
   tag: string;
   generatedUrl?: string;
+  aspectRatio?: string;
 }
 
 export interface BlogPostResult {

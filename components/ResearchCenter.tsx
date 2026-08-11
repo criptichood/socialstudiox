@@ -52,6 +52,9 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
   const [blogTopicOverride, setBlogTopicOverride] = useState<string>('');
   const [blogTone, setBlogTone] = useState<string>('Informative, Authoritative & Actionable Guide');
+  const [blogWordCount, setBlogWordCount] = useState<number>(1200);
+  const [blogAudience, setBlogAudience] = useState<string>('General / Mixed Audience');
+  const [blogSeoKeywords, setBlogSeoKeywords] = useState<string>('');
   const [isGeneratingBlog, setIsGeneratingBlog] = useState<boolean>(false);
   const [blogResult, setBlogResult] = useState<BlogPostResult | null>(null);
   const [blogViewMode, setBlogViewMode] = useState<'preview' | 'markdown' | 'drafts' | 'schedules' | 'webhook-settings'>('preview');
@@ -108,8 +111,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   const [publishResponse, setPublishResponse] = useState<{ success: boolean; message: string; status?: number } | null>(null);
 
   // AI model settings
-  const [selectedModelAlias, setSelectedModelAlias] = useState<string>('gemini-2.5-flash');
-  const [useGoogleSearchGrounding, setUseGoogleSearchGrounding] = useState<boolean>(true);
+  const [selectedModelAlias, setSelectedModelAlias] = useState<string>('gemini-3.6-flash');
+  const [researchMode, setResearchMode] = useState<'grounded' | 'deep'>('grounded');
 
   // Inline Title Edit State
   const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
@@ -177,6 +180,12 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
 
   const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
 
+  // Load the session's AI model + mode when switching sessions.
+  useEffect(() => {
+    if (activeSession?.model) setSelectedModelAlias(activeSession.model);
+    if (activeSession?.mode) setResearchMode(activeSession.mode);
+  }, [activeSessionId]);
+
   // Handlers for session management
   const handleNewSession = async () => {
     const newSession: ResearchSession = {
@@ -240,6 +249,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           ...s,
           title: updatedTitle,
           updatedAt: Date.now(),
+          mode: researchMode,
+          model: selectedModelAlias,
           messages: [...s.messages, userMsg]
         };
       }
@@ -258,8 +269,9 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
       const response = await conductResearchChat(
         chatHistory,
         currentSession.companyContext || '',
-        'grounded',
-        currentSession.competitorWebsite || ''
+        researchMode,
+        currentSession.competitorWebsite || '',
+        selectedModelAlias
       );
 
       const aiMsg: ChatMessageItem = {
@@ -268,7 +280,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         content: response.reply,
         timestamp: Date.now(),
         searchResults: response.searchResults,
-        suggestedCampaignTopic: response.suggestedCampaignTopic || updatedTitle
+        suggestedCampaignTopic: response.suggestedCampaignTopic || updatedTitle,
+        isDeepResearch: researchMode === 'deep'
       };
 
       setSessions(prev => prev.map(s => {
@@ -322,6 +335,9 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
       slug: draftData.slug || draftData.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 200) || 'blog-post',
       excerpt: draftData.excerpt || draftData.metaDescription || (draftData.markdownContent || '').slice(0, 160).replace(/[#*`!\[\]()]/g, ''),
       metaDescription: draftData.metaDescription || draftData.excerpt || (draftData.markdownContent || '').slice(0, 160).replace(/[#*`!\[\]()]/g, ''),
+      keywords: draftData.keywords || (typeof draftData.keywordSource === 'string' && draftData.keywordSource.trim()
+        ? draftData.keywordSource.split(',').map((k: string) => k.trim()).filter(Boolean)
+        : undefined),
       markdownContent: draftData.markdownContent || '',
       characterCount: draftData.markdownContent?.length || 0,
       readingTimeMinutes,
@@ -381,7 +397,20 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     await handleSaveEndpointsList(newList);
   };
 
-  const handleGenerateBlogPost = async (forcedTopic?: string) => {
+  const buildResearchThreadSummary = (): string => {
+    if (!activeSession || activeSession.messages.length === 0) return '';
+    return activeSession.messages
+      .filter((m) =>
+        (m.role === 'user' || m.role === 'model') &&
+        !m.content.startsWith('### 📝') &&
+        !m.content.startsWith('⚠️')
+      )
+      .slice(-5)
+      .map((m) => `${m.role === 'user' ? 'User asked' : 'AI Research Assistant answered'}: ${m.content.replace(/\s+/g, ' ').trim()}`)
+      .join('\n\n');
+  };
+
+  const handleGenerateBlogPost = async (forcedTopic?: string, forcedContext?: string) => {
     setIsGeneratingBlog(true);
     setPublishResponse(null);
 
@@ -408,8 +437,14 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           });
           campaignSummaryText = lines.join('\n');
         }
-      } else {
-        campaignSummaryText = `Topic: "${topicToUse}". Provide an in-depth, step-by-step master guide expanding on key principles, practical execution frameworks, and audience value propositions.`;
+      }
+
+      if (!campaignSummaryText) {
+        // No saved campaign selected: ground the blog in the actual research thread.
+        const threadContext = forcedContext?.trim() || buildResearchThreadSummary();
+        campaignSummaryText = threadContext
+          ? `RESEARCH THREAD CONTEXT (use these findings as the factual basis of the article, elaborate on them, and keep the tone consistent with the assistant's style):\n\n${threadContext}`
+          : `Topic: "${topicToUse}". Provide an in-depth, step-by-step master guide expanding on key principles, practical execution frameworks, and audience value propositions.`;
       }
 
       const result = await generateBlogPostFromCampaign(
@@ -417,7 +452,10 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         campaignSummaryText,
         imagesList,
         activeSession?.companyContext || '',
-        blogTone
+        blogTone,
+        blogWordCount,
+        blogAudience,
+        blogSeoKeywords.split(',').map(k => k.trim()).filter(Boolean)
       );
 
       setBlogResult(result);
@@ -426,6 +464,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         sessionId: activeSessionId || undefined,
         campaignId: selectedCampaignId || undefined,
         title: result.title,
+        keywordSource: blogSeoKeywords,
         markdownContent: result.markdownContent,
         characterCount: result.characterCount,
         readingTimeMinutes: result.readingTimeMinutes,
@@ -508,6 +547,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     const postToPublish = customDraftToPublish || (blogResult ? {
       id: activeDraftId || undefined,
       title: blogResult.title,
+      keywords: blogResult.keywords,
       markdownContent: blogResult.markdownContent,
       characterCount: blogResult.characterCount,
       readingTimeMinutes: blogResult.readingTimeMinutes
@@ -621,12 +661,16 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     setGeneratingPromptId(promptObj.id);
 
     try {
-      const generatedDataUrl = await generateInfographicImage(promptObj.prompt, '16:9');
+      const aspectRatio = promptObj.aspectRatio || '16:9';
+      const generatedDataUrl = await generateInfographicImage(promptObj.prompt, aspectRatio as any);
 
       let updatedMarkdown = blogResult.markdownContent;
       const markdownImageTag = `![Section Illustration: ${promptObj.prompt.slice(0, 35)}](${generatedDataUrl})`;
 
-      if (promptObj.tag && updatedMarkdown.includes(promptObj.tag)) {
+      if (promptObj.generatedUrl && updatedMarkdown.includes(promptObj.generatedUrl)) {
+        // Regenerate: swap the existing data URL in place.
+        updatedMarkdown = updatedMarkdown.split(promptObj.generatedUrl).join(generatedDataUrl);
+      } else if (promptObj.tag && updatedMarkdown.includes(promptObj.tag)) {
         updatedMarkdown = updatedMarkdown.replace(promptObj.tag, markdownImageTag);
       } else {
         const fallbackRegex = new RegExp(`\\[IMAGE_PROMPT:\\s*${promptObj.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'i');
@@ -639,7 +683,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
 
       const updatedPrompts = (blogResult.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
         if (p.id === promptObj.id) {
-          return { ...p, generatedUrl: generatedDataUrl };
+          return { ...p, generatedUrl: generatedDataUrl, aspectRatio };
         }
         return p;
       });
@@ -789,8 +833,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           inputMessage={inputMessage}
           setInputMessage={setInputMessage}
           isLoading={isLoading}
-          useGoogleSearchGrounding={useGoogleSearchGrounding}
-          setUseGoogleSearchGrounding={setUseGoogleSearchGrounding}
+          researchMode={researchMode}
+          setResearchMode={setResearchMode}
           selectedModelAlias={selectedModelAlias}
           setSelectedModelAlias={setSelectedModelAlias}
           handleSendMessage={handleSendMessage}
@@ -814,6 +858,12 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         setBlogTopicOverride={setBlogTopicOverride}
         blogTone={blogTone}
         setBlogTone={setBlogTone}
+        blogWordCount={blogWordCount}
+        setBlogWordCount={setBlogWordCount}
+        blogAudience={blogAudience}
+        setBlogAudience={setBlogAudience}
+        blogSeoKeywords={blogSeoKeywords}
+        setBlogSeoKeywords={setBlogSeoKeywords}
         handleGenerateBlogPost={handleGenerateBlogPost}
         isBlogCopied={isBlogCopied}
         setIsBlogCopied={setIsBlogCopied}

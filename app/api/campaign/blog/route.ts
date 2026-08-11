@@ -3,7 +3,7 @@ import { generateBlogPostFromCampaign } from "@/services/server/campaignService"
 
 export async function POST(request: Request) {
   try {
-    const { topic, campaignSummary, availableImages, companyContext, targetTone, targetWordCount } = await request.json();
+    const { topic, campaignSummary, availableImages, companyContext, targetTone, targetWordCount, targetAudience, seoKeywords } = await request.json();
     const customApiKey = request.headers.get("x-gemini-api-key") || undefined;
     
     if (!topic || !campaignSummary) {
@@ -17,6 +17,8 @@ export async function POST(request: Request) {
       companyContext || "",
       targetTone || "Informative, Authoritative & Actionable Guide",
       targetWordCount || 1200,
+      targetAudience || "General / Mixed Audience",
+      seoKeywords || [],
       customApiKey
     );
     
