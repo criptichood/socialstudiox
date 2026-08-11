@@ -24,7 +24,8 @@ export const generateInfographicImage = async (
   resolution: AspectRatio = '16:9',
   referenceImageBase64?: string,
   referenceMode?: string,
-  customApiKey?: string
+  customApiKey?: string,
+  modelName: string = IMAGE_MODEL
 ): Promise<string> => {
   const aspectInstruction = buildAspectInstruction(resolution);
   const parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [];
@@ -51,8 +52,10 @@ export const generateInfographicImage = async (
     parts.push({ text: `${aspectInstruction}\n\n${prompt}` });
   }
 
+  const chosenModel = modelName || IMAGE_MODEL;
+
   const response = await getAi(customApiKey).models.generateContent({
-    model: IMAGE_MODEL,
+    model: chosenModel,
     contents: {
       parts: parts
     },

@@ -9,7 +9,8 @@ import {
   SearchResultItem, 
   Project, 
   DraftPrompt,
-  ViewType
+  ViewType,
+  ImageModelId
 } from '@/types';
 import { 
   researchTopicForPrompt, 
@@ -218,6 +219,7 @@ export const useAppEngine = () => {
     setVisualStyle(draft.visualStyle);
     setLanguage(draft.language);
     setResolution(draft.resolution);
+    if (draft.imageModel) setImageModel(draft.imageModel);
     setSubOptions(draft.subOptions);
     setHasDraft(false); // Reset current active PromptStudio draft if any
     setCurrentView('canvas');
@@ -228,6 +230,7 @@ export const useAppEngine = () => {
   const [visualStyle, setVisualStyle] = useState<VisualStyle>('Default');
   const [language, setLanguage] = useState<Language>('Default');
   const [resolution, setResolution] = useState<AspectRatio>('16:9');
+  const [imageModel, setImageModel] = useState<ImageModelId>('gemini-3.1-flash-image');
   const [subOptions, setSubOptions] = useState<Record<string, string>>({});
   
   // Interactive Prompt Studio State
@@ -466,7 +469,7 @@ export const useAppEngine = () => {
       setLoadingMessage(`Generating customized illustration...`);
       
       // Step 2: Direct Image Generation using the LLM's tailored prompt
-      let base64Data = await generateInfographicImage(researchResult.imagePrompt, resolution, referenceImage || undefined, referenceMode);
+      let base64Data = await generateInfographicImage(researchResult.imagePrompt, resolution, referenceImage || undefined, referenceMode, imageModel);
       
       const newImage: GeneratedImage = {
         id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -547,7 +550,7 @@ export const useAppEngine = () => {
     setCurrentSearchResults(draftedSearchResults);
 
     try {
-      let base64Data = await generateInfographicImage(draftedPrompt, resolution, referenceImage || undefined, referenceMode);
+      let base64Data = await generateInfographicImage(draftedPrompt, resolution, referenceImage || undefined, referenceMode, imageModel);
       
       const newImage: GeneratedImage = {
         id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -721,6 +724,7 @@ export const useAppEngine = () => {
     visualStyle, setVisualStyle,
     language, setLanguage,
     resolution, setResolution,
+    imageModel, setImageModel,
     subOptions, setSubOptions,
     hasDraft, setHasDraft,
     draftedPrompt, setDraftedPrompt,

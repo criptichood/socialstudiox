@@ -68,6 +68,7 @@ const App: React.FC = () => {
     visualStyle, setVisualStyle,
     language, setLanguage,
     resolution, setResolution,
+    imageModel, setImageModel,
     subOptions, setSubOptions,
     hasDraft, setHasDraft,
     draftedPrompt, setDraftedPrompt,
@@ -270,16 +271,6 @@ const App: React.FC = () => {
 
               <div className="flex items-center gap-2">
                   <button 
-                    id="header-api-key-btn"
-                    onClick={handleSelectKey}
-                    className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-cyan-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-xs font-medium transition-colors border border-slate-200 dark:border-white/10"
-                    title="Change Gemini API Key"
-                  >
-                    <Key className="w-3.5 h-3.5" />
-                    <span>Gemini API Key</span>
-                  </button>
-
-                  <button 
                     id="header-darkmode-toggle"
                     onClick={() => setIsDarkMode(!isDarkMode)}
                     className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-300 transition-colors border border-slate-200 dark:border-white/10 shadow-sm"
@@ -365,6 +356,8 @@ const App: React.FC = () => {
                           setLanguage={setLanguage}
                           resolution={resolution}
                           setResolution={setResolution}
+                          imageModel={imageModel}
+                          setImageModel={setImageModel}
                           subOptions={subOptions}
                           setSubOptions={setSubOptions}
                           onSubmit={handleGenerate}

@@ -3,7 +3,7 @@ import { generateInfographicImage } from "@/services/server/imageService";
 
 export async function POST(request: Request) {
   try {
-    const { prompt, resolution, referenceImageBase64, referenceMode } = await request.json();
+    const { prompt, resolution, referenceImageBase64, referenceMode, model } = await request.json();
     const customApiKey = request.headers.get("x-gemini-api-key") || undefined;
     
     if (!prompt) {
@@ -15,7 +15,8 @@ export async function POST(request: Request) {
       resolution,
       referenceImageBase64,
       referenceMode,
-      customApiKey
+      customApiKey,
+      model
     );
     
     return NextResponse.json({ success: true, imageUrl });

@@ -4,7 +4,8 @@ export const generateInfographicImage = async (
   prompt: string, 
   resolution: AspectRatio = '16:9',
   referenceImageBase64?: string,
-  referenceMode?: string
+  referenceMode?: string,
+  imageModel?: string
 ): Promise<string> => {
   const response = await fetch("/api/image/generate", {
     method: "POST",
@@ -15,7 +16,8 @@ export const generateInfographicImage = async (
       prompt,
       resolution,
       referenceImageBase64,
-      referenceMode
+      referenceMode,
+      model: imageModel
     })
   });
 

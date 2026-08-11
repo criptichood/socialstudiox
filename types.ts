@@ -4,6 +4,61 @@
 */
 export type AspectRatio = '16:9' | '9:16' | '1:1';
 
+export type ImageModelId =
+  | 'gemini-3.1-flash-image'
+  | 'gemini-3-pro-image'
+  | 'gemini-3.1-flash-lite-image'
+  | 'imagen-3.0-generate-002'
+  | 'gemini-2.5-flash-image';
+
+export interface ImageModelOption {
+  value: ImageModelId;
+  label: string;
+  sublabel: string;
+  badge?: string;
+  description?: string;
+}
+
+export const IMAGE_MODELS: ImageModelOption[] = [
+  {
+    value: 'gemini-3.1-flash-image',
+    label: 'Gemini 3.1 Flash Image',
+    sublabel: 'Native Multimodal (ex-Nano Banana 2)',
+    badge: 'Recommended',
+    description: 'Fast, high-efficiency Gemini 3.1 image model'
+  },
+  {
+    value: 'gemini-3-pro-image',
+    label: 'Gemini 3 Pro Image',
+    sublabel: 'High Fidelity Studio Quality (ex-Nano Banana Pro)',
+    badge: 'Pro Quality',
+    description: 'Flagship Gemini 3 professional image generation engine'
+  },
+  {
+    value: 'gemini-3.1-flash-lite-image',
+    label: 'Gemini 3.1 Flash Lite Image',
+    sublabel: 'Ultra-Fast Execution',
+    badge: 'Ultra Fast',
+    description: 'Low-latency Gemini 3.1 lite model for rapid drafts'
+  },
+  {
+    value: 'imagen-3.0-generate-002',
+    label: 'Imagen 3 High Quality',
+    sublabel: 'Dedicated Image Backbone (Legacy)',
+    badge: 'Imagen 3',
+    description: 'Standalone Imagen 3 photorealistic generation model'
+  },
+  {
+    value: 'gemini-2.5-flash-image',
+    label: 'Gemini 2.5 Flash Image',
+    sublabel: 'Legacy Flash Image Fallback',
+    badge: 'Legacy',
+    description: 'Gemini 2.5 flash image model fallback'
+  }
+];
+
+export const DEFAULT_IMAGE_MODEL: ImageModelId = 'gemini-3.1-flash-image';
+
 export type VideoAspectRatio = '16:9' | '9:16';
 
 export type VideoResolution = '720p' | '1080p';
@@ -413,6 +468,7 @@ export interface DraftPrompt {
   visualStyle: VisualStyle;
   language: Language;
   resolution: AspectRatio;
+  imageModel?: ImageModelId;
   subOptions: Record<string, string>;
   createdAt: number;
   sourceType?: 'manual' | 'visual-canvas' | 'campaign';

@@ -12,7 +12,7 @@ import {
   Sparkles,
   Zap
 } from 'lucide-react';
-import { AspectRatio, ComplexityLevel, VisualStyle, Language } from '../types';
+import { AspectRatio, ComplexityLevel, VisualStyle, Language, ImageModelId, IMAGE_MODELS, DEFAULT_IMAGE_MODEL } from '../types';
 
 interface DropdownOption<T extends string> {
   value: T;
@@ -80,7 +80,7 @@ export function GenericDropdown<T extends string>({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl z-50 p-1.5 space-y-1 max-h-72 overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl z-50 p-1.5 space-y-1 max-h-[220px] overflow-y-auto custom-scrollbar animate-in fade-in zoom-in-95 duration-150">
           {options.map((opt) => {
             const isSelected = opt.value === value;
             return (
@@ -235,4 +235,22 @@ export const AIModelDropdown: React.FC<AIModelDropdownProps> = ({ value, onChang
 
   return <GenericDropdown value={value || 'gemini-3.6-flash'} onChange={onChange} options={options} className={className} />;
 };
+
+interface ImageModelDropdownProps {
+  value: ImageModelId;
+  onChange: (value: ImageModelId) => void;
+  className?: string;
+}
+
+export const ImageModelDropdown: React.FC<ImageModelDropdownProps> = ({ value, onChange, className = '' }) => {
+  const options: DropdownOption<ImageModelId>[] = IMAGE_MODELS.map(m => ({
+    value: m.value,
+    label: m.label,
+    sublabel: m.sublabel,
+    icon: <Sparkles className="w-4 h-4 text-cyan-400" />
+  }));
+
+  return <GenericDropdown value={value || DEFAULT_IMAGE_MODEL} onChange={onChange} options={options} className={className} />;
+};
+
 
