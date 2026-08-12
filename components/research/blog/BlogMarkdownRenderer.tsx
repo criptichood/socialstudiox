@@ -1,21 +1,25 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Sparkles, ExternalLink, ImageIcon, Loader2, Copy, Check, RefreshCw } from 'lucide-react';
+import { Sparkles, ExternalLink, ImageIcon, Loader2, Copy, Check, RefreshCw, CloudUpload } from 'lucide-react';
 import { BlogPostResult, SectionImagePrompt } from '../../../services/geminiService';
 
 interface BlogMarkdownRendererProps {
   content: string;
   blogResult?: BlogPostResult | null;
   generatingPromptId?: string | null;
+  uploadingPromptId?: string | null;
   onGenerateSectionImage?: (promptObj: SectionImagePrompt) => void;
+  onUploadSectionImage?: (promptObj: SectionImagePrompt) => void;
 }
 
 export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
   content,
   blogResult,
   generatingPromptId,
-  onGenerateSectionImage
+  uploadingPromptId,
+  onGenerateSectionImage,
+  onUploadSectionImage
 }) => {
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [ratioMap, setRatioMap] = useState<Record<string, string>>({});
@@ -79,34 +83,67 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                   <p className="text-xs sm:text-sm text-purple-200 font-medium bg-slate-900/80 p-3.5 rounded-xl border border-purple-500/20 leading-relaxed whitespace-pre-wrap">
                     {promptText}
                   </p>
-                  {blogResult && onGenerateSectionImage && (
-                    <button
-                      type="button"
-                      disabled={generatingPromptId !== null}
-                      onClick={() => {
-                        const promptObj: SectionImagePrompt = {
-                          id: `prompt_${Date.now()}`,
-                          prompt: promptText,
-                          tag: promptMatch[0],
-                          aspectRatio: ratioFor(promptText)
-                        };
-                        onGenerateSectionImage(promptObj);
-                      }}
-                      className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      {generatingPromptId !== null ? (
-                        <>
-                          <Loader2 className="w-4 h-4 animate-spin text-purple-200" />
-                          <span>Generating High-Res Section Image...</span>
-                        </>
-                      ) : (
-                        <>
-                          <ImageIcon className="w-4 h-4" />
-                          <span>🎨 Generate Image for Section</span>
-                        </>
-                      )}
-                    </button>
-                  )}
+                  {blogResult && onGenerateSectionImage && (() => {
+                    const matchedPrompt = blogResult.sectionImagePrompts?.find((p: any) => p.prompt === promptText);
+                    const hasPreview = matchedPrompt?.previewDataUrl && !matchedPrompt?.generatedUrl;
+
+                    if (hasPreview && onUploadSectionImage) {
+                      return (
+                        <div className="space-y-2">
+                          <div className="w-full max-h-64 overflow-hidden rounded-xl border border-purple-500/30 bg-slate-900">
+                            <img src={matchedPrompt.previewDataUrl} alt="Generated section preview" className="w-full h-auto object-cover" />
+                          </div>
+                          <button
+                            type="button"
+                            disabled={uploadingPromptId !== null}
+                            onClick={() => onUploadSectionImage(matchedPrompt)}
+                            className="w-full py-2.5 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
+                            {uploadingPromptId !== null ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin text-sky-200" />
+                                <span>Uploading to Cloudinary...</span>
+                              </>
+                            ) : (
+                              <>
+                                <CloudUpload className="w-4 h-4" />
+                                <span>Upload Image to Blog</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <button
+                        type="button"
+                        disabled={generatingPromptId !== null}
+                        onClick={() => {
+                          const promptObj: SectionImagePrompt = {
+                            id: `prompt_${Date.now()}`,
+                            prompt: promptText,
+                            tag: promptMatch[0],
+                            aspectRatio: ratioFor(promptText)
+                          };
+                          onGenerateSectionImage(promptObj);
+                        }}
+                        className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        {generatingPromptId !== null ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-purple-200" />
+                            <span>Generating High-Res Section Image...</span>
+                          </>
+                        ) : (
+                          <>
+                            <ImageIcon className="w-4 h-4" />
+                            <span>🎨 Generate Image for Section</span>
+                          </>
+                        )}
+                      </button>
+                    );
+                  })()}
                 </div>
               );
             }

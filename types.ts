@@ -587,7 +587,7 @@ export interface PresenterSlide {
   slideDuration?: number; // in seconds
 }
 
-export type ViewType = 'dashboard' | 'canvas' | 'drafts' | 'gallery' | 'research' | 'presenter-studio' | 'voiceover-studio' | 'video-studio' | 'sound-studio' | 'models';
+export type ViewType = 'dashboard' | 'canvas' | 'drafts' | 'gallery' | 'research' | 'presenter-studio' | 'voiceover-studio' | 'video-studio' | 'sound-studio' | 'models' | 'blog';
 
 export interface DraftPrompt {
   id: string;
@@ -621,7 +621,10 @@ export interface SectionImagePromptItem {
   id: string;
   prompt: string;
   tag: string;
+  /** Hosted URL (Cloudinary) once the generated preview has been uploaded and embedded in the post. */
   generatedUrl?: string;
+  /** Raw generated preview (base64 data URL) — shown in the UI only, never embedded in post markdown. */
+  previewDataUrl?: string;
   aspectRatio?: string;
 }
 
@@ -652,7 +655,10 @@ export interface SectionImagePrompt {
   id: string;
   prompt: string;
   tag: string;
+  /** Hosted URL (Cloudinary) once the generated preview has been uploaded and embedded in the post. */
   generatedUrl?: string;
+  /** Raw generated preview (base64 data URL) — shown in the UI only, never embedded in post markdown. */
+  previewDataUrl?: string;
   aspectRatio?: string;
 }
 

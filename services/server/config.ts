@@ -25,6 +25,18 @@ export const getGatewayConfig = () => ({
 
 export const isGatewayConfigured = () => Boolean(getGatewayConfig().apiKey);
 
+/** Cloudinary image-hosting credentials (optional — used to host generated blog images). */
+export const getCloudinaryConfig = () => ({
+  cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+  apiKey: process.env.CLOUDINARY_API_KEY,
+  apiSecret: process.env.CLOUDINARY_API_SECRET
+});
+
+export const isCloudinaryConfigured = () => {
+  const { cloudName, apiKey, apiSecret } = getCloudinaryConfig();
+  return Boolean(cloudName && apiKey && apiSecret);
+};
+
 export const getMimeTypeAndData = (base64DataString: string) => {
   const match = base64DataString.match(/^data:(image\/[a-zA-Z+.-]+);base64,(.*)$/);
   if (match) {

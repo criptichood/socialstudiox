@@ -26,6 +26,8 @@ import { SoundStudio } from '@/components/SoundStudio';
 import { PresentationDeck } from '@/components/PresentationDeck';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ModelsSettings } from '@/components/ModelsSettings';
+import { BlogStudio } from '@/components/BlogStudio';
+import { Toaster } from 'sonner';
 import {
   getVideoGenerationState,
   subscribeVideoGeneration
@@ -691,6 +693,13 @@ const App: React.FC = () => {
               <ModelsSettings onBackToDashboard={() => setCurrentView('dashboard')} />
             </ErrorBoundary>
           )}
+
+          {/* View 11: Blog Studio (dedicated blog post management) */}
+          {currentView === 'blog' && (
+            <ErrorBoundary fallbackTitle="Blog Studio Display Interrupted">
+              <BlogStudio onBackToDashboard={() => setCurrentView('dashboard')} />
+            </ErrorBoundary>
+          )}
           </>
           )}
 
@@ -798,6 +807,7 @@ const App: React.FC = () => {
         </div>
       </div>
     )}
+    <Toaster theme={isDarkMode ? 'dark' : 'light'} position="bottom-right" richColors />
     </>
   );
 };

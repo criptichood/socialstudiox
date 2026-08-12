@@ -1,5 +1,5 @@
-import React from 'react';
-import { Clock, Plus, Calendar, CheckCircle2, Trash2, Zap } from 'lucide-react';
+import React, { useState } from 'react';
+import { Clock, Plus, Calendar, CheckCircle2, Trash2, Zap, Play, Loader2 } from 'lucide-react';
 import { CronScheduleItem, SavedBlogDraft, SavedCampaign, PublishEndpointConfig } from '../../../types';
 import { BlogPostResult } from '../../../services/geminiService';
 
@@ -24,6 +24,8 @@ interface CronSchedulesTabProps {
   setScheduleSuccessFeedback: (msg: string | null) => void;
   handleSaveCronSchedule: (item: CronScheduleItem) => Promise<any>;
   handleDeleteCronSchedule: (id: string) => void;
+  runDueSchedules: () => Promise<number>;
+  runScheduleNow: (id: string) => Promise<boolean>;
   handleSaveBlogDraft: (data: any, status: 'draft' | 'scheduled' | 'published', scheduledAt?: string) => Promise<any>;
   formatCronExpression: (expr: string) => string;
 }
@@ -49,9 +51,24 @@ export const CronSchedulesTab: React.FC<CronSchedulesTabProps> = ({
   setScheduleSuccessFeedback,
   handleSaveCronSchedule,
   handleDeleteCronSchedule,
+  runDueSchedules,
+  runScheduleNow,
   handleSaveBlogDraft,
   formatCronExpression,
 }) => {
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [isCheckingDue, setIsCheckingDue] = useState(false);
+
+  const handleRunNow = async (id: string) => {
+    if (runningId) return;
+    setRunningId(id);
+    try {
+      await runScheduleNow(id);
+    } finally {
+      setRunningId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
@@ -65,11 +82,32 @@ export const CronSchedulesTab: React.FC<CronSchedulesTabProps> = ({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={async () => {
-            const targetDraft = savedBlogDrafts.find(d => d.id === selectedDraftForScheduleId);
-            const postTitleToUse = newCronTitle.trim() || targetDraft?.title || (blogResult?.title ? `Scheduled: ${blogResult.title}` : 'Weekly Blog Publication');
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            type="button"
+            disabled={isCheckingDue}
+            onClick={async () => {
+              setIsCheckingDue(true);
+              try {
+                const count = await runDueSchedules();
+                if (count === 0) setScheduleSuccessFeedback('No schedules are due right now.');
+                setTimeout(() => setScheduleSuccessFeedback(null), 3000);
+              } finally {
+                setIsCheckingDue(false);
+              }
+            }}
+            className="px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+            title="Publish any schedule whose next run time has passed"
+          >
+            {isCheckingDue ? <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-500" /> : <Zap className="w-3.5 h-3.5" />}
+            <span>Run Due Now</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              const targetDraft = savedBlogDrafts.find(d => d.id === selectedDraftForScheduleId);
+              const postTitleToUse = newCronTitle.trim() || targetDraft?.title || (blogResult?.title ? `Scheduled: ${blogResult.title}` : 'Weekly Blog Publication');
             
             // Parse target date time
             const schedISO = scheduleDateTime ? new Date(scheduleDateTime).toISOString() : new Date(Date.now() + 86400000).toISOString();
@@ -79,9 +117,12 @@ export const CronSchedulesTab: React.FC<CronSchedulesTabProps> = ({
               campaignId: targetDraft?.campaignId || selectedCampaignId || undefined,
               campaignTitle: targetDraft?.campaignTitle || savedCampaigns.find(c => c.id === selectedCampaignId)?.name || 'General Campaign',
               postTitle: postTitleToUse,
+              draftId: targetDraft?.id || undefined,
               cronExpression: newCronExpression.trim() || '0 9 * * 1',
               cronHumanReadable: formatCronExpression(newCronExpression.trim() || '0 9 * * 1'),
+              scheduledDateTime: schedISO,
               endpointId: selectedEndpointId || 'growency_main',
+              endpointName: publishEndpoints.find(e => e.id === selectedEndpointId)?.name,
               status: 'active',
               nextRunAt: schedISO,
               createdAt: Date.now(),
@@ -108,6 +149,7 @@ export const CronSchedulesTab: React.FC<CronSchedulesTabProps> = ({
           <Plus className="w-3.5 h-3.5" />
           <span>+ Schedule Selected Post / Create Cron</span>
         </button>
+        </div>
       </div>
 
       {scheduleSuccessFeedback && (
@@ -302,11 +344,28 @@ export const CronSchedulesTab: React.FC<CronSchedulesTabProps> = ({
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    disabled={sched.status !== 'active' || runningId !== null}
+                    onClick={() => handleRunNow(sched.id)}
+                    className="p-2 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                    title="Publish this post now"
+                  >
+                    {runningId === sched.id
+                      ? <Loader2 className="w-4 h-4 animate-spin" />
+                      : <Play className="w-4 h-4" />}
+                  </button>
+
                   <div className="text-right text-[11px] text-slate-400 font-mono hidden sm:block">
                     <span>Next Run:</span>
                     <div className="font-bold text-purple-600 dark:text-purple-400">
-                      {sched.nextRunAt ? new Date(sched.nextRunAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Pending'}
+                      {sched.nextRunAt ? new Date(sched.nextRunAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
                     </div>
+                    {sched.lastRunAt && (
+                      <div className="text-[10px] text-slate-400">
+                        Last: {new Date(sched.lastRunAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    )}
                   </div>
 
                   <button

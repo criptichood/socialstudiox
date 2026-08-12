@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { 
   Send, 
   Loader2, 
@@ -56,6 +56,24 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
   const options = modelOptions.length > 0 ? modelOptions : fallbackOptions;
   const selectedSupportsVision = modelOptions.find((o) => o.id === selectedModelAlias)?.vision ?? textModelSupportsVision(selectedModelAlias);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Auto-grow the textarea upward as the user types, capped at a viewport-aware
+  // max height (280px / 35% of viewport, whichever is smaller). Once it reaches
+  // the cap it becomes internally scrollable instead of expanding forever.
+  const textareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  const autoResizeTextarea = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const maxH = Math.min(280, Math.max(120, Math.round((window.innerHeight || 800) * 0.35)));
+    el.style.height = `${Math.min(el.scrollHeight, maxH)}px`;
+    el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+  };
+
+  useEffect(() => {
+    autoResizeTextarea();
+  }, [inputMessage]);
 
   return (
     <div className="p-4 border-t border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md space-y-3">
@@ -215,6 +233,7 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
           <ImagePlus className="w-4 h-4" />
         </button>
         <textarea
+          ref={textareaRef}
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => {
@@ -229,7 +248,7 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
               ? 'Ask anything, paste a URL/topic, or attach an image to analyze (e.g., a competitor ad or a visual draft)...'
               : 'Ask anything or paste a URL/topic (e.g., \'Research viral hooks for SaaS launching next week\')...'
           }
-          className="w-full pl-12 pr-14 py-3 bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 focus:border-purple-500 rounded-2xl text-xs text-slate-900 dark:text-white outline-none resize-none focus:ring-2 focus:ring-purple-500/20"
+          className="w-full pl-12 pr-14 py-3 bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 focus:border-purple-500 rounded-2xl text-xs text-slate-900 dark:text-white outline-none resize-none custom-scrollbar focus:ring-2 focus:ring-purple-500/20"
         />
 
         <button

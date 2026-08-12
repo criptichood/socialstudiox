@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { 
   Bot, 
   User, 
@@ -61,6 +61,49 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
   handleSendMessage,
 }) => {
   const isSessionEmpty = !activeSession || activeSession.messages.length === 0;
+
+  // Scroll behavior:
+  // - Sending a message always scrolls to the bottom (to the new message).
+  // - An AI reply never yanks the user down: if they're already near the bottom
+  //   it follows, otherwise it only nudges ~10% of the viewport down and stops.
+  // - Any user interaction (wheel / touch / click) during generation cancels
+  //   the auto-scroll so the user stays in control.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const userScrolledRef = useRef(false);
+  const lastSeenRef = useRef<{ id?: string; len: number }>({ id: undefined, len: 0 });
+
+  useEffect(() => {
+    const msgs = activeSession?.messages;
+    const id = activeSession?.id;
+    if (!msgs) return;
+    const len = msgs.length;
+    const prev = lastSeenRef.current;
+    lastSeenRef.current = { id, len };
+    if (prev.id !== id) return; // session switch — don't auto scroll
+    if (len === prev.len) return; // no new message added
+    const last = msgs[len - 1];
+    const el = scrollRef.current;
+    if (!el) return;
+
+    if (last.role === 'user') {
+      // A message was just sent: always bring the new message into view.
+      userScrolledRef.current = false;
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    } else if (!userScrolledRef.current) {
+      // AI reply landed: gentle nudge only, never a full jump.
+      const nearBottom = el.scrollHeight - el.clientHeight - el.scrollTop < 16;
+      if (nearBottom) {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      } else {
+        const nudge = Math.max(32, Math.round(el.clientHeight * 0.1));
+        el.scrollTo({ top: el.scrollTop + nudge, behavior: 'smooth' });
+      }
+    }
+  }, [activeSession?.id, activeSession?.messages.length]);
+
+  const markUserScrolled = () => {
+    userScrolledRef.current = true;
+  };
 
   if (isSessionEmpty) {
     return (
@@ -127,7 +170,13 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6">
+    <div
+      ref={scrollRef}
+      onWheel={markUserScrolled}
+      onTouchMove={markUserScrolled}
+      onPointerDown={markUserScrolled}
+      className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6"
+    >
       {activeSession.messages.map((msg) => {
         const isUser = msg.role === 'user';
         const isEditingThis = editingMessageId === msg.id;

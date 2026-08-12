@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, ImageIcon, CheckCircle2, Loader2, Plus, Edit3 } from 'lucide-react';
+import { Sparkles, ImageIcon, CheckCircle2, Loader2, Plus, Edit3, CloudUpload, Cloud } from 'lucide-react';
 import { BlogPostResult, SectionImagePrompt } from '../../../services/geminiService';
 import { BlogMarkdownRenderer } from './BlogMarkdownRenderer';
 
@@ -14,7 +14,9 @@ interface BlogPreviewTabProps {
   setCustomSectionPromptInput: (val: string) => void;
   handleAddCustomImagePrompt: () => void;
   generatingPromptId: string | null;
+  uploadingPromptId: string | null;
   handleGenerateSectionImage: (promptObj: SectionImagePrompt) => void;
+  handleUploadSectionImage: (promptObj: SectionImagePrompt) => void;
 }
 
 export const BlogPreviewTab: React.FC<BlogPreviewTabProps> = ({
@@ -28,7 +30,9 @@ export const BlogPreviewTab: React.FC<BlogPreviewTabProps> = ({
   setCustomSectionPromptInput,
   handleAddCustomImagePrompt,
   generatingPromptId,
+  uploadingPromptId,
   handleGenerateSectionImage,
+  handleUploadSectionImage,
 }) => {
   return (
     <div className="space-y-6">
@@ -80,7 +84,9 @@ export const BlogPreviewTab: React.FC<BlogPreviewTabProps> = ({
           content={blogResult.markdownContent}
           blogResult={blogResult}
           generatingPromptId={generatingPromptId}
+          uploadingPromptId={uploadingPromptId}
           onGenerateSectionImage={handleGenerateSectionImage}
+          onUploadSectionImage={handleUploadSectionImage}
         />
       </div>
 
@@ -143,14 +149,42 @@ export const BlogPreviewTab: React.FC<BlogPreviewTabProps> = ({
                   </p>
                 </div>
 
-                {pObj.generatedUrl ? (
+                {pObj.previewDataUrl ? (
+                  <div className="space-y-1.5 pt-1">
+                    <div className="w-full h-24 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950">
+                      <img src={pObj.previewDataUrl} alt="Section Infographic preview" className="w-full h-full object-cover" />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={uploadingPromptId === pObj.id}
+                      onClick={() => handleUploadSectionImage(pObj)}
+                      className="w-full py-1.5 px-3 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-bold text-[11px] rounded-lg shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      {uploadingPromptId === pObj.id ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Uploading to Cloudinary...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CloudUpload className="w-3.5 h-3.5" />
+                          <span>Upload Image to Blog</span>
+                        </>
+                      )}
+                    </button>
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <Cloud className="w-3 h-3" />
+                      <span>Generated preview — upload to embed</span>
+                    </span>
+                  </div>
+                ) : pObj.generatedUrl ? (
                   <div className="space-y-1.5 pt-1">
                     <div className="w-full h-24 rounded-lg overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950">
                       <img src={pObj.generatedUrl} alt="Section Infographic" className="w-full h-full object-cover" />
                     </div>
                     <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                       <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                      <span>Generated & Embedded in Blog</span>
+                      <span>Uploaded & Embedded in Blog</span>
                     </span>
                   </div>
                 ) : (

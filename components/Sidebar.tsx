@@ -13,7 +13,8 @@ import {
   Mic,
   Film,
   Music,
-  Cpu
+  Cpu,
+  Newspaper
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -83,6 +84,12 @@ const Sidebar: React.FC<SidebarProps> = ({
       label: 'Models', 
       description: 'AI model management',
       icon: Cpu 
+    },
+    { 
+      id: 'blog' as const, 
+      label: 'Blog Studio', 
+      description: 'Write, edit & publish posts',
+      icon: Newspaper 
     },
     { 
       id: 'drafts' as const, 

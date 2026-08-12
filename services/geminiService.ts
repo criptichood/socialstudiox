@@ -8,7 +8,8 @@ export {
   generateInfographicImage,
   verifyInfographicAccuracy,
   fixInfographicImage,
-  editInfographicImage
+  editInfographicImage,
+  uploadImageToCloudinary
 } from "./ai/imageService";
 
 export {
@@ -31,6 +32,13 @@ export {
   generateSingleSocialPost,
   refineSingleSocialPost,
   conductResearchChat,
-  generateBlogPostFromCampaign
+  generateBlogPostFromCampaign,
+  suggestBlogSeo,
+  suggestBlogTopics
 } from "./ai/campaignService";
 export type { BlogPostResult, SectionImagePrompt } from "@/types";
+
+export {
+  publishBlogToEndpoint
+} from "./ai/blogService";
+export type { PublishBlogResult } from "./ai/blogService";

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 import { GeneratedImage, Project } from '../types';
 import * as Exporter from '../services/exportService';
 import { 
@@ -680,7 +681,7 @@ export const PresentationDeck: React.FC<PresentationDeckProps> = ({
 
   const handleDeleteSlide = (index: number) => {
     if (presenterSlides.length <= 1) {
-      alert("At least one slide is required in your timeline.");
+      toast.error("At least one slide is required in your timeline.");
       return;
     }
     const updated = presenterSlides.filter((_, idx) => idx !== index);

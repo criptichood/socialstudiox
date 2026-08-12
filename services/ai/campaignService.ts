@@ -247,6 +247,7 @@ export const generateBlogPostFromCampaign = async (
   targetWordCount: number = 1200,
   targetAudience: string = 'General / Mixed Audience',
   seoKeywords: string[] = [],
+  previousPosts: { title: string; slug?: string; metaDescription?: string; keywords?: string[] }[] = [],
   modelName?: string,
   backend?: 'gemini' | 'gateway'
 ): Promise<BlogPostResult> => {
@@ -265,6 +266,7 @@ export const generateBlogPostFromCampaign = async (
       targetWordCount,
       targetAudience,
       seoKeywords,
+      previousPosts,
       model: effModel,
       backend: backend || gatewayBackendForId('text', effModel)
     })
@@ -276,4 +278,77 @@ export const generateBlogPostFromCampaign = async (
   }
 
   return await response.json();
+};
+
+export interface BlogSeoSuggestionResult {
+  titleOptions: string[];
+  metaDescription: string;
+  keywords: string[];
+}
+
+export const suggestBlogSeo = async (
+  title: string,
+  markdownContent: string,
+  existingSlugs: string[] = [],
+  modelName?: string,
+  backend?: 'gemini' | 'gateway'
+): Promise<BlogSeoSuggestionResult> => {
+  const effModel = modelName || loadModelSettings().text || 'gemini-3.5-flash';
+  const response = await fetch("/api/campaign/blog-seo", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      title,
+      markdownContent,
+      existingSlugs,
+      model: effModel,
+      backend: backend || gatewayBackendForId('text', effModel)
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "SEO suggestions failed");
+  }
+
+  const data = await response.json();
+  return {
+    titleOptions: data.titleOptions || [],
+    metaDescription: data.metaDescription || '',
+    keywords: data.keywords || []
+  };
+};
+
+export interface BlogTopicIdea {
+  title: string;
+  angle: string;
+}
+
+export const suggestBlogTopics = async (
+  previousPosts: { title: string; slug?: string; metaDescription?: string; keywords?: string[] }[] = [],
+  modelName?: string,
+  backend?: 'gemini' | 'gateway'
+): Promise<BlogTopicIdea[]> => {
+  const effModel = modelName || loadModelSettings().text || 'gemini-3.5-flash';
+  const response = await fetch("/api/campaign/blog-topics", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      previousPosts,
+      model: effModel,
+      backend: backend || gatewayBackendForId('text', effModel)
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Blog topic suggestions failed");
+  }
+
+  const data = await response.json();
+  return Array.isArray(data.ideas) ? data.ideas : [];
 };

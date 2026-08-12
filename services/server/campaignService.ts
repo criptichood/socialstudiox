@@ -627,6 +627,18 @@ export interface BlogPostResult {
   sectionImagePrompts: SectionImagePrompt[];
 }
 
+export interface PreviousBlogPost {
+  title: string;
+  slug?: string;
+  metaDescription?: string;
+  keywords?: string[];
+}
+
+export interface BlogTopicIdea {
+  title: string;
+  angle: string;
+}
+
 export const generateBlogPostFromCampaign = async (
   topic: string,
   campaignSummary: string,
@@ -636,6 +648,7 @@ export const generateBlogPostFromCampaign = async (
   targetWordCount: number = 1200,
   targetAudience: string = 'General / Mixed Audience',
   seoKeywords: string[] = [],
+  previousPosts: PreviousBlogPost[] = [],
   customApiKey?: string,
   backend: ModelBackend = 'gemini',
   model?: string
@@ -648,6 +661,10 @@ export const generateBlogPostFromCampaign = async (
     ? seoKeywords.map((k, i) => `#${i + 1} "${k}"`).join(', ')
     : 'auto-derive 3-5 relevant keywords from the topic';
 
+  const existingContentText = previousPosts.length > 0
+    ? previousPosts.map((p, i) => `${i + 1}. Title: "${p.title}"${p.slug ? ` | Slug: ${p.slug}` : ''}${p.metaDescription ? ` | Summary: ${p.metaDescription}` : ''}${p.keywords && p.keywords.length ? ` | Keywords: ${p.keywords.join(', ')}` : ''}`).join('\n')
+    : 'No previously published posts yet.';
+
   const systemInstruction = `
     You are a world-class technology blogger, content strategist, and technical writer.
     Your task is to write an in-depth, authoritative, and engaging Markdown blog post based on a research topic or social campaign.
@@ -656,8 +673,6 @@ export const generateBlogPostFromCampaign = async (
     - Main Topic: "${topic}"
     - Business / Brand Context: "${companyContext || 'Innovative Tech & Digital Brand'}"
     - Tone / Style: "${targetTone}"
-    - Target Word Count: approximately ${targetWordCount} words
-    - Target Audience Persona: "${targetAudience}"
     - Target SEO Keywords: ${seoKeywordsText}
     - Research / Campaign Context:
     ${campaignSummary}
@@ -665,9 +680,14 @@ export const generateBlogPostFromCampaign = async (
     AVAILABLE CAMPAIGN VISUAL ASSETS:
     ${imagesListText}
 
-    AUDIENCE & REGISTER RULES:
-    - Write for the persona: "${targetAudience}".
-    - Adjust depth of explanation, jargon, framework detail, and examples to match this audience. Beginners need foundational explanations and no unexplained jargon; technical/developer readers want precise mechanisms and concrete reference details; executive/B2B readers want strategic takeaways, business impact, and ROI framing.
+    EXISTING PUBLISHED CONTENT (MUST NOT REPLICATE):
+    ${existingContentText}
+    
+    ANTI-DUPLICATION RULES (CRITICAL):
+    - Carefully review the "Existing Published Content" above (titles, summaries, keywords, and slugs).
+    - If "Main Topic" closely matches an existing post, choose a clearly distinct angle, sub-topic, or framing so the new article is genuinely NEW content, not a near-duplicate.
+    - Produce a unique, descriptive H1 title that is not a close repeat of any existing title.
+    - Do NOT reuse or closely mirror an existing slug pattern; the final slug is derived from your title and is automatically made unique server-side.
 
     SEO KEYWORD RULES (CRITICAL):
     - Naturally weave the Target SEO Keywords into H2 headings and body copy where they fit without breaking reading flow. Do not keyword-stuff or force them.
@@ -677,10 +697,9 @@ export const generateBlogPostFromCampaign = async (
     - NEVER use em-dashes (— or --) under ANY circumstances anywhere in the blog post. Use hyphens with spaces, colons, commas, or parentheses instead to ensure natural, human-grade prose.
 
     LENGTH & DENSITY GUIDELINES:
-    - Write a comprehensive, high-density, authoritative blog post aiming for ~${targetWordCount} words.
-    - Short posts (~600w): concise, focused, scannable with tight sections.
-    - Standard guides (~1200w): full deep-dive with structured practical guidance.
-    - Whitepaper-grade (~2500w): exhaustive multi-part structure with heavy sub-sectioning, frameworks, tables, and step-by-step playbooks.
+    - Write at a natural length that fully covers the topic. Do NOT force any specific word count: short, focused posts are fine for narrow topics, while broad topics should be explored more deeply.
+    - Aim for a complete, authoritative article (typically 800 to 2,500 words) that reads like it was written by a human expert, not padded to hit a number.
+    - Write for the topic's natural audience: adjust depth, jargon, and examples so the piece is genuinely useful and self-contained.
     - Focus on practical, structured value with distinct double-line breaks (\n\n) between all sections. Do NOT cut off mid-thought.
 
     FORMATTING & STRUCTURE REQUIREMENTS:
@@ -691,7 +710,7 @@ export const generateBlogPostFromCampaign = async (
        - ALWAYS place a double newline (\n\n) between paragraphs, headings, list blocks, quotes, and image blocks.
        - Start with a compelling H1 title: "# [Title]"
        - An engaging opening hook establishing the core problem & solution.
-       - 3 to 5 clear H2 section headings ("## Section Title"). For 2500-word posts use more H2s + H3 sub-sections.
+       - 3 to 5 clear H2 section headings ("## Section Title"). For longer posts use more H2s + H3 sub-sections.
        - Bulleted key insights or step-by-step framework takeaways with spaces before and after list groups.
        - A quote callout box ("> Key Insight...") or prompt code block if applicable.
        - A concluding summary with a strategic call-to-action.
@@ -702,7 +721,7 @@ export const generateBlogPostFromCampaign = async (
          
          [IMAGE_PROMPT: Detailed prompt describing a high-quality 16:9 infographic/illustration for this section]
          
-       - Limit image prompts to 1 or 2 strategic section breaks so the user can generate images on demand (3 for 2500-word whitepapers).
+       - Limit image prompts to 1 or 2 strategic section breaks so the user can generate images on demand (3 for very long posts).
 
     Output ONLY the raw Markdown blog post. Do not add introductory conversational filler before or after the markdown text.
   `;
@@ -751,11 +770,19 @@ export const generateBlogPostFromCampaign = async (
   }
 
   // Compute SEO slug, excerpt, metaDescription, and keywords
-  const slug = title
+  const baseSlug = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '')
     .slice(0, 150) || 'blog-post';
+
+  const existingSlugs = new Set(previousPosts.map(p => (p.slug || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').trim()).filter(Boolean));
+  let slug = baseSlug;
+  let slugCounter = 2;
+  while (existingSlugs.has(slug)) {
+    slug = `${baseSlug.slice(0, 145)}-${slugCounter}`;
+    slugCounter += 1;
+  }
 
   const cleanTextForExcerpt = markdownContent
     .replace(/!\[.*?\]\(.*?\)/g, '')
@@ -789,5 +816,154 @@ export const generateBlogPostFromCampaign = async (
     embeddedImagesCount: imageMatches.length,
     sectionImagePrompts
   };
+};
+
+export const suggestBlogSeo = async (
+  title: string,
+  markdownContent: string,
+  existingSlugs: string[] = [],
+  customApiKey?: string,
+  backend: ModelBackend = 'gemini',
+  model?: string
+): Promise<{ titleOptions: string[]; metaDescription: string; keywords: string[] }> => {
+  const excerptSource = markdownContent
+    .replace(/!\[.*?\]\(.*?\)/g, '')
+    .replace(/\[IMAGE_PROMPT:.*?\]/gi, '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/#+\s+/g, '')
+    .replace(/[\r\n]+/g, ' ')
+    .trim();
+
+  const existingSlugsText = existingSlugs.length > 0
+    ? existingSlugs.map(s => `- /${s}`).join('\n')
+    : '- None yet.';
+
+  const instruction = `
+    You are an SEO and content strategist. Given a blog post title and its body, produce strictly the following JSON (no markdown fences, no extra text):
+    {
+      "titleOptions": ["5", "optimized", "click-worthy", "headline", "variants"],
+      "metaDescription": "a 150-160 character meta description",
+      "keywords": ["4-6", "target", "keywords"]
+    }
+    EXISTING URL SLUGS ALREADY USED ON THE BLOG:
+    ${existingSlugsText}
+    Rules:
+    - titleOptions: exactly 5 compelling title variants under 65 characters each, naturally including primary keywords, no clickbait.
+    - Do NOT suggest a title variant that is a near-duplicate of the current title or would slugify into an existing URL slug above. Prefer distinct angles.
+    - metaDescription: 150-160 characters, actionable, includes a primary keyword.
+    - keywords: 4-6 lowercase SEO keywords derived from the content.
+    - NEVER use em-dashes. Use hyphens with spaces, colons, or commas instead.
+
+    BLOG POST TITLE:
+    "${title}"
+
+    BLOG POST BODY:
+    ${excerptSource.slice(0, 6000)}
+  `;
+
+  let rawText = "";
+  if (backend === 'gateway') {
+    const { generateTextViaGateway } = await import("@/services/server/gatewayText");
+    rawText = (await generateTextViaGateway(model || GATEWAY_TEXT_DEFAULT, instruction)).trim();
+  } else {
+    const response = await getAi(customApiKey).models.generateContent({
+      model: model || TEXT_MODEL,
+      contents: instruction,
+    });
+    rawText = (response.text || "").trim();
+  }
+
+  rawText = rawText.replace(/```json/gi, '').replace(/```/g, '').replace(/—/g, ' - ');
+
+  try {
+    const parsed = JSON.parse(rawText);
+    return {
+      titleOptions: Array.isArray(parsed.titleOptions) ? parsed.titleOptions.slice(0, 5).map(String) : [],
+      metaDescription: typeof parsed.metaDescription === 'string' ? parsed.metaDescription : '',
+      keywords: Array.isArray(parsed.keywords) ? parsed.keywords.slice(0, 6).map(String) : [],
+    };
+  } catch (err) {
+    console.error("Failed to parse SEO suggestions JSON, falling back to heuristics:", err);
+    const fallbackTitle = `${title}`;
+    const keywords = Array.from(new Set(
+      `${title} ${excerptSource}`
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .split(/\s+/)
+        .filter(w => w.length > 4 && !['with', 'from', 'that', 'this', 'your', 'about', 'guide', 'master'].includes(w))
+    )).slice(0, 6);
+    return {
+      titleOptions: [fallbackTitle],
+      metaDescription: excerptSource.slice(0, 160),
+      keywords,
+    };
+  }
+};
+
+export const suggestBlogTopics = async (
+  previousPosts: PreviousBlogPost[] = [],
+  customApiKey?: string,
+  backend: ModelBackend = 'gemini',
+  model?: string
+): Promise<BlogTopicIdea[]> => {
+  const existingContentText = previousPosts.length > 0
+    ? previousPosts.map((p, i) => `${i + 1}. Title: "${p.title}"${p.slug ? ` | Slug: ${p.slug}` : ''}${p.metaDescription ? ` | Summary: ${p.metaDescription}` : ''}${p.keywords && p.keywords.length ? ` | Keywords: ${p.keywords.join(', ')}` : ''}`).join('\n')
+    : 'None yet.';
+
+  const instruction = `
+    You are a creative content strategist and editor for a technology blog.
+    Generate ${previousPosts.length > 0 ? '5' : '4'} fresh, compelling blog post ideas that will perform well for this brand.
+
+    EXISTING PUBLISHED CONTENT ON THE BLOG (AVOID REPEATING THESE TOPICS, ANGLES, AND TITLES):
+    ${existingContentText}
+
+    RULES (CRITICAL):
+    - Each idea must be clearly distinct from the existing published content above. Do NOT suggest a topic, title, or angle that already exists.
+    - Prioritize evergreen, search-friendly topics with real reader value.
+    - Never repeat an existing title or slug pattern.
+    - NEVER use em-dashes (— or --). Use hyphens with spaces, colons, or commas instead.
+    - Output ONLY valid JSON, no markdown fences, no extra text, in this exact shape:
+    {
+      "ideas": [
+        { "title": "A compelling working title", "angle": "One sentence on the unique angle, audience, and why it's different from existing posts" }
+      ]
+    }
+  `;
+
+  let rawText = "";
+  if (backend === 'gateway') {
+    const { generateTextViaGateway } = await import("@/services/server/gatewayText");
+    rawText = (await generateTextViaGateway(model || GATEWAY_TEXT_DEFAULT, instruction)).trim();
+  } else {
+    const response = await getAi(customApiKey).models.generateContent({
+      model: model || TEXT_MODEL,
+      contents: instruction,
+    });
+    rawText = (response.text || "").trim();
+  }
+
+  rawText = rawText.replace(/```json/gi, '').replace(/```/g, '').replace(/—/g, ' - ');
+
+  try {
+    const parsed = JSON.parse(rawText);
+    if (Array.isArray(parsed.ideas)) {
+      return parsed.ideas
+        .filter((i: any) => i && typeof i.title === 'string' && i.title.trim())
+        .slice(0, 5)
+        .map((i: any) => ({
+          title: i.title.trim(),
+          angle: typeof i.angle === 'string' ? i.angle.trim() : '',
+        }));
+    }
+    return [];
+  } catch (err) {
+    console.error("Failed to parse topic ideas JSON, falling back to generic ideas:", err);
+    return [
+      { title: "The Beginner's Guide to [Topic]: Getting Started the Right Way", angle: "Foundational, search-friendly walkthrough for newcomers." },
+      { title: "[Topic] Mistakes That Cost You Time and How to Avoid Them", angle: "Pain-point driven checklist with actionable fixes." },
+      { title: "How Top Teams Execute [Topic]: A Step-by-Step Playbook", angle: "Process-focused deep dive with a repeatable framework." },
+      { title: "[Topic] in 2026: What's Changed and What Still Works", angle: "Trend-driven refresh that positions the brand as current." },
+    ];
+  }
 };
 

@@ -32,6 +32,28 @@ export const generateInfographicImage = async (
   return data.imageUrl;
 };
 
+/**
+ * Upload a generated image (base64 data URL) to Cloudinary and return the hosted URL.
+ * Only a hosted URL is ever inserted into blog markdown — never raw image data.
+ */
+export const uploadImageToCloudinary = async (dataUrl: string, folder?: string): Promise<string> => {
+  const response = await fetch("/api/image/upload", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ dataUrl, folder })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Failed to upload image");
+  }
+
+  const data = await response.json();
+  return data.url;
+};
+
 export const verifyInfographicAccuracy = async (
   imageBase64: string, 
   topic: string,

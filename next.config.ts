@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  serverExternalPackages: ["@google/genai", "ai", "@ai-sdk/gateway"],
+  serverExternalPackages: ["@google/genai", "ai", "@ai-sdk/gateway", "cloudinary"],
   webpack: (config, { dev, isServer }) => {
     if (dev && !isServer) {
       config.watchOptions = {

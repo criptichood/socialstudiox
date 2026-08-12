@@ -47,6 +47,7 @@ const PATH_TO_VIEW: Record<string, ViewType> = {
   video: 'video-studio',
   sound: 'sound-studio',
   models: 'models',
+  blog: 'blog',
   campaign: 'drafts'
 };
 
@@ -73,6 +74,7 @@ const pathForView = (view: ViewType, draftsTab: DraftsTab): string => {
     case 'video-studio': return '/video';
     case 'sound-studio': return '/sound';
     case 'models': return '/models';
+    case 'blog': return '/blog';
     case 'drafts':
       return draftsTab === 'social' ? '/campaign/social' : '/campaign/draft';
   }
