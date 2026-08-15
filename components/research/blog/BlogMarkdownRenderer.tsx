@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Sparkles, ExternalLink, ImageIcon, Loader2, Copy, Check, RefreshCw, CloudUpload } from 'lucide-react';
 import { BlogPostResult, SectionImagePrompt } from '../../../services/geminiService';
+import { extractNodeDiagrams, findDiagramTokens, NodeDiagram } from '../../../lib/nodeDiagrams';
+import { FlowDiagramRenderer } from './FlowDiagramRenderer';
 
 interface BlogMarkdownRendererProps {
   content: string;
@@ -23,6 +25,12 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
 }) => {
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [ratioMap, setRatioMap] = useState<Record<string, string>>({});
+
+  const extracted = useMemo(() => extractNodeDiagrams(content), [content]);
+  const diagrams = extracted.diagrams;
+  const cleanedContent = extracted.cleanedText;
+
+  const diagramForIndex = (idx: number): NodeDiagram | null => diagrams[idx] || null;
 
   const ratioFor = (key: string, fallback?: string) => ratioMap[key] || fallback || '16:9';
   const setRatioFor = (key: string, val: string) => setRatioMap(prev => ({ ...prev, [key]: val }));
@@ -49,10 +57,32 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
           h2: ({ children }) => <h2 className="text-xl sm:text-2xl font-bold text-purple-600 dark:text-purple-400 mt-8 mb-4 font-display leading-tight flex items-center gap-2">{children}</h2>,
           h3: ({ children }) => <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 mt-6 mb-3 font-display leading-tight">{children}</h3>,
           h4: ({ children }) => <h4 className="text-base font-bold text-slate-800 dark:text-slate-200 mt-4 mb-2 font-display">{children}</h4>,
-          p: ({ children }: any) => {
+          p: ({ children, node }: any) => {
+            const hasImageChild = (node?.children || []).some((c: any) => c?.type === 'image');
+
+            if (hasImageChild) {
+              return <div className="my-2">{children}</div>;
+            }
+
             const textContent = Array.isArray(children)
               ? children.map(c => (typeof c === 'string' ? c : (c?.props?.children ? String(c.props.children) : ''))).join('')
               : (typeof children === 'string' ? children : '');
+
+            const diagramTokens = findDiagramTokens(textContent);
+            if (diagramTokens.length > 0 && diagrams.length > 0) {
+              const rendered = diagramTokens
+                .map(idx => diagramForIndex(idx))
+                .filter((d): d is NodeDiagram => Boolean(d));
+              if (rendered.length > 0) {
+                return (
+                  <div className="my-2 space-y-4">
+                    {rendered.map((d, i) => (
+                      <FlowDiagramRenderer key={`${d.id}-${i}`} diagram={d} />
+                    ))}
+                  </div>
+                );
+              }
+            }
 
             const promptMatch = textContent.match(/\[?IMAGE_PROMPT:\s*([^\]\n]+)\]?/i);
             if (promptMatch) {
@@ -251,7 +281,7 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
           )
         }}
       >
-        {content}
+        {cleanedContent}
       </ReactMarkdown>
     </div>
   );

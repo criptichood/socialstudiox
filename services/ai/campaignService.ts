@@ -173,7 +173,8 @@ export const conductResearchChat = async (
   groundingEnabled: boolean = true,
   backend?: 'gemini' | 'gateway',
   imageUrls?: string[],
-  onPhase?: (phase: ResearchChatPhaseEvent) => void
+  onPhase?: (phase: ResearchChatPhaseEvent) => void,
+  nodeDiagramsEnabled: boolean = true
 ): Promise<ResearchChatResult> => {
   const response = await fetch("/api/campaign/research-chat", {
     method: "POST",
@@ -188,7 +189,8 @@ export const conductResearchChat = async (
       model,
       groundingEnabled,
       backend,
-      imageUrls
+      imageUrls,
+      nodeDiagramsEnabled
     })
   });
 
@@ -249,7 +251,9 @@ export const generateBlogPostFromCampaign = async (
   seoKeywords: string[] = [],
   previousPosts: { title: string; slug?: string; metaDescription?: string; keywords?: string[] }[] = [],
   modelName?: string,
-  backend?: 'gemini' | 'gateway'
+  backend?: 'gemini' | 'gateway',
+  siteBaseUrl?: string,
+  nodeDiagramsEnabled?: boolean
 ): Promise<BlogPostResult> => {
   const effModel = modelName || loadModelSettings().text || 'gemini-3.5-flash';
   const response = await fetch("/api/campaign/blog", {
@@ -268,7 +272,9 @@ export const generateBlogPostFromCampaign = async (
       seoKeywords,
       previousPosts,
       model: effModel,
-      backend: backend || gatewayBackendForId('text', effModel)
+      backend: backend || gatewayBackendForId('text', effModel),
+      siteBaseUrl,
+      nodeDiagramsEnabled
     })
   });
 
@@ -324,6 +330,10 @@ export const suggestBlogSeo = async (
 export interface BlogTopicIdea {
   title: string;
   angle: string;
+  /** Set when this topic would genuinely benefit from a node-diagram flowchart. */
+  diagram?: 'process' | 'pipeline' | 'architecture' | 'funnel' | 'sequence' | 'none';
+  /** Short human-readable hint describing what the diagram should visualize. */
+  diagramHint?: string;
 }
 
 export const suggestBlogTopics = async (

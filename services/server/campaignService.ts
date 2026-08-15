@@ -389,7 +389,8 @@ export const conductResearchChat = async (
   groundingEnabled: boolean = true,
   backend: ModelBackend = 'gemini',
   imageUrls: string[] = [],
-  onPhase?: (phase: ResearchChatPhase) => void
+  onPhase?: (phase: ResearchChatPhase) => void,
+  nodeDiagramsEnabled: boolean = true
 ): Promise<{
   reply: string;
   searchResults?: SearchResultItem[];
@@ -412,6 +413,10 @@ export const conductResearchChat = async (
     2. **Conversational Pacing & Matching**: Match the length and complexity of your response to the user's input. For a simple greeting (e.g. "hello"), respond with a warm, concise professional welcome (1-2 sentences) and ask how they can help with their brand strategy today. Do NOT dump your capabilities, list features, or write long essays unless explicitly asked.
     3. **Context & History Awareness**: Review the message history carefully. Avoid repeating greetings, instructions, summaries of capabilities, or general intros that have already occurred in the thread. Keep the conversation rolling naturally.
     4. **Conditional Strategy & Video Extractor Blocks**: Only append the campaign or video extractor markdown boxes (### 🚀 Recommended Campaign Strategy or ### 🎥 Recommended Video Script & Scene Setup) when the user is explicitly asking to generate, draft, or refine a campaign strategy or video script. Never append these boxes for greetings, casual talk, or standard research questions.
+    5. ${nodeDiagramsEnabled ? `**Node Diagram Tool (OPTIONAL)**: If your answer explains a process, workflow, pipeline, architecture, decision flow, or numbered sequence where a visual flowchart would dramatically clarify the response, emit ONE compact inline diagram marker on its own line (between blank lines):
+       [NODE_DIAGRAM: {"title":"Short Title","nodes":[{"id":"1","label":"Step one"},{"id":"2","label":"Step two","description":"Optional note"}],"edges":[{"source":"1","target":"2","label":"Optional label"}]}]
+       - Every node id must be unique; every edge source/target must reference existing ids; 3-8 nodes; keep the whole marker on ONE line with no line breaks inside the JSON; optionally set node "type" to "input" | "process" | "decision" | "output".
+       - Only use the diagram tool when a visual flow genuinely adds clarity. Never force one for simple conversational replies.` : `**Node Diagram Tool (DISABLED)**: Do NOT use the [NODE_DIAGRAM: ...] marker or any flowchart/node diagram syntax anywhere in your reply. If you describe a process, pipeline, or step-by-step sequence, explain it naturally in plain Markdown using numbered lists, tables, or subheadings instead.`}
 
     YOUR CORE CAPABILITIES & METHODOLOGY:
     1. **Multipurpose Video & Content Strategy**:
@@ -597,8 +602,12 @@ export const conductResearchChat = async (
 
   onPhase?.({ type: 'done' });
 
+  const replyText = nodeDiagramsEnabled
+    ? text
+    : (await import('@/lib/nodeDiagrams')).removeNodeDiagramMarkers(text);
+
   return {
-    reply: text,
+    reply: replyText,
     searchResults,
     suggestedCampaignTopic,
     suggestedPrompt,
@@ -625,6 +634,14 @@ export interface BlogPostResult {
   readingTimeMinutes: number;
   embeddedImagesCount: number;
   sectionImagePrompts: SectionImagePrompt[];
+  relatedPosts?: BlogRelatedPost[];
+}
+
+export interface BlogRelatedPost {
+  title: string;
+  slug: string;
+  url: string;
+  reason?: string;
 }
 
 export interface PreviousBlogPost {
@@ -634,9 +651,92 @@ export interface PreviousBlogPost {
   keywords?: string[];
 }
 
+/**
+ * Deterministically pick up to `limit` published posts that are topically
+ * related to the current post by scoring keyword/title overlap. These become
+ * the SEO backlinks section. Returns [] when no site base URL is configured.
+ */
+const pickRelatedPosts = (
+  topic: string,
+  seoKeywords: string[],
+  previousPosts: PreviousBlogPost[],
+  siteBaseUrl: string,
+  limit = 3
+): BlogRelatedPost[] => {
+  const base = siteBaseUrl.replace(/\/+$/, '');
+  if (!base || previousPosts.length === 0) return [];
+
+  const topicTerms = `${topic} ${(seoKeywords || []).join(' ')}`
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'your', 'about', 'guide', 'using', 'into', 'over'].includes(w));
+
+  const scored = previousPosts
+    .filter(p => p.slug)
+    .map(p => {
+      const haystack = `${p.title} ${p.metaDescription || ''} ${(p.keywords || []).join(' ')}`.toLowerCase();
+      const score = topicTerms.reduce((acc, term) => acc + (haystack.includes(term) ? 1 : 0), 0);
+      return { post: p, score };
+    })
+    .filter(s => s.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored.slice(0, limit).map(({ post }) => ({
+    title: post.title,
+    slug: (post.slug || '').replace(/^\/+|\/+$/g, ''),
+    url: `${base}/${(post.slug || '').replace(/^\/+|\/+$/g, '')}`,
+  }));
+};
+
+const RELATED_HEADING_PATTERN = /^\s*#{2,3}\s*(related\s*(posts?|reading|articles)|read\s*next|keep\s*reading|you\s*may\s*also\s*like|further\s*reading|recommended\s*reading)\b.*$/i;
+
+/** Pull already-generated backlinks out of the markdown, if the AI added them. */
+const extractRelatedPostsFromMarkdown = (markdown: string): BlogRelatedPost[] => {
+  const lines = markdown.split('\n');
+  const found: BlogRelatedPost[] = [];
+  let inSection = false;
+  for (const line of lines) {
+    if (/^\s*#{1,3}\s+/.test(line)) {
+      if (RELATED_HEADING_PATTERN.test(line)) {
+        inSection = true;
+        continue;
+      }
+      inSection = false;
+      continue;
+    }
+    if (!inSection) continue;
+    const linkMatch = line.match(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/);
+    if (!linkMatch) continue;
+    const title = linkMatch[1].trim();
+    const url = linkMatch[2].trim();
+    const slug = url.replace(/\/+$/, '').split('/').pop() || '';
+    if (title && slug && url.startsWith('http')) {
+      found.push({ title, slug, url });
+    }
+  }
+  return found;
+};
+
+/** Append a Related Reading section to the markdown when the AI did not include one. */
+const appendRelatedPostsSection = (markdown: string, related: BlogRelatedPost[]): string => {
+  const section = [
+    '',
+    '## Related Reading',
+    '',
+    ...related.map(r => `- [${r.title}](${r.url})`),
+    '',
+  ].join('\n');
+  return markdown.replace(/\s+$/, '') + '\n' + section;
+};
+
 export interface BlogTopicIdea {
   title: string;
   angle: string;
+  /** Set when this topic would genuinely benefit from a node-diagram flowchart. */
+  diagram?: 'process' | 'pipeline' | 'architecture' | 'funnel' | 'sequence' | 'none';
+  /** Short human-readable hint describing what the diagram should visualize. */
+  diagramHint?: string;
 }
 
 export const generateBlogPostFromCampaign = async (
@@ -651,7 +751,9 @@ export const generateBlogPostFromCampaign = async (
   previousPosts: PreviousBlogPost[] = [],
   customApiKey?: string,
   backend: ModelBackend = 'gemini',
-  model?: string
+  model?: string,
+  siteBaseUrl: string = '',
+  nodeDiagramsEnabled: boolean = true
 ): Promise<BlogPostResult> => {
   const imagesListText = availableImages.length > 0
     ? availableImages.map((img, i) => `Image #${i + 1}: Title: "${img.title}", URL: "${img.url}"`).join('\n')
@@ -664,6 +766,33 @@ export const generateBlogPostFromCampaign = async (
   const existingContentText = previousPosts.length > 0
     ? previousPosts.map((p, i) => `${i + 1}. Title: "${p.title}"${p.slug ? ` | Slug: ${p.slug}` : ''}${p.metaDescription ? ` | Summary: ${p.metaDescription}` : ''}${p.keywords && p.keywords.length ? ` | Keywords: ${p.keywords.join(', ')}` : ''}`).join('\n')
     : 'No previously published posts yet.';
+
+  const relatedPosts = pickRelatedPosts(topic, seoKeywords, previousPosts, siteBaseUrl);
+
+  const backlinkInstruction = relatedPosts.length > 0
+    ? `
+    SEO BACKLINK RULES (CRITICAL):
+    - The site's public base URL is "${siteBaseUrl.replace(/\/+$/, '')}".
+    - Near the END of the article, add a final "## Related Reading" section that interlinks 1-3 of the most relevant previously published posts.
+    - Use ONLY the exact slugs from the "Existing Published Content" list above. NEVER invent slugs or URLs.
+    - Format each backlink as a bullet list item exactly like: - [Post Title](${siteBaseUrl.replace(/\/+$/, '')}/exact-slug)
+    - Recommend these specific related posts where they fit: ${relatedPosts.map(r => `"${r.title}" (${r.url})`).join(', ')}.
+    - If the article's topic has no genuinely related existing post, omit the section entirely; do not force unrelated links.`
+    : '\n    - Do NOT add any "Related Reading" or backlink section since there are no previously published posts to link to.';
+
+  const nodeDiagramInstruction = `
+    NODE DIAGRAM TOOL (OPTIONAL - USE ONLY WHEN IT GENUINELY HELPS):
+    - If the article explains a process, workflow, pipeline, architecture, decision flow, or step-by-step sequence that would be dramatically clearer as a visual flowchart, include ONE compact inline node diagram marker where it adds the most value.
+    - Do NOT add a diagram to every post, and never add more than 1-2 per post. Only use it when a visual flow genuinely clarifies the content (e.g. data pipelines, signup funnels, step sequences, architecture, routing logic).
+    - Emit the marker on its own line, as a single self-contained JSON block, using this exact shape (no code fences, no line breaks inside the JSON):
+      [NODE_DIAGRAM: {"title":"Short Diagram Title","nodes":[{"id":"1","label":"Step one label"},{"id":"2","label":"Step two label","description":"Optional one-line note"}],"edges":[{"source":"1","target":"2","label":"Optional edge label"}]}]
+    - RULES: every node id must be unique; every edge source and target must reference an existing node id; keep node labels short (3-6 words); optionally set each node's "type" to one of: "input", "process", "decision", "output"; include 3-8 nodes max; the whole marker must stay on a single line.
+    - Place the marker between two blank lines so it renders as its own block.`;
+
+  const disabledNodeDiagramInstruction = `
+    NODE DIAGRAM TOOL (DISABLED):
+    - Do NOT use the [NODE_DIAGRAM: ...] marker or any node/chart/flowchart diagram syntax anywhere in this post.
+    - If the content naturally describes a process, pipeline, or step-by-step sequence, explain it naturally in plain Markdown (use numbered lists, tables, blockquotes, or subheadings instead). Never emit a NODE_DIAGRAM marker.`;
 
   const systemInstruction = `
     You are a world-class technology blogger, content strategist, and technical writer.
@@ -688,6 +817,7 @@ export const generateBlogPostFromCampaign = async (
     - If "Main Topic" closely matches an existing post, choose a clearly distinct angle, sub-topic, or framing so the new article is genuinely NEW content, not a near-duplicate.
     - Produce a unique, descriptive H1 title that is not a close repeat of any existing title.
     - Do NOT reuse or closely mirror an existing slug pattern; the final slug is derived from your title and is automatically made unique server-side.
+    ${backlinkInstruction}
 
     SEO KEYWORD RULES (CRITICAL):
     - Naturally weave the Target SEO Keywords into H2 headings and body copy where they fit without breaking reading flow. Do not keyword-stuff or force them.
@@ -722,7 +852,7 @@ export const generateBlogPostFromCampaign = async (
          [IMAGE_PROMPT: Detailed prompt describing a high-quality 16:9 infographic/illustration for this section]
          
        - Limit image prompts to 1 or 2 strategic section breaks so the user can generate images on demand (3 for very long posts).
-
+    ${nodeDiagramsEnabled ? nodeDiagramInstruction : disabledNodeDiagramInstruction}
     Output ONLY the raw Markdown blog post. Do not add introductory conversational filler before or after the markdown text.
   `;
 
@@ -740,6 +870,11 @@ export const generateBlogPostFromCampaign = async (
 
   // Clean raw text and strictly eliminate any em-dashes
   rawText = rawText.replace(/—/g, ' - ').replace(/--/g, ' - ');
+  // If node diagrams are disabled, strip any stray markers the model may have emitted anyway
+  if (!nodeDiagramsEnabled) {
+    const { removeNodeDiagramMarkers } = await import('@/lib/nodeDiagrams');
+    rawText = removeNodeDiagramMarkers(rawText);
+  }
 
   let markdownContent = rawText;
 
@@ -804,6 +939,13 @@ export const generateBlogPostFromCampaign = async (
     .filter(w => w.length > 3 && !['with', 'from', 'that', 'this', 'your', 'about', 'guide', 'master'].includes(w));
   const keywords = Array.from(new Set(keywordCandidates)).slice(0, 8);
 
+  // Resolve related posts: prefer backlinks the AI already wrote, else append the section deterministically.
+  const extractedRelated = extractRelatedPostsFromMarkdown(markdownContent);
+  let resolvedRelated = extractedRelated.length > 0 ? extractedRelated : relatedPosts;
+  if (resolvedRelated.length > 0 && extractedRelated.length === 0) {
+    markdownContent = appendRelatedPostsSection(markdownContent, resolvedRelated);
+  }
+
   return {
     title,
     slug,
@@ -814,7 +956,8 @@ export const generateBlogPostFromCampaign = async (
     characterCount,
     readingTimeMinutes,
     embeddedImagesCount: imageMatches.length,
-    sectionImagePrompts
+    sectionImagePrompts,
+    relatedPosts: resolvedRelated
   };
 };
 
@@ -917,6 +1060,13 @@ export const suggestBlogTopics = async (
     EXISTING PUBLISHED CONTENT ON THE BLOG (AVOID REPEATING THESE TOPICS, ANGLES, AND TITLES):
     ${existingContentText}
 
+    NODE DIAGRAM AWARENESS:
+    - Some blog posts benefit from a visual flowchart rendered inline (a "node diagram"). This is a first-class feature of the platform.
+    - For each idea, judge whether a diagram would genuinely clarify the post: processes, step-by-step sequences, workflows, pipelines, architectures, funnels, or decision flows are ideal candidates.
+    - When it would help, set "diagram" to one of: "process", "pipeline", "architecture", "funnel", "sequence". Otherwise set it to "none".
+    - Also provide "diagramHint": one short sentence describing what the diagram should visualize (e.g. "A 4-step signup funnel from landing page to activated user"). Empty string when "diagram" is "none".
+    - Do NOT force a diagram on every idea — only mark the ones where a visual flow adds real value. Aim for roughly half the ideas to be diagram-worthy.
+
     RULES (CRITICAL):
     - Each idea must be clearly distinct from the existing published content above. Do NOT suggest a topic, title, or angle that already exists.
     - Prioritize evergreen, search-friendly topics with real reader value.
@@ -925,7 +1075,7 @@ export const suggestBlogTopics = async (
     - Output ONLY valid JSON, no markdown fences, no extra text, in this exact shape:
     {
       "ideas": [
-        { "title": "A compelling working title", "angle": "One sentence on the unique angle, audience, and why it's different from existing posts" }
+        { "title": "A compelling working title", "angle": "One sentence on the unique angle, audience, and why it's different from existing posts", "diagram": "process", "diagramHint": "A 4-step funnel from landing page to activated user" }
       ]
     }
   `;
@@ -950,10 +1100,20 @@ export const suggestBlogTopics = async (
       return parsed.ideas
         .filter((i: any) => i && typeof i.title === 'string' && i.title.trim())
         .slice(0, 5)
-        .map((i: any) => ({
-          title: i.title.trim(),
-          angle: typeof i.angle === 'string' ? i.angle.trim() : '',
-        }));
+        .map((i: any) => {
+          const diagramRaw = typeof i.diagram === 'string' ? i.diagram.trim().toLowerCase() : '';
+          const diagram = ['process', 'pipeline', 'architecture', 'funnel', 'sequence'].includes(diagramRaw)
+            ? diagramRaw as BlogTopicIdea['diagram']
+            : diagramRaw === 'none' ? 'none' as const : undefined;
+          return {
+            title: i.title.trim(),
+            angle: typeof i.angle === 'string' ? i.angle.trim() : '',
+            ...(diagram ? { diagram } : {}),
+            ...(diagram && diagram !== 'none' && typeof i.diagramHint === 'string' && i.diagramHint.trim()
+              ? { diagramHint: i.diagramHint.trim() }
+              : {}),
+          };
+        });
     }
     return [];
   } catch (err) {

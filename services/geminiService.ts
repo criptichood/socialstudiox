@@ -36,7 +36,8 @@ export {
   suggestBlogSeo,
   suggestBlogTopics
 } from "./ai/campaignService";
-export type { BlogPostResult, SectionImagePrompt } from "@/types";
+export type { BlogPostResult, SectionImagePrompt, BlogRelatedPost } from "@/types";
+export type { BlogTopicIdea } from "./ai/campaignService";
 
 export {
   publishBlogToEndpoint

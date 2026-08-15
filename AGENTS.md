@@ -5,24 +5,26 @@ Next.js 15 (App Router) single-page AI creative studio. All Gemini calls run ser
 ## Commands
 
 - `npm run dev` — dev server on port 3000
-- `npm run lint` — `next lint` (there is no ESLint config file; Next defaults apply)
 - `npm run build` — the typecheck gate (Next runs `tsc` during build); run this to verify TS changes
-- No test framework exists. Verification is `npm run build` + `npm run lint`.
+- **Do NOT run `npm run lint`.** There is no ESLint config file, so `next lint` hangs on an interactive "configure ESLint?" prompt. Verification is `npm run build` alone.
+- No test framework exists.
 - Both `bun.lock` and `package-lock.json` are committed. Use `npm`.
 
 ## Architecture (read this first)
 
-- `app/page.tsx` dynamically imports `components/App.tsx` with `ssr: false` — the whole app is client-side. Almost everything under `components/`, `hooks/`, `services/ai/` runs in the browser.
+- `app/[[...slug]]/page.tsx` (catch-all route) dynamically imports `components/App.tsx` with `ssr: false` — the whole app is client-side. Almost everything under `components/`, `hooks/`, `services/ai/`, `lib/` runs in the browser. `useAppEngine` reads the pathname to restore state on refresh.
 - Gemini calls are **three-layered**. Adding a Gemini feature means touching all three:
   1. `services/ai/*` — client-side `fetch()` wrappers (e.g. POST to `/api/image/generate`)
   2. `app/api/**/route.ts` — Next.js route handlers, thin JSON pass-through, `{ error }` + 500 on failure
   3. `services/server/*` — the actual `@google/genai` implementations
-  - `services/ai/` and `services/server/` have parallel files (`imageService.ts`, `campaignService.ts`, `videoService.ts`, `voiceService.ts`). Keep them in sync. There is no `services/ai/config.ts` — model names and `getAi()` live only server-side in `services/server/config.ts`; client wrappers are thin `fetch()` calls.
+  - `services/ai/` and `services/server/` have parallel files (`imageService.ts`, `campaignService.ts`, `videoService.ts`, `voiceService.ts`, `blogService.ts`). Keep them in sync. `services/server/` also holds server-only modules with no client twin (`modelRegistry.ts`, `modelRouter.ts`, `gateway*.ts`, `blogPublishService.ts`, `cloudinaryService.ts`). There is no `services/ai/config.ts` — model names and `getAi()` live only server-side in `services/server/config.ts`; client wrappers are thin `fetch()` calls.
 - `hooks/useAppEngine.ts` is the central state controller (business logic; components stay visual). Route changes, project state, and panel state all flow through it.
-- `@google/genai` and the AI SDK (`ai`, `@ai-sdk/gateway`) are listed in `serverExternalPackages` in `next.config.ts` — they must only be imported from server-side files (`services/server/*`, `app/api/*`). Never import them in client code.
+- `@google/genai`, the AI SDK (`ai`, `@ai-sdk/gateway`), and `cloudinary` are listed in `serverExternalPackages` in `next.config.ts` — they must only be imported from server-side files (`services/server/*`, `app/api/*`). Never import them in client code.
 - **Video models are registry-driven.** Capability metadata lives in `VIDEO_MODEL_CATALOG` (`types.ts`, client-safe); `services/server/modelRegistry.ts` adds server-only lookup helpers. Every model declares `backend: 'gemini' | 'gateway'` plus capabilities (t2v/i2v/r2v/first-last-frame), image input mode, audio, resolutions/durations/aspect ratios. The UI (`components/VideoStudio.tsx`) fetches the catalog from `GET /api/video/models` (which also reports `gatewayConfigured`) and renders controls conditionally. Keep catalog metadata in sync with the adapter implementations.
 - `@/*` path alias maps to the repo root.
 - Style prompt guides live in `services/stylesGuide.ts`; shared types in `types.ts`.
+- **User feedback goes through sonner toasts.** `<Toaster />` is mounted once in `components/App.tsx` (theme-aware). Use the helpers in `lib/feedback.ts` (`notifyError`, `notifySuccess`, `beginLoading`/`resolveToast`, `withErrorToast`) or `toast` from `sonner` directly. Route thrown errors through `toFriendlyError`/`classifyError` from `lib/errors.ts` so users see a readable message while the technical detail goes to the console — don't leave bare `console.error` + silent `return null` or ad-hoc inline error banners for new features.
+- Blog scheduling is **client-side only**: schedules live in IndexedDB (`useBlogEngine.ts`), and `runDueSchedules` fires on a 60s `setInterval` **only while the app is open**. There is no server-side cron. Due posts publish immediately when the app reopens. Recurring cron next-run math lives in `lib/cron.ts` (`nextCronRun`/`describeCron`).
 
 ## Env & Gemini
 

@@ -12,6 +12,7 @@
   "dependencies": {
     "@ai-sdk/gateway": "^4.0.36",
     "@google/genai": "^2.15.0",
+    "@xyflow/react": "^12.11.3",
     "ai": "^7.0.47",
     "cloudinary": "^2.10.0",
     "jszip": "^3.10.1",

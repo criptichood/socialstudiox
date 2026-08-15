@@ -8,7 +8,7 @@ function sse(data: unknown): Uint8Array {
 }
 
 export async function POST(request: Request) {
-  const { messages, companyInfo, mode, competitorWebsite, model, groundingEnabled, backend, imageUrls } = await request.json();
+  const { messages, companyInfo, mode, competitorWebsite, model, groundingEnabled, backend, imageUrls, nodeDiagramsEnabled } = await request.json();
   const customApiKey = request.headers.get("x-gemini-api-key") || undefined;
 
   if (!messages || !Array.isArray(messages)) {
@@ -32,7 +32,8 @@ export async function POST(request: Request) {
           groundingEnabled !== false,
           backend === 'gateway' ? 'gateway' : 'gemini',
           imageUrls,
-          onPhase
+          onPhase,
+          nodeDiagramsEnabled !== false
         );
         controller.enqueue(sse({ success: true, ...result }));
       } catch (error: any) {

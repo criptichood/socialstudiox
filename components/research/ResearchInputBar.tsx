@@ -9,7 +9,8 @@ import {
   ArrowRight, 
   Layers,
   ImagePlus,
-  X 
+  X,
+  GitBranch 
 } from 'lucide-react';
 import { useModelOptions } from '@/hooks/useModelOptions';
 import { textModelSupportsVision } from '@/types';
@@ -24,6 +25,8 @@ interface ResearchInputBarProps {
   setSelectedModelAlias: (val: string) => void;
   groundingEnabled: boolean;
   setGroundingEnabled: (val: boolean) => void;
+  nodeDiagramsEnabled: boolean;
+  setNodeDiagramsEnabled: (val: boolean) => void;
   handleSendMessage: (customPrompt?: string) => void;
   samplePrompts: { icon: any; badge: string; title: string; prompt: string }[];
   attachedImages: string[];
@@ -41,6 +44,8 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
   setSelectedModelAlias,
   groundingEnabled,
   setGroundingEnabled,
+  nodeDiagramsEnabled,
+  setNodeDiagramsEnabled,
   handleSendMessage,
   samplePrompts,
   attachedImages,
@@ -172,6 +177,43 @@ export const ResearchInputBar: React.FC<ResearchInputBarProps> = ({
               <span
                 className={`inline-block h-3 w-3 rounded-full bg-white shadow transform transition-transform ${
                   groundingEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
+                }`}
+              />
+            </span>
+          </div>
+
+          <div
+            role="switch"
+            aria-checked={nodeDiagramsEnabled}
+            tabIndex={0}
+            onClick={() => setNodeDiagramsEnabled(!nodeDiagramsEnabled)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setNodeDiagramsEnabled(!nodeDiagramsEnabled);
+              }
+            }}
+            className={`inline-flex items-center gap-2 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all cursor-pointer select-none ${
+              nodeDiagramsEnabled
+                ? 'text-purple-600 dark:text-purple-400 border-purple-500/40 bg-purple-500/10 hover:bg-purple-500/20'
+                : 'text-slate-400 dark:text-slate-500 border-slate-300/60 dark:border-slate-700 bg-slate-100/60 dark:bg-slate-900/40 hover:text-slate-600 dark:hover:text-slate-300'
+            }`}
+            title={
+              nodeDiagramsEnabled
+                ? 'Node diagrams ON — the AI may include visual flowcharts in replies'
+                : 'Node diagrams OFF — the AI explains flows in plain Markdown only'
+            }
+          >
+            <GitBranch className={`w-3.5 h-3.5 ${nodeDiagramsEnabled ? 'text-purple-500' : 'text-slate-400 dark:text-slate-500'}`} />
+            <span>Diagrams</span>
+            <span
+              className={`relative inline-flex items-center h-4 w-7 rounded-full transition-colors ${
+                nodeDiagramsEnabled ? 'bg-purple-500' : 'bg-slate-300 dark:bg-slate-700'
+              }`}
+            >
+              <span
+                className={`inline-block h-3 w-3 rounded-full bg-white shadow transform transition-transform ${
+                  nodeDiagramsEnabled ? 'translate-x-3.5' : 'translate-x-0.5'
                 }`}
               />
             </span>

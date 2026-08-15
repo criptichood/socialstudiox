@@ -615,6 +615,16 @@ export interface PublishEndpointConfig {
   headerName: string;
   enabled: boolean;
   isDefault?: boolean;
+  /** Public base URL where published posts are reachable (e.g. https://growency.ai/blog). Used to build backlink URLs. */
+  blogBaseUrl?: string;
+}
+
+/** A related, previously published post the AI links back to (SEO interlinking). */
+export interface BlogRelatedPost {
+  title: string;
+  slug: string;
+  url: string;
+  reason?: string;
 }
 
 export interface SectionImagePromptItem {
@@ -643,6 +653,7 @@ export interface SavedBlogDraft {
   readingTimeMinutes: number;
   embeddedImagesCount: number;
   sectionImagePrompts?: SectionImagePromptItem[];
+  relatedPosts?: BlogRelatedPost[];
   status: 'draft' | 'scheduled' | 'published';
   scheduledAt?: string;
   publishedAt?: string;
@@ -673,6 +684,7 @@ export interface BlogPostResult {
   readingTimeMinutes: number;
   embeddedImagesCount: number;
   sectionImagePrompts: SectionImagePrompt[];
+  relatedPosts?: BlogRelatedPost[];
 }
 
 export interface CronScheduleItem {

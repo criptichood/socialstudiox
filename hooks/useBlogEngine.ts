@@ -11,6 +11,7 @@ import {
   publishBlogToEndpoint,
   BlogPostResult,
   SectionImagePrompt,
+  BlogTopicIdea,
 } from '@/services/geminiService';
 import {
   SavedCampaign,
@@ -23,6 +24,7 @@ export const BLOG_DRAFTS_STORAGE_KEY = 'infogenius_saved_blog_drafts';
 export const BLOG_ENDPOINTS_STORAGE_KEY = 'infogenius_publish_endpoints';
 export const BLOG_CRON_STORAGE_KEY = 'infogenius_cron_schedules';
 export const BLOG_CAMPAIGNS_STORAGE_KEY = 'social_studio_x_campaigns_v2';
+export const BLOG_NODE_DIAGRAMS_KEY = 'infogenius_node_diagrams_enabled';
 
 const DEFAULT_ENDPOINT: PublishEndpointConfig = {
   id: 'growency_main',
@@ -115,10 +117,29 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
   const [seoSuggestions, setSeoSuggestions] = useState<BlogSeoSuggestions | null>(null);
 
   // New-post composer ("Add New Blog Post" + "I'm feeling lucky")
+  // New-post composer ("Add New Post" + "I'm feeling lucky")
   const [isNewPostComposerOpen, setIsNewPostComposerOpen] = useState<boolean>(false);
   const [newPostIdeaInput, setNewPostIdeaInput] = useState<string>('');
-  const [ideaOptions, setIdeaOptions] = useState<{ title: string; angle: string }[]>([]);
+  const [ideaOptions, setIdeaOptions] = useState<BlogTopicIdea[]>([]);
   const [isGeneratingIdeas, setIsGeneratingIdeas] = useState<boolean>(false);
+
+  // AI node-diagram rendering toggle (default ON)
+  const [nodeDiagramsEnabled, setNodeDiagramsEnabled] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    try {
+      return window.localStorage.getItem(BLOG_NODE_DIAGRAMS_KEY) !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(BLOG_NODE_DIAGRAMS_KEY, String(nodeDiagramsEnabled));
+    } catch {
+      /* no-op */
+    }
+  }, [nodeDiagramsEnabled]);
 
   const buildPublishedPostsContext = (): { title: string; slug?: string; metaDescription?: string; keywords?: string[] }[] =>
     savedBlogDrafts
@@ -129,6 +150,16 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
         metaDescription: d.metaDescription || d.excerpt,
         keywords: d.keywords,
       }));
+
+  const getSiteBaseUrl = (): string => {
+    const target = publishEndpoints.find(e => e.id === selectedEndpointId) || publishEndpoints[0];
+    if (target?.blogBaseUrl?.trim()) return target.blogBaseUrl.trim();
+    if (target?.endpointUrl) {
+      const match = target.endpointUrl.match(/^(https?:\/\/[^/]+)/);
+      if (match) return match[1];
+    }
+    return 'https://growency.ai';
+  };
 
   const publishedBlogPosts = savedBlogDrafts.filter(d => d.status === 'published');
 
@@ -217,6 +248,7 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       characterCount: draftData.markdownContent?.length || 0,
       readingTimeMinutes,
       embeddedImagesCount: (draftData.markdownContent || '').match(/!\[.*?\]\(.*?\)/g)?.length || 0,
+      relatedPosts: draftData.relatedPosts || undefined,
       sectionImagePrompts: (draftData.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
         // Never persist raw base64 preview blobs — only the hosted Cloudinary URL.
         if (!p.previewDataUrl) return p;
@@ -324,7 +356,11 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
         undefined,
         undefined,
         undefined,
-        buildPublishedPostsContext()
+        buildPublishedPostsContext(),
+        undefined,
+        undefined,
+        getSiteBaseUrl(),
+        nodeDiagramsEnabled
       );
 
       setBlogResult(result);
@@ -342,7 +378,8 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
         characterCount: result.characterCount,
         readingTimeMinutes: result.readingTimeMinutes,
         embeddedImagesCount: result.embeddedImagesCount,
-        sectionImagePrompts: result.sectionImagePrompts
+        sectionImagePrompts: result.sectionImagePrompts,
+        relatedPosts: result.relatedPosts
       }, 'draft');
 
       return result;
@@ -353,7 +390,7 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     } finally {
       setIsGeneratingBlog(false);
     }
-  }, [blogTopicOverride, selectedCampaignId, savedCampaigns, options.getThreadContext, options.sessionId, savedBlogDrafts, handleSaveBlogDraft]);
+  }, [blogTopicOverride, selectedCampaignId, savedCampaigns, options.getThreadContext, options.sessionId, savedBlogDrafts, handleSaveBlogDraft, publishEndpoints, selectedEndpointId, nodeDiagramsEnabled]);
 
   const generateTopicIdeas = useCallback(async () => {
     if (isGeneratingIdeas) return;
@@ -860,6 +897,9 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     setIdeaOptions,
     isGeneratingIdeas,
     generateTopicIdeas,
+    // node-diagram toggle
+    nodeDiagramsEnabled,
+    setNodeDiagramsEnabled,
     // handlers
     formatCronExpression,
     generateBlogPost,

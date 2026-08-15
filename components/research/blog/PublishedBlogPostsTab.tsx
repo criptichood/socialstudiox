@@ -33,7 +33,8 @@ export const PublishedBlogPostsTab: React.FC<PublishedBlogPostsTabProps> = ({
       characterCount: draft.characterCount || draft.markdownContent.length,
       readingTimeMinutes: draft.readingTimeMinutes || 4,
       embeddedImagesCount: draft.embeddedImagesCount || 0,
-      sectionImagePrompts: draft.sectionImagePrompts || []
+      sectionImagePrompts: draft.sectionImagePrompts || [],
+      relatedPosts: draft.relatedPosts || []
     });
     setActiveDraftId(draft.id);
     setBlogViewMode('preview');

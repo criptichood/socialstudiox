@@ -1,7 +1,8 @@
 import React from 'react';
-import { Sparkles, ImageIcon, CheckCircle2, Loader2, Plus, Edit3, CloudUpload, Cloud } from 'lucide-react';
-import { BlogPostResult, SectionImagePrompt } from '../../../services/geminiService';
+import { Sparkles, ImageIcon, CheckCircle2, Loader2, Plus, Edit3, CloudUpload, Cloud, Link2, ExternalLink, BookOpen } from 'lucide-react';
+import { BlogPostResult, SectionImagePrompt, BlogRelatedPost } from '../../../services/geminiService';
 import { BlogMarkdownRenderer } from './BlogMarkdownRenderer';
+import { SavedBlogDraft } from '../../../types';
 
 interface BlogPreviewTabProps {
   blogResult: BlogPostResult;
@@ -17,6 +18,11 @@ interface BlogPreviewTabProps {
   uploadingPromptId: string | null;
   handleGenerateSectionImage: (promptObj: SectionImagePrompt) => void;
   handleUploadSectionImage: (promptObj: SectionImagePrompt) => void;
+  relatedPosts?: BlogRelatedPost[];
+  savedBlogDrafts?: SavedBlogDraft[];
+  setBlogResult?: React.Dispatch<React.SetStateAction<BlogPostResult | null>>;
+  setActiveDraftId?: (id: string) => void;
+  setBlogViewMode?: (mode: any) => void;
 }
 
 export const BlogPreviewTab: React.FC<BlogPreviewTabProps> = ({
@@ -33,7 +39,32 @@ export const BlogPreviewTab: React.FC<BlogPreviewTabProps> = ({
   uploadingPromptId,
   handleGenerateSectionImage,
   handleUploadSectionImage,
+  relatedPosts = [],
+  savedBlogDrafts = [],
+  setBlogResult,
+  setActiveDraftId,
+  setBlogViewMode,
 }) => {
+  const openRelatedInEditor = (slug: string) => {
+    const draft = savedBlogDrafts.find(d => d.slug && d.slug.replace(/\/+$/, '') === slug.replace(/\/+$/, ''));
+    if (!draft || !setBlogResult || !setActiveDraftId || !setBlogViewMode) return;
+    setBlogResult({
+      title: draft.title,
+      slug: draft.slug,
+      excerpt: draft.excerpt || draft.metaDescription,
+      metaDescription: draft.metaDescription || draft.excerpt,
+      keywords: draft.keywords || [],
+      markdownContent: draft.markdownContent,
+      characterCount: draft.characterCount || draft.markdownContent.length,
+      readingTimeMinutes: draft.readingTimeMinutes || 4,
+      embeddedImagesCount: draft.embeddedImagesCount || 0,
+      sectionImagePrompts: draft.sectionImagePrompts || [],
+      relatedPosts: draft.relatedPosts || []
+    });
+    setActiveDraftId(draft.id);
+    setBlogViewMode('preview');
+  };
+
   return (
     <div className="space-y-6">
       {/* Blog Title Header with Edit Capability */}
@@ -209,6 +240,66 @@ export const BlogPreviewTab: React.FC<BlogPreviewTabProps> = ({
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Related Posts / SEO Backlinks Panel */}
+      {relatedPosts.length > 0 && (
+        <div className="p-4 bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-500/30 rounded-2xl space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-emerald-900 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1.5 font-display">
+              <Link2 className="w-4 h-4 text-emerald-500" />
+              <span>Related Posts & Backlinks ({relatedPosts.length})</span>
+            </h4>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+              Interlinks to previously published posts for SEO
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {relatedPosts.map((rp, idx) => {
+              const localDraft = savedBlogDrafts.find(d => d.slug && d.slug.replace(/\/+$/, '') === rp.slug.replace(/\/+$/, ''));
+              return (
+                <div
+                  key={`${rp.slug}-${idx}`}
+                  className="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col gap-2 text-xs"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="space-y-1 min-w-0">
+                      <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 font-mono uppercase">
+                        #{idx + 1} Backlink
+                      </span>
+                      <p className="text-xs font-bold text-slate-900 dark:text-white leading-snug line-clamp-2">
+                        {rp.title}
+                      </p>
+                      <p className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 truncate">
+                        /{rp.slug}
+                      </p>
+                    </div>
+                    <a
+                      href={rp.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 text-slate-400 hover:text-emerald-500 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors shrink-0"
+                      title="Open backlink URL"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                  {localDraft && (
+                    <button
+                      type="button"
+                      onClick={() => openRelatedInEditor(rp.slug)}
+                      className="px-2.5 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span>Open Related Post</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

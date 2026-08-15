@@ -81,6 +81,11 @@ export const WebhookSettingsTab: React.FC<WebhookSettingsTabProps> = ({
                 <p className="text-xs font-mono text-slate-500 dark:text-slate-400 break-all">
                   {ep.endpointUrl}
                 </p>
+                {ep.blogBaseUrl && (
+                  <p className="text-[10px] font-mono text-emerald-600 dark:text-emerald-400 break-all">
+                    Backlinks: {ep.blogBaseUrl}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-1">

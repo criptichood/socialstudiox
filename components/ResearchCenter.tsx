@@ -57,6 +57,13 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   const [selectedModelAlias, setSelectedModelAlias] = useState<string>(() => loadModelSettings().text || 'gemini-3.6-flash');
   const [researchMode, setResearchMode] = useState<'grounded' | 'deep'>('grounded');
   const [groundingEnabled, setGroundingEnabled] = useState<boolean>(true);
+  const [nodeDiagramsEnabled, setNodeDiagramsEnabled] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('infogenius_node_diagrams_enabled') !== 'false';
+    } catch {
+      return true;
+    }
+  });
   const [attachedImages, setAttachedImages] = useState<string[]>([]);
 
   // Adaptive loading status: derived from real server-side phases emitted via
@@ -293,7 +300,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
               setLoadingStatus('Finalizing response…');
               break;
           }
-        }
+        },
+        nodeDiagramsEnabled
       );
 
       const aiMsg: ChatMessageItem = {
@@ -470,6 +478,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           setSelectedModelAlias={setSelectedModelAlias}
           groundingEnabled={groundingEnabled}
           setGroundingEnabled={setGroundingEnabled}
+          nodeDiagramsEnabled={nodeDiagramsEnabled}
+          setNodeDiagramsEnabled={setNodeDiagramsEnabled}
           handleSendMessage={handleSendMessage}
           samplePrompts={samplePrompts}
           attachedImages={attachedImages}
