@@ -1,9 +1,40 @@
 import { GoogleGenAI } from "@google/genai";
-import { AspectRatio, ComplexityLevel, VisualStyle, Language } from "../../types";
-import { STYLE_GUIDES } from "../stylesGuide";
+import { AspectRatio, ComplexityLevel, VisualStyle, Language } from "@/types";
+import { STYLE_GUIDES } from "@/services/stylesGuide";
 
-export const getAi = () => {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+export const getGeminiApiKey = (customApiKey?: string) =>
+  customApiKey || process.env.GEMINI_API_KEY || process.env.API_KEY;
+
+/** Process-wide in-memory store shared across route handler bundles (dev compiles each route separately). */
+export const getGlobalMap = <T = any>(key: string): Map<string, T> => {
+  const g = globalThis as any;
+  if (!g.__socialStudioGlobalMaps) g.__socialStudioGlobalMaps = {};
+  if (!g.__socialStudioGlobalMaps[key]) g.__socialStudioGlobalMaps[key] = new Map<string, T>();
+  return g.__socialStudioGlobalMaps[key] as Map<string, T>;
+};
+
+export const getAi = (customApiKey?: string) => {
+  return new GoogleGenAI({ apiKey: getGeminiApiKey(customApiKey) });
+};
+
+/** Vercel AI Gateway credentials. `AI_GATEWAY_API_KEY` matches the AI SDK default; `AI_GATEWAY_BASE_URL` overrides the hosted gateway. */
+export const getGatewayConfig = () => ({
+  apiKey: process.env.AI_GATEWAY_API_KEY,
+  baseURL: process.env.AI_GATEWAY_BASE_URL
+});
+
+export const isGatewayConfigured = () => Boolean(getGatewayConfig().apiKey);
+
+/** Cloudinary image-hosting credentials (optional — used to host generated blog images). */
+export const getCloudinaryConfig = () => ({
+  cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+  apiKey: process.env.CLOUDINARY_API_KEY,
+  apiSecret: process.env.CLOUDINARY_API_SECRET
+});
+
+export const isCloudinaryConfigured = () => {
+  const { cloudName, apiKey, apiSecret } = getCloudinaryConfig();
+  return Boolean(cloudName && apiKey && apiSecret);
 };
 
 export const getMimeTypeAndData = (base64DataString: string) => {
@@ -23,6 +54,8 @@ export const getMimeTypeAndData = (base64DataString: string) => {
 export const TEXT_MODEL = 'gemini-3.5-flash';
 export const IMAGE_MODEL = 'gemini-3.1-flash-image';
 export const EDIT_MODEL = 'gemini-3.1-flash-image';
+/** Google Search tool model — runs the googleSearch tool on behalf of any selected model (incl. gateway text models). */
+export const SEARCH_MODEL = 'gemini-2.5-flash';
 
 export const getLevelInstruction = (level: ComplexityLevel): string => {
   switch (level) {

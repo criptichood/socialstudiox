@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { 
   GeneratedImage, 
   ComplexityLevel, 
@@ -9,15 +10,16 @@ import {
   Project, 
   DraftPrompt,
   ViewType
-} from '../types';
+} from '@/types';
 import { 
   researchTopicForPrompt, 
   generateInfographicImage, 
   editInfographicImage,
-} from '../services/geminiService';
-import { DBService } from '../services/dbService';
+} from '@/services/geminiService';
+import { DBService } from '@/services/dbService';
+import { loadModelSettings } from '@/services/ai/modelService';
 
-// Ensure standard typings for window.aistudio if TypeScript needs it
+// Standard typings for window.aistudio if TypeScript needs it
 declare global {
   interface Window {
     aistudio?: {
@@ -27,13 +29,95 @@ declare global {
   }
 }
 
+export type DraftsTab = 'drafts' | 'social';
+
+interface ParsedLocation {
+  view: ViewType;
+  draftsTab: DraftsTab;
+  isKnown: boolean;
+}
+
+const PATH_TO_VIEW: Record<string, ViewType> = {
+  dashboard: 'dashboard',
+  canvas: 'canvas',
+  research: 'research',
+  gallery: 'gallery',
+  presenter: 'presenter-studio',
+  voiceover: 'voiceover-studio',
+  video: 'video-studio',
+  sound: 'sound-studio',
+  models: 'models',
+  blog: 'blog',
+  campaign: 'drafts'
+};
+
+const parseLocation = (path: string): ParsedLocation => {
+  const segments = path.split('/').filter(Boolean);
+  const seg0 = segments[0] || '';
+  if (seg0 === '') return { view: 'canvas', draftsTab: 'drafts', isKnown: true };
+  const view = PATH_TO_VIEW[seg0];
+  if (!view) return { view: 'canvas', draftsTab: 'drafts', isKnown: false };
+  if (view === 'drafts') {
+    return { view, draftsTab: segments[1] === 'social' ? 'social' : 'drafts', isKnown: true };
+  }
+  return { view, draftsTab: 'drafts', isKnown: true };
+};
+
+const pathForView = (view: ViewType, draftsTab: DraftsTab): string => {
+  switch (view) {
+    case 'dashboard': return '/dashboard';
+    case 'canvas': return '/canvas';
+    case 'research': return '/research';
+    case 'gallery': return '/gallery';
+    case 'presenter-studio': return '/presenter';
+    case 'voiceover-studio': return '/voiceover';
+    case 'video-studio': return '/video';
+    case 'sound-studio': return '/sound';
+    case 'models': return '/models';
+    case 'blog': return '/blog';
+    case 'drafts':
+      return draftsTab === 'social' ? '/campaign/social' : '/campaign/draft';
+  }
+};
+
 export const useAppEngine = () => {
-  const [showIntro, setShowIntro] = useState(true);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const [showIntro, setShowIntro] = useState(pathname === '/');
   const [topic, setTopic] = useState('');
-  
-  // Navigation View & Sidebar state
-  const [currentView, setCurrentView] = useState<ViewType>('canvas');
+
+  // Navigation View & Sidebar state (URL-driven)
+  const initialLocation = parseLocation(pathname);
+  const [currentView, setCurrentViewState] = useState<ViewType>(initialLocation.view);
+  const [draftsTab, setDraftsTabState] = useState<DraftsTab>(initialLocation.draftsTab);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Keep view state in sync with the address bar (refresh, browser back/forward)
+  useEffect(() => {
+    const loc = parseLocation(pathname);
+    if (!loc.isKnown) {
+      router.replace('/dashboard');
+      return;
+    }
+    setCurrentViewState(loc.view);
+    setDraftsTabState(loc.draftsTab);
+  }, [pathname, router]);
+
+  const setCurrentView = (view: ViewType) => {
+    setCurrentViewState(view);
+    router.push(pathForView(view, draftsTab));
+  };
+
+  const setDraftsTab = (tab: DraftsTab) => {
+    setDraftsTabState(tab);
+    router.push(pathForView('drafts', tab));
+  };
+
+  const handleIntroComplete = () => {
+    setShowIntro(false);
+    router.replace('/dashboard');
+  };
 
   // Projects & Drafts State
   const [projects, setProjects] = useState<Project[]>([]);
@@ -139,6 +223,7 @@ export const useAppEngine = () => {
     setVisualStyle(draft.visualStyle);
     setLanguage(draft.language);
     setResolution(draft.resolution);
+    if (draft.imageModel) setImageModel(draft.imageModel);
     setSubOptions(draft.subOptions);
     setHasDraft(false); // Reset current active PromptStudio draft if any
     setCurrentView('canvas');
@@ -149,6 +234,7 @@ export const useAppEngine = () => {
   const [visualStyle, setVisualStyle] = useState<VisualStyle>('Default');
   const [language, setLanguage] = useState<Language>('Default');
   const [resolution, setResolution] = useState<AspectRatio>('16:9');
+  const [imageModel, setImageModel] = useState<string>(() => loadModelSettings().image || 'gemini-3.1-flash-image');
   const [subOptions, setSubOptions] = useState<Record<string, string>>({});
   
   // Interactive Prompt Studio State
@@ -175,8 +261,65 @@ export const useAppEngine = () => {
   const [presentingProject, setPresentingProject] = useState<Project | null>(null);
 
   // Derived state for project-sandbox isolation (Phase 2)
-  const activeProjectImages = imageHistory.filter(img => (img.subOptions?.projectId || 'proj-1') === selectedProjectId);
-  const activeDrafts = drafts.filter(d => (d.subOptions?.projectId || 'proj-1') === selectedProjectId);
+  const activeProjectImages = imageHistory.filter(img => {
+    const imgPid = img.subOptions?.projectId;
+    if (!selectedProjectId) {
+      return !imgPid || imgPid === 'global';
+    }
+    return imgPid === selectedProjectId;
+  });
+
+  const activeDrafts = drafts.filter(d => {
+    const draftPid = d.subOptions?.projectId;
+    if (!selectedProjectId) {
+      return !draftPid || draftPid === 'global';
+    }
+    return draftPid === selectedProjectId;
+  });
+
+  // State maps for assets associated with projects (reloaded dynamically on returning to dashboard)
+  const [campaignCounts, setCampaignCounts] = useState<Record<string, number>>({});
+  const [voiceoverCounts, setVoiceoverCounts] = useState<Record<string, number>>({});
+  const [videoCounts, setVideoCounts] = useState<Record<string, number>>({});
+
+  const reloadAssetCounts = async () => {
+    try {
+      const storedCampaigns = await DBService.getItem<any[]>('infogenius_saved_campaigns', []);
+      const storedVoiceovers = await DBService.getItem<any[]>('social_studio_voiceover_sessions', []);
+      const storedVideos = await DBService.getItem<any[]>('social_studio_x_generated_videos_v1', []);
+
+      const cmap: Record<string, number> = {};
+      storedCampaigns.forEach(c => {
+        const pid = c.projectId || 'proj-1';
+        cmap[pid] = (cmap[pid] || 0) + 1;
+      });
+
+      const vmap: Record<string, number> = {};
+      storedVoiceovers.forEach(v => {
+        const pid = v.projectId || 'global';
+        vmap[pid] = (vmap[pid] || 0) + 1;
+      });
+
+      const vidmap: Record<string, number> = {};
+      storedVideos.forEach(vid => {
+        const pid = vid.projectId || 'global';
+        vidmap[pid] = (vidmap[pid] || 0) + 1;
+      });
+
+      setCampaignCounts(cmap);
+      setVoiceoverCounts(vmap);
+      setVideoCounts(vidmap);
+    } catch (err) {
+      console.error("Failed to load asset counts:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (currentView === 'dashboard') {
+      reloadAssetCounts();
+    }
+  }, [currentView]);
+
   const [isDarkMode, setIsDarkMode] = useState(true);
   const [isControlPanelOpen, setIsControlPanelOpen] = useState(true);
 
@@ -330,7 +473,7 @@ export const useAppEngine = () => {
       setLoadingMessage(`Generating customized illustration...`);
       
       // Step 2: Direct Image Generation using the LLM's tailored prompt
-      let base64Data = await generateInfographicImage(researchResult.imagePrompt, resolution, referenceImage || undefined, referenceMode);
+      let base64Data = await generateInfographicImage(researchResult.imagePrompt, resolution, referenceImage || undefined, referenceMode, imageModel);
       
       const newImage: GeneratedImage = {
         id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -342,7 +485,7 @@ export const useAppEngine = () => {
         style: visualStyle,
         language: language,
         resolution: resolution,
-        subOptions: { ...subOptions, projectId: selectedProjectId || undefined },
+        subOptions: { ...subOptions, ...(selectedProjectId ? { projectId: selectedProjectId } : {}) },
         facts: researchResult.facts,
         searchResults: researchResult.searchResults
       };
@@ -411,7 +554,7 @@ export const useAppEngine = () => {
     setCurrentSearchResults(draftedSearchResults);
 
     try {
-      let base64Data = await generateInfographicImage(draftedPrompt, resolution, referenceImage || undefined, referenceMode);
+      let base64Data = await generateInfographicImage(draftedPrompt, resolution, referenceImage || undefined, referenceMode, imageModel);
       
       const newImage: GeneratedImage = {
         id: `img-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -423,7 +566,7 @@ export const useAppEngine = () => {
         style: visualStyle,
         language: language,
         resolution: resolution,
-        subOptions: { ...subOptions, projectId: selectedProjectId || undefined },
+        subOptions: { ...subOptions, ...(selectedProjectId ? { projectId: selectedProjectId } : {}) },
         facts: [...draftedFacts],
         searchResults: [...draftedSearchResults]
       };
@@ -466,7 +609,7 @@ export const useAppEngine = () => {
         style: currentImage.style,
         language: currentImage.language,
         resolution: currentImage.resolution,
-        subOptions: { ...(currentImage.subOptions || {}), projectId: selectedProjectId || undefined },
+        subOptions: { ...(currentImage.subOptions || {}), ...(selectedProjectId ? { projectId: selectedProjectId } : {}) },
         facts: currentImage.facts ? [...currentImage.facts] : [],
         searchResults: currentImage.searchResults ? [...currentImage.searchResults] : []
       };
@@ -572,9 +715,10 @@ export const useAppEngine = () => {
   };
 
   return {
-    showIntro, setShowIntro,
+    showIntro, setShowIntro, handleIntroComplete,
     topic, setTopic,
     currentView, setCurrentView,
+    draftsTab, setDraftsTab,
     isSidebarOpen, setIsSidebarOpen,
     projects, setProjects,
     selectedProjectId, setSelectedProjectId,
@@ -584,6 +728,7 @@ export const useAppEngine = () => {
     visualStyle, setVisualStyle,
     language, setLanguage,
     resolution, setResolution,
+    imageModel, setImageModel,
     subOptions, setSubOptions,
     hasDraft, setHasDraft,
     draftedPrompt, setDraftedPrompt,
@@ -608,6 +753,9 @@ export const useAppEngine = () => {
     // Computed/derived state
     activeProjectImages,
     activeDrafts,
+    campaignCounts,
+    voiceoverCounts,
+    videoCounts,
 
     // Handlers
     handleCreateProject,
@@ -626,6 +774,7 @@ export const useAppEngine = () => {
     clearAllGallery,
     loadForTweaking,
     handleSelectKey,
-    handleImportImagesToProject
+    handleImportImagesToProject,
+    reloadAssetCounts
   };
 };

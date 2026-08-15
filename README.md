@@ -7,67 +7,100 @@
 
 ## 🚀 Overview
 
-**Social Studio X** is an all-in-one interactive workspace designed to research trends, write high-converting copy, design eye-catching brand posts, generate custom AI visual assets, and edit your graphics on the fly. Driven by Google Gemini's advanced models and search-grounding research, it allows creators to seamlessly turn raw ideas or trends into beautifully formatted and annotated posts ready for social feeds.
+**Social Studio X** is an all-in-one AI creative studio — research trends, write high-converting copy, design eye-catching brand posts, generate custom AI visual assets, edit graphics on the fly, and produce AI video and voiceovers. Everything runs in a single-page Next.js 15 (App Router) app: Gemini calls execute server-side through API route handlers, while the browser hosts one client bundle. Google Gemini is the default backend, with an optional **AI Gateway** mode that unlocks curated third-party text, image, voice, and video models.
 
 ---
 
 ## 💎 Features & Capabilities
 
-### 📂 1. Projects Space (Multi-Campaign Sandboxing)
-- **Isolated Workspaces**: Create, edit, and manage separate campaigns or client spaces (e.g., *Default Campaign*, *Tech Brand Launch*) to keep asset history and drafts organized.
-- **Context Preservation**: Automatically stores active draft layouts, copy variations, and image libraries per-project, preventing visual pollution.
+### 📡 1. Research Center (Live Search Grounded)
+- **Real-Time Search Grounding**: Uses a dedicated Gemini search-tool model (`SEARCH_MODEL`) to gather live Google results, which are injected as grounding into whichever text model you select — Gemini **or** gateway models.
+- **Deep Research Mode**: Exhaustive market, competitor, and content-strategy reports.
+- **Vision Uploads**: Attach up to 4 images for vision-capable models (client-side downscaled to keep payloads lean); non-vision models warn instead.
+- **Live Phase Streaming (SSE)**: The loading bubble is driven by real server-side phases — *searching → found N sources → synthesizing → done* — so you always see what the assistant is actually doing, on any backend.
+- **Grounding Toggle**: Flip a dedicated Live Search switch on/off per message.
 
-### 🎨 2. Visual Canvas & Post Prompt Studio
+### 🧠 2. Model Management
+- **Per-Modality Defaults**: Choose your default model for Text, Image, Image Edit, Voiceover, and Video (via `/models`).
+- **Curated Catalog**: Gemini-native models plus a curated gateway list for text/image/voice/video, each flagged with capabilities (vision, image input, aspect ratios, etc.).
+- **Live Testing & Refresh**: Test any model directly, or pull the gateway's live language model list.
+
+### 🎨 3. Visual Canvas & Post Prompt Studio
 - **Curated Trend Grounding**: Queries Google search and curates validated factual bullet points before generating social copywriting or imagery.
 - **Style and Brand Fine-Tuning**: Select visual styles (e.g., *3D Render*, *Minimalist Vector*, *Neon Cyberpunk*), complexity levels, aspect ratios (e.g., Square 1:1, Story 9:16, Landscape 16:9), and language translations.
-- **Interactive Prompt Studio**: Preview, refine, and customize image prompts with Gemini or write direct edit commands to iterate on generated visuals on the fly.
+- **Interactive Prompt Studio**: Preview, refine, and customize image prompts or write direct edit commands to iterate on generated visuals on the fly.
 
-### ✏️ 3. Multi-Layer Image Editor & Annotation Studio
+### ✏️ 4. Multi-Layer Image Editor & Annotation Studio
 - **On-The-Fly Editing Tools**: Draw directly on your generated base graphics with high-fidelity vector shapes, lines, arrows, and brush paths.
 - **Text & Brand Layering**: Add stylized text, descriptions, handles, or callouts on top of images with point-and-click placement.
 - **Persistent States**: Saved canvas edits are stored with full vector state back to Local IndexedDB.
 
-### 📽️ 4. Interactive Slide Importer & Presenter
-- **Per-Project Presentations**: Automatically structures your campaign assets into a sleek interactive deck with custom autoplay, smooth transitions, and overlays.
-- **Multi-Project Importer**: Want to reference brand graphic assets from a different client project? Open the importer to search, filter, select, and import generated visuals from *any other project* instantly.
-- **Interactive Annotation Overlays**: Dynamically displays vector annotations and text tags over slides as you present.
+### 📽️ 5. Video Studio
+- **Registry-Driven Models**: Capability metadata in `VIDEO_MODEL_CATALOG` drives the UI — text-to-video, image-to-video, reference-to-video, first/last-frame control, audio, resolutions, durations, and aspect ratios.
+- **Backends**: Gemini-native (Veo long-running ops, Omni synchronous) or AI Gateway video jobs, both polled via `/api/video/poll`.
+- **Voiceovers & Narration**: Per-asset audio, voiceover synthesis, and image-to-script.
 
-### ⚙️ 5. Clean & Performant Architecture
-- **State Separation**: Business logic is separated from visual representation using a custom state controller at `/hooks/useAppEngine.ts`.
-- **IndexedDB Sync**: Safely persists complex image streams and custom layouts locally inside the browser.
-- **Dark Space Theme**: Visually designed around a polished deep-slate/neon-cyan workspace to ensure visual ergonomics during long design sessions.
+### 🎙️ 6. Voiceover Studio
+- AI-cast narration guidelines, tone and speed control, and script enhancement.
+
+### ⚙️ 7. Campaigns, Blogs & Scheduling
+- Campaign workspaces, blog generation from campaigns, webhook publishing, and timed schedules.
+
+### 🏗️ 8. Clean & Performant Architecture
+- **Three-Layered AI**: thin client `fetch()` wrappers → Next.js API route handlers → real `@google/genai` / AI SDK implementations in `services/server/*`. Keep the parallel files in sync.
+- **State Separation**: Business logic lives in `/hooks/useAppEngine.ts`; components stay visual.
+- **IndexedDB Sync**: Persists complex image streams, custom layouts, and research sessions locally.
 
 ---
 
 ## 🛠️ Architecture and File Guide
 
 ```bash
-├── App.tsx                     # Main layout & component routing
-├── types.ts                    # Strongly-typed schemas for projects, images, and drafts
+├── app/
+│   ├── page.tsx                  # Dynamically imports the client app (ssr: false)
+│   └── api/                      # Route handlers (thin JSON/SSE pass-through)
+│       ├── campaign/             # generate, blog, research, research-chat (SSE)
+│       ├── image/                # generate, edit
+│       ├── video/                # generate, poll, models, assets, segment, …
+│       ├── voice/                # synthesize, image-to-script
+│       └── models/               # catalog, refresh, verify
+├── components/                   # App, Sidebar, ResearchCenter, VideoStudio,
+│                                 # VoiceoverStudio, ModelsSettings, …
 ├── hooks/
-│   └── useAppEngine.ts         # Custom React Hook separating core business logic from UI
+│   └── useAppEngine.ts           # Central state controller (business logic)
 ├── services/
-│   ├── dbService.ts            # IndexedDB manager for persisting high-res image histories
-│   └── geminiService.ts        # AI engine for prompt engineering, copy, and image synthesis
-└── components/
-    ├── Sidebar.tsx             # Workspace navigator with custom brand footer
-    ├── IntroScreen.tsx         # Welcome dashboard with interactive WebGL parallax particles
-    ├── ProjectsDashboard.tsx   # Workspace administrator
-    ├── GalleryDashboard.tsx    # Scrollable vault with detail analytics
-    ├── AnnotationStudio.tsx    # Live image annotation and layer editor
-    └── PresentationDeck.tsx    # Slideshow system with cross-project asset importer
+│   ├── ai/                       # Client-side fetch() wrappers (browser)
+│   │   ├── imageService.ts       # campaignService.ts, videoService.ts, …
+│   ├── server/                   # Real Gemini / AI SDK implementations (server-only)
+│   │   ├── config.ts             # Model names + getAi() + gateway credentials
+│   │   ├── modelRouter.ts        # Builds the full model catalog
+│   │   ├── gatewayText.ts        # gatewayImage.ts, gatewaySpeech.ts,
+│   │   │                         # gatewayVideo.ts (share gatewayClient.ts)
+│   │   └── campaignService.ts    # Research grounding + phase callbacks
+│   └── geminiService.ts          # Back-compat re-exports of the modular services
+├── types.ts                      # Client-safe model catalogs & shared types
+├── next.config.ts                # serverExternalPackages + Windows watchOptions.poll
+└── .env.local                    # (gitignored) API keys, see .env.example
 ```
 
 ---
 
 ## 🛠️ Getting Started
 
+### Prerequisites
+- Node.js and npm
+- A Google AI API key (`GEMINI_API_KEY`) — required for the Gemini backend
+
 ### Installation
-Ensure you have Node.js and npm installed, then boot up the development workspace:
 
 ```bash
 # Install dependencies
 npm install
+
+# Configure environment (copy the template)
+cp .env.example .env.local
+# → set GEMINI_API_KEY (required)
+# → optionally set AI_GATEWAY_API_KEY + AI_GATEWAY_BASE_URL to enable third-party models
 
 # Start development server
 npm run dev
@@ -75,5 +108,13 @@ npm run dev
 
 The application automatically runs on port **3000**. Open [http://localhost:3000](http://localhost:3000) to view the development preview.
 
+### Verification
+
+```bash
+npm run build   # Typecheck (tsc) + production build + lint gate
+npm run lint    # next lint (there is no ESLint config; Next defaults apply)
+```
+
 ---
+
 *Created as a production-grade social and brand visualization tool, engineered with clean code paradigms and elegant typography.*

@@ -256,6 +256,8 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
       postCount: newCampPostCount,
       customRequirements: newCampStyleGuide.trim() || undefined,
       aiModel: newCampModel,
+      preferredAspect: newCampAspect as AspectRatio,
+      preferredStyle: newCampStyle || 'Default',
       posts: [],
       createdAt: Date.now()
     };
@@ -434,10 +436,14 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
         activeCamp.aiModel || newCampModel || 'gemini-3.6-flash'
       );
 
+      // Respect the campaign's preferred aspect ratio and style saved at creation time.
+      // The AI may default to '1:1' in its JSON response — always override with the user's selection.
+      const preferredAspect = activeCamp.preferredAspect;
+      const preferredStyle = activeCamp.preferredStyle;
       const formattedPosts = posts.map(p => ({
         ...p,
-        aspectRatio: (p.aspectRatio || '9:16') as AspectRatio,
-        suggestedStyle: p.suggestedStyle || 'Default'
+        aspectRatio: (preferredAspect || p.aspectRatio || '9:16') as AspectRatio,
+        suggestedStyle: ((preferredStyle && preferredStyle !== 'Default') ? preferredStyle : (p.suggestedStyle || 'Default')) as VisualStyle,
       }));
 
       setCampaignPosts(formattedPosts);

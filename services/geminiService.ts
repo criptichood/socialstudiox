@@ -8,15 +8,18 @@ export {
   generateInfographicImage,
   verifyInfographicAccuracy,
   fixInfographicImage,
-  editInfographicImage
+  editInfographicImage,
+  uploadImageToCloudinary
 } from "./ai/imageService";
 
 export {
-  generateVeoVideo,
+  fetchVideoModelCatalog,
+  startVideoGeneration,
+  pollVideoGeneration,
   generateVoiceOverAndVideoPrompt,
-  pollVideoOperation
+  enhanceVoiceOverWithGuidelines
 } from "./ai/videoService";
-export type { VideoGenerationResult } from "./ai/videoService";
+export type { VideoGenerationResult } from "@/types";
 
 export {
   generateVoiceOverSpeech,
@@ -29,6 +32,14 @@ export {
   generateSingleSocialPost,
   refineSingleSocialPost,
   conductResearchChat,
-  generateBlogPostFromCampaign
+  generateBlogPostFromCampaign,
+  suggestBlogSeo,
+  suggestBlogTopics
 } from "./ai/campaignService";
-export type { BlogPostResult, SectionImagePrompt } from "./ai/campaignService";
+export type { BlogPostResult, SectionImagePrompt, BlogRelatedPost } from "@/types";
+export type { BlogTopicIdea } from "./ai/campaignService";
+
+export {
+  publishBlogToEndpoint
+} from "./ai/blogService";
+export type { PublishBlogResult } from "./ai/blogService";

@@ -4,20 +4,26 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "lint": "tsc --noEmit"
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
+    "@ai-sdk/gateway": "^4.0.36",
+    "@google/genai": "^2.15.0",
+    "@xyflow/react": "^12.11.3",
+    "ai": "^7.0.47",
+    "cloudinary": "^2.10.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.553.0",
     "motion": "^12.42.2",
+    "next": "^15.1.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
+    "sonner": "^2.0.8",
     "three": "^0.185.1"
   },
   "devDependencies": {
@@ -25,8 +31,9 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.185.1",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "autoprefixer": "^10.5.4",
+    "postcss": "^8.5.25",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~5.8.2"
   }
 }

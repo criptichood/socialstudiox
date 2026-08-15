@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   Play, 
@@ -12,11 +13,71 @@ import {
   Maximize2, 
   Sparkles, 
   Loader2, 
-  Wand2 
+  Wand2,
+  User,
+  Gauge,
+  Languages,
+  Radio,
+  Music2
 } from 'lucide-react';
 import { SocialPostCampaignItem } from '../../DraftsPlanner';
 import { CampaignImage } from '../CampaignImage';
 import { ImageDownloadDropdown } from '../../ImageDownloadDropdown';
+import { useModelOptions } from '@/hooks/useModelOptions';
+
+const TTS_MODELS = [
+  { id: 'gemini-3.1-flash-tts-preview', name: 'Gemini 3.1 tts-preview (Recommended)', description: 'Ultra-realistic native audio speech synthesizer' },
+  { id: 'gemini-2.0-flash-exp', name: 'Gemini 2.0 Flash Audio (Experimental)', description: 'Fast experimental multimodal audio synthesizer' }
+];
+
+const PERSONA_STYLES = [
+  { id: 'adult', name: '🧑 Adult Standard Voice', description: 'Natural, mature adult speaking voice' },
+  { id: 'child', name: '👧 Child / Kid Voice', description: 'Higher pitch, innocent, playful, curious kid cadence' },
+  { id: 'teenager', name: '🎧 Teenager / Youth Voice', description: 'Upbeat, casual student/youth voice' },
+  { id: 'anime', name: '✨ Anime / Cartoon Character', description: 'Expressive, animated, energetic character cadence' },
+  { id: 'anime_hero', name: '⚡ Anime Hero / Protagonist Dub', description: 'Passionate, resolute, high-energy main character voice' },
+  { id: 'anime_mascot', name: '🐾 Anime Chibi / Mascot Voice', description: 'Cute, high-pitched, enthusiastic character cadence' },
+  { id: 'senior', name: '👴 Senior / Elder Voice', description: 'Warm, wise, experienced elder voice' }
+];
+
+const ACCENT_OPTIONS = [
+  { id: 'US Standard', name: '🇺🇸 US Standard' },
+  { id: 'Anime Dub', name: '🎌 Japanese Anime Dub (English Dub Style)' },
+  { id: 'British', name: '🇬🇧 British Accent' },
+  { id: 'Australian', name: '🇦🇺 Australian Accent' },
+  { id: 'Canadian', name: '🇨🇦 Canadian Accent' },
+  { id: 'Irish', name: '🇮🇪 Irish Accent' },
+  { id: 'Scottish', name: '🏴󠁧󠁢󠁳󠁣󠁴󠁿 Scottish Accent' },
+  { id: 'Nigerian', name: '🇳🇬 Nigerian Accent' },
+  { id: 'Indian', name: '🇮🇳 Indian Accent' },
+  { id: 'Transatlantic', name: '✈️ Transatlantic Accent' }
+];
+
+const SPEAKING_SPEEDS = [
+  { id: '0.8', name: '🐢 0.8x Slow & Relaxed', description: 'Deliberate, unhurried pacing with spacious breath pauses' },
+  { id: '1.0', name: '🍃 1.0x Normal Speed', description: 'Standard natural conversational cadence' },
+  { id: '1.25', name: '⚡ 1.25x Upbeat & Snappy', description: 'Energetic, slightly brisk pacing' },
+  { id: '1.5', name: '🚀 1.5x Anime Rapid Pace', description: 'Fast, swift articulation and quick word transitions' },
+  { id: '1.75', name: '🔥 1.75x Hyper Speed', description: 'Ultra-fast rapid-fire speech rate' }
+];
+
+const DELIVERY_STYLES = [
+  { id: 'natural', name: '🍃 Natural & Conversational (Default)', description: 'Fluid, natural speech that follows script text and emotional markers organically' },
+  { id: 'conversational', name: '💬 Friendly & Casual', description: 'Warm, approachable, easy-going everyday delivery' },
+  { id: 'educational', name: '🎓 Educational & Clear', description: 'Articulate, steady, and easy to follow' },
+  { id: 'high_energy', name: '⚡ High-Energy & Punchy', description: 'Dynamic, excited, fast-paced and upbeat' },
+  { id: 'calm_warm', name: '🧘 Calm & Reassuring', description: 'Gentle, peaceful, soothing delivery' },
+  { id: 'dramatic', name: '🎬 Dramatic Suspense', description: 'Intense, suspenseful, deliberate cadence' },
+  { id: 'inspirational', name: '✨ Inspirational & Uplifting', description: 'Charismatic, motivational tone' }
+];
+
+const BACKGROUND_TRACKS = [
+  { id: 'none', name: '🔇 No Background Track', description: 'Clean narration only' },
+  { id: 'lofi', name: '🎧 Lofi Chill Beats', description: 'Laid-back lofi hip-hop groove' },
+  { id: 'ambient', name: '🌌 Ambient Pad', description: 'Soft atmospheric soundscape' },
+  { id: 'synthwave', name: '🌆 Synthwave Retro', description: 'Neon retro-futuristic pulse' },
+  { id: 'cinematic', name: '🎬 Cinematic Score', description: 'Epic film-score tension' }
+];
 
 interface VideoStudioLightboxModalProps {
   previewImageModal: {
@@ -48,6 +109,7 @@ interface VideoStudioLightboxModalProps {
   handleGenerateVideoScriptAI: (postIdx: number, slideIdx: number | null) => Promise<void>;
   handleCompileProgrammaticVideoFrame: (postIdx: number, slideIdx: number | null, imageSrc?: string, promptText?: string, animStyle?: any, aspectRatio?: string, audioUrl?: string) => Promise<void>;
   handleUpdateScriptField: (postIdx: number, slideIdx: number | null, field: 'voiceOver' | 'videoPrompt', val: string) => void;
+  campaignPosts: SocialPostCampaignItem[] | null;
   synthesizingSpeechMap: Record<string, boolean>;
   scriptGeneratingMap: Record<string, boolean>;
   videoRenderingMap: Record<string, boolean>;
@@ -86,6 +148,7 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
   handleGenerateVideoScriptAI,
   handleCompileProgrammaticVideoFrame,
   handleUpdateScriptField,
+  campaignPosts,
   synthesizingSpeechMap,
   scriptGeneratingMap,
   videoRenderingMap,
@@ -101,10 +164,21 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
   handleLaunchPost,
   triggerToast,
 }) => {
+  const { options: voiceModelOptions, loading: voiceModelsLoading } = useModelOptions('voice');
+  const effectiveTTSModels = voiceModelOptions.length > 0 ? voiceModelOptions.map(m => ({
+    id: m.id,
+    name: m.backend === 'gateway' ? `${m.label} (Gateway)` : m.label,
+    description: m.description || m.provider || (m.backend === 'gateway' ? 'AI Gateway neural voice' : 'Gemini native voice'),
+  })) : TTS_MODELS;
+
   if (!previewImageModal) return null;
 
-  const { post, slide, postIdx: pIdx, slideIdx: sIdx } = previewImageModal;
-  const targetObj = slide || post;
+  const { post: _postSnapshot, slide: _slideSnapshot, postIdx: pIdx, slideIdx: sIdx } = previewImageModal;
+  // Read live from campaignPosts so edits (script, audio, tone, etc.) reflect immediately
+  // instead of being stuck on the stale object captured when the modal opened.
+  const post = campaignPosts?.[pIdx] || _postSnapshot;
+  const slide = (sIdx !== null && post.slides && post.slides[sIdx]) ? post.slides[sIdx] : _slideSnapshot;
+  const targetObj: any = slide || post;
 
   const voiceOver = targetObj.voiceOver || post.voiceOver || post.caption || '';
   const videoPrompt = targetObj.videoPrompt || post.videoPrompt || post.visualPrompt || '';
@@ -123,6 +197,7 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
   const currentTone = (targetObj as any).deliveryTone || selectedDeliveryTone;
   const currentSpeed = (targetObj as any).speechSpeed || selectedSpeechSpeed;
   const currentAnim = (targetObj as any).animationStyle || selectedCameraAnim;
+  const currentToneDesc = DELIVERY_STYLES.find(d => d.id === currentTone)?.description || currentTone;
 
   const isPlaying = !!playingAudio;
 
@@ -138,7 +213,19 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
     }
   };
 
-  return (
+  const handleDownloadAudio = () => {
+    if (savedAudioUrl) {
+      const a = document.createElement('a');
+      a.href = savedAudioUrl;
+      a.download = `campaign-audio-${Date.now()}.mp3`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      triggerToast("Downloading synthesized audio...");
+    }
+  };
+
+  return createPortal(
     <div className="fixed inset-0 z-[99990] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-3 md:p-6 animate-in fade-in duration-200">
       <div className="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-3xl p-4 md:p-6 space-y-4 shadow-2xl overflow-y-auto max-h-[92vh] custom-scrollbar text-white">
         
@@ -308,6 +395,17 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
                     <span>Video</span>
                   </button>
                 )}
+                {savedAudioUrl && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadAudio}
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold uppercase rounded-lg flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
+                    title="Download the synthesized narration audio"
+                  >
+                    <Download className="w-3 h-3 text-white" />
+                    <span>Audio</span>
+                  </button>
+                )}
               </div>
               <span>Motion: <strong className="text-purple-400 uppercase">{currentAnim}</strong></span>
             </div>
@@ -364,6 +462,114 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
                   </div>
                 </div>
 
+                {/* Character Persona & Delivery Style */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-fuchsia-400 block font-mono flex items-center gap-1">
+                      <User className="w-3 h-3" />
+                      Character Persona
+                    </span>
+                    <select
+                      value={currentPersona}
+                      onChange={(e) => handleSelectPersonaStyle(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-fuchsia-500"
+                    >
+                      {PERSONA_STYLES.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-amber-400 block font-mono flex items-center gap-1">
+                      <Gauge className="w-3 h-3" />
+                      Delivery Tone
+                    </span>
+                    <select
+                      value={currentTone}
+                      onChange={(e) => handleSelectDeliveryTone(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-amber-500"
+                    >
+                      {DELIVERY_STYLES.map((d) => (
+                        <option key={d.id} value={d.id}>{d.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Engine & Accent */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-emerald-400 block font-mono flex items-center gap-1">
+                      <Radio className="w-3 h-3" />
+                      Audio Engine
+                    </span>
+                    <select
+                      value={currentEngine}
+                      onChange={(e) => handleSelectAudioEngine(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                    >
+                      {voiceModelsLoading && (
+                        <option value={currentEngine}>Loading models…</option>
+                      )}
+                      {effectiveTTSModels.map((m) => (
+                        <option key={m.id} value={m.id}>{m.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-sky-400 block font-mono flex items-center gap-1">
+                      <Languages className="w-3 h-3" />
+                      Accent
+                    </span>
+                    <select
+                      value={currentAccent}
+                      onChange={(e) => handleSelectAccent(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-sky-500"
+                    >
+                      {ACCENT_OPTIONS.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Speech Speed & Background Soundtrack */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-purple-400 block font-mono flex items-center gap-1">
+                      <Gauge className="w-3 h-3" />
+                      Speech Speed
+                    </span>
+                    <select
+                      value={currentSpeed}
+                      onChange={(e) => handleSelectSpeechSpeed(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-purple-500"
+                    >
+                      {SPEAKING_SPEEDS.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1 text-left">
+                    <span className="text-[9px] font-bold text-cyan-400 block font-mono flex items-center gap-1">
+                      <Music2 className="w-3 h-3" />
+                      Background Soundtrack
+                    </span>
+                    <select
+                      value={selectedBackgroundTrack}
+                      onChange={(e) => handleSelectBackgroundTrack(e.target.value, pIdx, sIdx)}
+                      className="w-full px-3 py-2 bg-slate-900 border border-slate-800 text-white rounded-xl text-xs font-semibold focus:outline-none focus:border-cyan-500"
+                    >
+                      {BACKGROUND_TRACKS.map((t) => (
+                        <option key={t.id} value={t.id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
                 {/* Voiceover Textarea */}
                 <div className="space-y-1 text-left pt-1">
                   <div className="flex items-center justify-between">
@@ -375,9 +581,10 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
                       onClick={() => handleGenerateVideoScriptAI(pIdx, sIdx)}
                       disabled={isScriptGenerating}
                       className="text-[10px] text-purple-400 hover:text-purple-300 font-bold uppercase flex items-center gap-1 cursor-pointer"
+                      title={voiceOver.trim() ? "Re-pass the current script to add spoken-word narration guidelines and auto-cast delivery tone + speech speed" : "Generate a fresh spoken narration script with production notes"}
                     >
                       {isScriptGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" />}
-                      <span>Auto-Generate Script</span>
+                      <span>{voiceOver.trim() ? 'Add Speech Guidelines' : 'Auto-Generate Script'}</span>
                     </button>
                   </div>
                   <textarea
@@ -387,12 +594,34 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
                     placeholder="Enter spoken voiceover script text..."
                     className="w-full p-3 bg-slate-900 border border-slate-800 focus:border-purple-500 text-white rounded-xl text-xs leading-relaxed outline-none resize-none"
                   />
+                  {voiceOver.includes('[') && (
+                    <p className="text-[9px] text-slate-500 font-mono leading-snug">
+                      [Square-bracket cues] are narration directions — they are removed from the spoken audio.
+                    </p>
+                  )}
+                  {targetObj?.suggestedVoiceCharacter && (
+                    <div className="flex items-start gap-2 pt-1.5">
+                      <Sparkles className="w-3 h-3 text-purple-400 mt-0.5 shrink-0" />
+                      <div className="flex flex-wrap items-center gap-1.5 text-[9px] font-mono">
+                        <span className="text-purple-400 font-bold uppercase tracking-wide">AI Production Notes</span>
+                        <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-slate-300">
+                          🎙 {targetObj.suggestedVoiceCharacter}
+                        </span>
+                        <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-slate-300">
+                          🎭 {DELIVERY_STYLES.find(d => d.id === (targetObj.deliveryTone || currentTone))?.name || currentTone}
+                        </span>
+                        <span className="px-2 py-0.5 bg-slate-800 border border-slate-700 rounded-md text-slate-300">
+                          ⏱ {SPEAKING_SPEEDS.find(s => s.id === (targetObj.speechSpeed || currentSpeed))?.name || currentSpeed}
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2 pt-1">
                   <button
                     type="button"
-                    onClick={() => handleSynthesizeVoice(pIdx, sIdx, voiceOver, selectedVoice, currentEngine, currentAccent, currentPersona, currentTone, currentSpeed)}
+                    onClick={() => handleSynthesizeVoice(pIdx, sIdx, voiceOver, selectedVoice, currentEngine, currentAccent, currentPersona, currentToneDesc, currentSpeed)}
                     disabled={isSpeechSynthesizing || !voiceOver.trim()}
                     className="w-full py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white text-xs font-bold uppercase rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer"
                   >
@@ -452,6 +681,7 @@ export const VideoStudioLightboxModal: React.FC<VideoStudioLightboxModalProps> =
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

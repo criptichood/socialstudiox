@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { X, Globe, Plus, Sparkles, Folder, ArrowRight, Layers } from 'lucide-react';
-import { ComplexityLevel, VisualStyle, Language, AspectRatio } from '../../types';
-import { CustomDropdown, StyleDropdown, ComplexityDropdown, LanguageDropdown, AIModelDropdown } from '../CustomDropdown';
-import { AspectRatioIcon, getAspectLabel } from './AspectBadge';
+import { ComplexityLevel, VisualStyle, Language, AspectRatio } from '@/types';
+import { CustomDropdown, StyleDropdown, ComplexityDropdown, LanguageDropdown, AIModelDropdown } from '@/components/CustomDropdown';
+import { AspectRatioIcon, getAspectLabel } from '@/components/drafts/AspectBadge';
 
 
 interface BlueprintModalProps {
@@ -40,65 +40,69 @@ export const CreateBlueprintModal: React.FC<BlueprintModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white font-display">Create Content Draft</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl relative">
+        <div className="p-6 pb-2 flex justify-between items-center border-b border-slate-100 dark:border-white/5 shrink-0">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white font-display">Create Content Draft</h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Configure visual layout, complexity, and styling targets before generation.</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Configure visual layout, complexity, and styling targets before generation.</p>
         
-        <form onSubmit={onSubmit} className="mt-6 space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Research Topic</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Structure of the Earth's Crust"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all"
-            />
+        <form onSubmit={onSubmit} className="flex-grow flex flex-col overflow-hidden">
+          <div className="flex-grow overflow-y-auto p-6 space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Research Topic</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Structure of the Earth's Crust"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 outline-none transition-all"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Style</label>
+                <StyleDropdown
+                  value={style}
+                  onChange={(val) => setStyle(val)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Level</label>
+                <ComplexityDropdown
+                  value={level}
+                  onChange={(val) => setLevel(val)}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Aspect Ratio</label>
+                <CustomDropdown
+                  value={resolution}
+                  onChange={(val) => setResolution(val)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Language</label>
+                <LanguageDropdown
+                  value={lang}
+                  onChange={(val) => setLang(val)}
+                />
+              </div>
+            </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Style</label>
-              <StyleDropdown
-                value={style}
-                onChange={(val) => setStyle(val)}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Level</label>
-              <ComplexityDropdown
-                value={level}
-                onChange={(val) => setLevel(val)}
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Aspect Ratio</label>
-              <CustomDropdown
-                value={resolution}
-                onChange={(val) => setResolution(val)}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Language</label>
-              <LanguageDropdown
-                value={lang}
-                onChange={(val) => setLang(val)}
-              />
-            </div>
-          </div>
-
-          <div className="flex gap-3 pt-4">
+          <div className="p-6 pt-3 border-t border-slate-100 dark:border-white/5 flex gap-3 shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
             <button
               type="button"
               onClick={onClose}
@@ -192,65 +196,67 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative transition-all duration-300">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl relative transition-all duration-300">
         
         {/* HEADER */}
-        <div className="flex justify-between items-center mb-3">
+        <div className="p-6 pb-2 flex justify-between items-center border-b border-slate-100 dark:border-white/5 shrink-0">
           <h3 className="text-lg font-bold text-slate-900 dark:text-white font-display">
             {modalStep === 'method' ? 'Create Social Campaign' : 'Configure Social Campaign'}
           </h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {modalStep === 'method' ? (
           /* STEP 1: CHOOSE A START METHOD */
-          <div className="space-y-6 pt-2 animate-in fade-in zoom-in-95 duration-200">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Select how you would like to initiate your social campaign project. You can immediately brainstorm custom template structures or construct an empty canvas.
-            </p>
+          <div className="flex-grow flex flex-col overflow-hidden">
+            <div className="flex-grow overflow-y-auto p-6 space-y-6">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Select how you would like to initiate your social campaign project. You can immediately brainstorm custom template structures or construct an empty canvas.
+              </p>
 
-            <div className="grid grid-cols-1 gap-4">
-              {/* Option A: Template AI Generation */}
-              <button
-                type="button"
-                onClick={() => handleSelectMethod('ai')}
-                className="w-full text-left p-5 rounded-2xl border-2 border-slate-100 hover:border-purple-500 dark:border-slate-800 dark:hover:border-purple-500 bg-slate-50 hover:bg-purple-500/5 dark:bg-slate-950 dark:hover:bg-purple-950/10 transition-all duration-200 group flex gap-4 items-start cursor-pointer"
-              >
-                <div className="p-3 bg-purple-100 dark:bg-purple-950/50 rounded-xl text-purple-600 dark:text-purple-400">
-                  <Sparkles className="w-6 h-6 animate-pulse" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-sm text-slate-900 dark:text-white font-display">✨ Start with Template & AI</span>
-                    <span className="px-1.5 py-0.5 bg-purple-500/10 text-purple-400 text-[9px] font-bold uppercase rounded tracking-wider">Recommended</span>
+              <div className="grid grid-cols-1 gap-4">
+                {/* Option A: Template AI Generation */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectMethod('ai')}
+                  className="w-full text-left p-5 rounded-2xl border-2 border-slate-100 hover:border-purple-500 dark:border-slate-800 dark:hover:border-purple-500 bg-slate-50 hover:bg-purple-500/5 dark:bg-slate-950 dark:hover:bg-purple-950/10 transition-all duration-200 group flex gap-4 items-start cursor-pointer"
+                >
+                  <div className="p-3 bg-purple-100 dark:bg-purple-950/50 rounded-xl text-purple-600 dark:text-purple-400">
+                    <Sparkles className="w-6 h-6 animate-pulse" />
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                    Auto-research a brand website and generate a structured campaign sequence matching custom content templates (e.g., Product Launch, Educational thread).
-                  </p>
-                </div>
-              </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-sm text-slate-900 dark:text-white font-display">✨ Start with Template & AI</span>
+                      <span className="px-1.5 py-0.5 bg-purple-500/10 text-purple-400 text-[9px] font-bold uppercase rounded tracking-wider">Recommended</span>
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      Auto-research a brand website and generate a structured campaign sequence matching custom content templates (e.g., Product Launch, Educational thread).
+                    </p>
+                  </div>
+                </button>
 
-              {/* Option B: Empty Sandbox */}
-              <button
-                type="button"
-                onClick={() => handleSelectMethod('empty')}
-                className="w-full text-left p-5 rounded-2xl border-2 border-slate-100 hover:border-purple-500 dark:border-slate-800 dark:hover:border-purple-500 bg-slate-50 hover:bg-purple-500/5 dark:bg-slate-950 dark:hover:bg-purple-950/10 transition-all duration-200 group flex gap-4 items-start cursor-pointer"
-              >
-                <div className="p-3 bg-slate-200 dark:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-400">
-                  <Folder className="w-6 h-6" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <span className="font-bold text-sm text-slate-900 dark:text-white font-display">📁 Start from Scratch (Empty Canvas)</span>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                    Initialize an empty campaign project timeline to manual design, edit, and append post items yourself from the ground up.
-                  </p>
-                </div>
-              </button>
+                {/* Option B: Empty Sandbox */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectMethod('empty')}
+                  className="w-full text-left p-5 rounded-2xl border-2 border-slate-100 hover:border-purple-500 dark:border-slate-800 dark:hover:border-purple-500 bg-slate-50 hover:bg-purple-500/5 dark:bg-slate-950 dark:hover:bg-purple-950/10 transition-all duration-200 group flex gap-4 items-start cursor-pointer"
+                >
+                  <div className="p-3 bg-slate-200 dark:bg-slate-800 rounded-xl text-slate-600 dark:text-slate-400">
+                    <Folder className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-bold text-sm text-slate-900 dark:text-white font-display">📁 Start from Scratch (Empty Canvas)</span>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      Initialize an empty campaign project timeline to manual design, edit, and append post items yourself from the ground up.
+                    </p>
+                  </div>
+                </button>
+              </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="p-6 pt-3 border-t border-slate-100 dark:border-white/5 flex justify-end shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
               <button
                 type="button"
                 onClick={onClose}
@@ -262,14 +268,14 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
           </div>
         ) : (
           /* STEP 2: DETAILS SCREEN */
-          <div className="animate-in fade-in zoom-in-95 duration-200">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {startMethod === 'ai' 
-                ? 'Fill in brand details and select a content blueprint template. Gemini will search the live web to customize copies.' 
-                : 'Configure basic project settings for your empty campaign timeline.'}
-            </p>
+          <form onSubmit={onSubmit} className="flex-grow flex flex-col overflow-hidden">
+            <div className="flex-grow overflow-y-auto p-6 space-y-4">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {startMethod === 'ai' 
+                  ? 'Fill in brand details and select a content blueprint template. Gemini will search the live web to customize copies.' 
+                  : 'Configure basic project settings for your empty campaign timeline.'}
+              </p>
 
-            <form onSubmit={onSubmit} className="mt-5 space-y-4">
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Project / Campaign Name</label>
                 <input
@@ -314,7 +320,7 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
                   <select
                     value={platform}
                     onChange={(e) => setPlatform(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer font-medium"
                   >
                     {['Instagram', 'LinkedIn', 'Twitter/X', 'Facebook'].map(p => (
                       <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{p}</option>
@@ -327,7 +333,7 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
                   <select
                     value={postCount}
                     onChange={(e) => setPostCount(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer font-medium"
                   >
                     {[3, 5, 7, 10].map(c => (
                       <option key={c} value={c} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{c} Posts</option>
@@ -347,7 +353,7 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
                     value={aiModel}
                     onChange={(val) => setAiModel && setAiModel(val)}
                   />
-                  <p className="text-[10px] text-slate-400 mt-1">
+                  <p className="text-[10px] text-slate-450 mt-1">
                     Select which Gemini model will power strategy ideation, post drafting, and visual scene creation.
                   </p>
                 </div>
@@ -395,13 +401,13 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
                     >
                       <option value="Default" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">✨ Default (Let AI Decide)</option>
                       <option value="Carousel" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">🎠 Multi-Slide Carousel Deck</option>
-                      <option value="Minimalist" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">🎨 Minimalist Clean</option>
-                      <option value="Realistic" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">📷 Photorealistic</option>
-                      <option value="3D Render" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">🧊 3D Isometric / Render</option>
-                      <option value="Futuristic" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">⚡ Cyber Futuristic</option>
-                      <option value="Cartoon" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">✏️ Cartoon / Illustration</option>
-                      <option value="Vintage" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">📻 Retro Vintage</option>
-                      <option value="Sketch" className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">✍️ Hand Sketch</option>
+                      <option value="Minimalist" className="bg-white dark:bg-slate-900 text-slate-950 text-slate-900 dark:text-white">🎨 Minimalist Clean</option>
+                      <option value="Realistic" className="bg-white dark:bg-slate-900 text-slate-950 text-slate-900 dark:text-white">📷 Photorealistic</option>
+                      <option value="3D Render" className="bg-white dark:bg-slate-900 text-slate-950 text-slate-900 dark:text-white">🧊 3D Isometric / Render</option>
+                      <option value="Futuristic" className="bg-white dark:bg-slate-900 text-slate-950 text-slate-900 dark:text-white">⚡ Cyber Futuristic</option>
+                      <option value="Cartoon" className="bg-white dark:bg-slate-900 text-slate-950 text-slate-900 dark:text-white">✏️ Cartoon / Illustration</option>
+                      <option value="Vintage" className="bg-white dark:bg-slate-900 text-slate-950 text-slate-900 dark:text-white">📻 Retro Vintage</option>
+                      <option value="Sketch" className="bg-white dark:bg-slate-900 text-slate-950 text-slate-900 dark:text-white">✍️ Hand Sketch</option>
                     </select>
                   </div>
                 </div>
@@ -417,29 +423,27 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
                   />
                 </div>
               </div>
+            </div>
 
-
-              {/* Back & Submit triggers */}
-              <div className="flex justify-between items-center pt-4 border-t border-slate-100 dark:border-white/5">
-                <button
-                  type="button"
-                  onClick={() => setModalStep('method')}
-                  className="px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
-                >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg shadow-purple-500/20 flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span>{startMethod === 'ai' ? '✨ Create & AI Generate' : '📁 Create Empty Folder'}</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </form>
-          </div>
+            {/* Back & Submit triggers */}
+            <div className="p-6 pt-3 border-t border-slate-100 dark:border-white/5 flex justify-between items-center shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
+              <button
+                type="button"
+                onClick={() => setModalStep('method')}
+                className="px-4 py-2.5 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Back
+              </button>
+              <button
+                type="submit"
+                className="px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl shadow-lg shadow-purple-500/20 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>{startMethod === 'ai' ? '✨ Create & AI Generate' : '📁 Create Empty Folder'}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </form>
         )}
-
       </div>
     </div>
   );
@@ -484,91 +488,95 @@ export const AddPostManualModal: React.FC<ManualPostModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl relative">
-        <div className="flex justify-between items-center mb-3">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white font-display">Add Campaign Post</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl relative">
+        <div className="p-6 pb-2 flex justify-between items-center border-b border-slate-100 dark:border-white/5 shrink-0">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-white font-display">Add Campaign Post</h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Append a custom manual post variant to this project timeline.</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 cursor-pointer p-1">
             <X className="w-5 h-5" />
           </button>
         </div>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Append a custom manual post variant to this project timeline.</p>
         
-        <form onSubmit={onSubmit} className="mt-5 space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Post Title / Main Topic</label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Distributed Database Speeds"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 outline-none transition-all"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Visual Prompt Guideline</label>
-            <textarea
-              required
-              rows={2}
-              placeholder="Detailed description for the Knowledge Visualizer (e.g. A comparison chart of distributed server latency, isometric server nodes, deep corporate violet theme...)"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 outline-none transition-all"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Social Caption</label>
-            <textarea
-              rows={3}
-              placeholder="Suggested caption copy for social feeds."
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 outline-none transition-all"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={onSubmit} className="flex-grow flex flex-col overflow-hidden">
+          <div className="flex-grow overflow-y-auto p-6 space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Visual Style Preset</label>
-              <select
-                value={style}
-                onChange={(e) => setStyle(e.target.value as VisualStyle)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer"
-              >
-                {['Default', 'Minimalist', 'Realistic', 'Cartoon', 'Vintage', 'Futuristic', '3D Render', 'Sketch', 'Carousel'].map(s => (
-                  <option key={s} value={s} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{s}</option>
-                ))}
-              </select>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Post Title / Main Topic</label>
+              <input
+                type="text"
+                required
+                placeholder="e.g. Distributed Database Speeds"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 outline-none transition-all font-medium"
+              />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Aspect Ratio</label>
-              <select
-                value={aspect}
-                onChange={(e) => setAspect(e.target.value as AspectRatio)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer"
-              >
-                {['1:1', '16:9', '9:16'].map(r => (
-                  <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{r}</option>
-                ))}
-              </select>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Visual Prompt Guideline</label>
+              <textarea
+                required
+                rows={2}
+                placeholder="Detailed description for the Knowledge Visualizer (e.g. A comparison chart of distributed server latency, isometric server nodes, deep corporate violet theme...)"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 outline-none transition-all"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Social Caption</label>
+              <textarea
+                rows={3}
+                placeholder="Suggested caption copy for social feeds."
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 outline-none transition-all"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Visual Style Preset</label>
+                <select
+                  value={style}
+                  onChange={(e) => setStyle(e.target.value as VisualStyle)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer font-medium"
+                >
+                  {['Default', 'Minimalist', 'Realistic', 'Cartoon', 'Vintage', 'Futuristic', '3D Render', 'Sketch', 'Carousel'].map(s => (
+                    <option key={s} value={s} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Aspect Ratio</label>
+                <select
+                  value={aspect}
+                  onChange={(e) => setAspect(e.target.value as AspectRatio)}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer font-medium"
+                >
+                  {['1:1', '16:9', '9:16'].map(r => (
+                    <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{r}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Hashtags (Comma-separated)</label>
+              <input
+                type="text"
+                placeholder="SaaS, cloud, technology"
+                value={hashtags}
+                onChange={(e) => setHashtags(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 outline-none transition-all font-medium"
+              />
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Hashtags (Comma-separated)</label>
-            <input
-              type="text"
-              placeholder="SaaS, cloud, technology"
-              value={hashtags}
-              onChange={(e) => setHashtags(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs focus:ring-2 focus:ring-purple-500/20 outline-none transition-all"
-            />
-          </div>
-
-          <div className="flex gap-3 pt-3">
+          <div className="p-6 pt-3 border-t border-slate-100 dark:border-white/5 flex gap-3 shrink-0 bg-slate-50/50 dark:bg-slate-900/50">
             <button
               type="button"
               onClick={onClose}
@@ -588,3 +596,5 @@ export const AddPostManualModal: React.FC<ManualPostModalProps> = ({
     </div>
   );
 };
+
+

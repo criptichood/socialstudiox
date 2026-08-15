@@ -1,7 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { GeneratedImage, Project, SubtitleSegment } from '../types';
-import { DBService } from '../services/dbService';
+import { GeneratedImage, Project, SubtitleSegment } from '@/types';
+import { DBService } from '@/services/dbService';
+import { loadModelSettings } from '@/services/ai/modelService';
+import { useModelOptions } from '@/hooks/useModelOptions';
 import { 
   Mic, 
   Play, 
@@ -36,15 +38,16 @@ import {
   ListMusic,
   FileText
 } from 'lucide-react';
-import { generateVoiceOverSpeech, generateImageToScript } from '../services/geminiService';
-import { generateSrtFromScript, downloadSrtFile } from '../services/subtitleService';
-import { AudioSubtitleViewer } from './AudioSubtitleViewer';
+import { generateVoiceOverSpeech, generateImageToScript } from '@/services/geminiService';
+import { generateSrtFromScript, downloadSrtFile } from '@/services/subtitleService';
+import { AudioSubtitleViewer } from '@/components/AudioSubtitleViewer';
 
 interface VoiceoverStudioProps {
   images: GeneratedImage[];
   activeProjectId?: string | null;
   projects?: Project[];
   onBackToDashboard?: () => void;
+  onSelectProject?: (id: string | null) => void;
 }
 
 interface VoiceoverSession {
@@ -247,13 +250,28 @@ const DELIVERY_STYLES = [
   { id: 'custom', name: '✏️ Custom Prompt Guidelines', description: 'Custom emotion tags and vocal directives' }
 ];
 
-const VoiceoverStudio: React.FC<VoiceoverStudioProps> = ({ images, activeProjectId, projects = [], onBackToDashboard }) => {
+const VoiceoverStudio: React.FC<VoiceoverStudioProps> = ({ 
+  images, 
+  activeProjectId, 
+  projects = [], 
+  onBackToDashboard,
+  onSelectProject
+}) => {
   // Mode Controller: dashboard (for managing projects) vs editor (recording studio)
   const [studioMode, setStudioMode] = useState<'dashboard' | 'editor'>('dashboard');
 
   // 1. Projects State (Supports Campaigns + Standalone local voiceover projects)
   const [standaloneProjects, setStandaloneProjects] = useState<StandaloneProject[]>([]);
   const [currentProjectId, setCurrentProjectId] = useState<string>('global');
+
+  // Synchronize with activeProjectId prop
+  useEffect(() => {
+    if (activeProjectId) {
+      setCurrentProjectId(activeProjectId);
+    } else {
+      setCurrentProjectId('global');
+    }
+  }, [activeProjectId]);
 
   const [newProjectName, setNewProjectName] = useState('');
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
@@ -293,7 +311,13 @@ const VoiceoverStudio: React.FC<VoiceoverStudioProps> = ({ images, activeProject
   const [selectedAccent, setSelectedAccent] = useState('US Standard');
   const [selectedSpeed, setSelectedSpeed] = useState('1.0');
   const [customStyleText, setCustomStyleText] = useState('');
-  const [selectedModel, setSelectedModel] = useState('gemini-3.1-flash-tts-preview');
+  const [selectedModel, setSelectedModel] = useState(() => loadModelSettings().voice || 'gemini-3.1-flash-tts-preview');
+  const { options: voiceModelOptions, loading: voiceModelsLoading } = useModelOptions('voice', selectedModel);
+  const effectiveTTSModels = voiceModelOptions.length > 0 ? voiceModelOptions.map(m => ({
+    id: m.id,
+    name: m.backend === 'gateway' ? `${m.label} (Gateway)` : m.label,
+    description: m.description || m.provider || (m.backend === 'gateway' ? 'AI Gateway neural voice' : 'Gemini native voice'),
+  })) : TTS_MODELS;
 
   // 4. Vision Assistant Image Selection & Prompt Sync
   const [selectedImage, setSelectedImage] = useState<GeneratedImage | null>(null);
@@ -667,13 +691,15 @@ const VoiceoverStudio: React.FC<VoiceoverStudioProps> = ({ images, activeProject
       const savedSessionId = handleSaveSession(finalTrackName, true);
 
       // Persist generated audio binary inside self-contained IndexedDB so it survives refreshes!
-      await saveAudioToIndexedDB(savedSessionId, resultAudioUrl);
+      if (savedSessionId) {
+        await saveAudioToIndexedDB(savedSessionId, resultAudioUrl);
 
-      setAudioCache(prev => ({
-        ...prev,
-        [savedSessionId]: resultAudioUrl
-      }));
-      setActiveAudioKey(savedSessionId);
+        setAudioCache(prev => ({
+          ...prev,
+          [savedSessionId]: resultAudioUrl
+        }));
+        setActiveAudioKey(savedSessionId);
+      }
       
       // Open the floating player automatically
       setShowPreviewModal(true);
@@ -1022,7 +1048,31 @@ const VoiceoverStudio: React.FC<VoiceoverStudioProps> = ({ images, activeProject
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              {onSelectProject && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-widest font-mono hidden sm:inline">
+                    Scope:
+                  </span>
+                  <select
+                    value={currentProjectId}
+                    onChange={(e) => {
+                      const pid = e.target.value;
+                      setCurrentProjectId(pid);
+                      onSelectProject(pid === 'global' ? null : pid);
+                    }}
+                    className="text-xs font-semibold px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl outline-none text-slate-800 dark:text-slate-200 cursor-pointer"
+                  >
+                    <option value="global">Standalone Space</option>
+                    {projects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                    {standaloneProjects.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <button
                 onClick={handleCreateNewSession}
                 className="px-3.5 py-2 bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/20 text-cyan-600 dark:text-cyan-400 rounded-xl text-xs font-extrabold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
@@ -1173,12 +1223,15 @@ const VoiceoverStudio: React.FC<VoiceoverStudioProps> = ({ images, activeProject
                         onChange={(e) => setSelectedModel(e.target.value)}
                         className="w-full px-2 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-950 dark:text-white rounded-lg text-xs font-semibold focus:outline-none focus:border-cyan-500 cursor-pointer"
                       >
-                        {TTS_MODELS.map(m => (
+                        {voiceModelsLoading && (
+                          <option value={selectedModel}>Loading models…</option>
+                        )}
+                        {effectiveTTSModels.map(m => (
                           <option key={m.id} value={m.id}>{m.name}</option>
                         ))}
                       </select>
                       <p className="text-[9px] text-slate-400 leading-tight font-mono line-clamp-1">
-                        {TTS_MODELS.find(m => m.id === selectedModel)?.description}
+                        {effectiveTTSModels.find(m => m.id === selectedModel)?.description}
                       </p>
                     </div>
 

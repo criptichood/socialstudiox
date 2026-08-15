@@ -1,28 +1,37 @@
+"use client";
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
+ */
 import React from 'react';
-import { GeneratedImage, Project, DraftPrompt } from './types';
-import { useAppEngine } from './hooks/useAppEngine';
-import ConfigForm from './components/ConfigForm';
-import PromptStudio from './components/PromptStudio';
-import GalleryDashboard from './components/GalleryDashboard';
-import Infographic from './components/Infographic';
-import Loading from './components/Loading';
-import IntroScreen from './components/IntroScreen';
-import SearchResults from './components/SearchResults';
-import Sidebar from './components/Sidebar';
-import ProjectsDashboard from './components/ProjectsDashboard';
-import DraftsPlanner from './components/DraftsPlanner';
-import { ResearchCenter } from './components/ResearchCenter';
-import { AnnotationStudio } from './components/AnnotationStudio';
-import { PresenterStudio } from './components/PresenterStudio';
-import VoiceoverStudio from './components/VoiceoverStudio';
-import { VideoStudio } from './components/VideoStudio';
-import { SoundStudio } from './components/SoundStudio';
-import { PresentationDeck } from './components/PresentationDeck';
-import { ErrorBoundary } from './components/ErrorBoundary';
+import { GeneratedImage, Project, DraftPrompt } from '@/types';
+import { useAppEngine } from '@/hooks/useAppEngine';
+import ConfigForm from '@/components/ConfigForm';
+import PromptStudio from '@/components/PromptStudio';
+import GalleryDashboard from '@/components/GalleryDashboard';
+import Infographic from '@/components/Infographic';
+import Loading from '@/components/Loading';
+import IntroScreen from '@/components/IntroScreen';
+import SearchResults from '@/components/SearchResults';
+import Sidebar from '@/components/Sidebar';
+import ProjectsDashboard from '@/components/ProjectsDashboard';
+import DraftsPlanner from '@/components/DraftsPlanner';
+import { ResearchCenter } from '@/components/ResearchCenter';
+import { AnnotationStudio } from '@/components/AnnotationStudio';
+import { PresenterStudio } from '@/components/PresenterStudio';
+import VoiceoverStudio from '@/components/VoiceoverStudio';
+import { VideoStudio } from '@/components/VideoStudio';
+import { SoundStudio } from '@/components/SoundStudio';
+import { PresentationDeck } from '@/components/PresentationDeck';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
+import { ModelsSettings } from '@/components/ModelsSettings';
+import { BlogStudio } from '@/components/BlogStudio';
+import { Toaster } from 'sonner';
+import {
+  getVideoGenerationState,
+  subscribeVideoGeneration
+} from '@/services/videoGenerationManager';
 import { 
   AlertCircle, 
   Compass, 
@@ -42,14 +51,18 @@ import {
   Plus,
   Sparkles,
   Play,
-  Menu
+  Menu,
+  Loader2,
+  Check,
+  X
 } from 'lucide-react';
 
 const App: React.FC = () => {
   const {
-    showIntro, setShowIntro,
+    showIntro, setShowIntro, handleIntroComplete,
     topic, setTopic,
     currentView, setCurrentView,
+    draftsTab, setDraftsTab,
     isSidebarOpen, setIsSidebarOpen,
     projects,
     selectedProjectId, setSelectedProjectId,
@@ -58,6 +71,7 @@ const App: React.FC = () => {
     visualStyle, setVisualStyle,
     language, setLanguage,
     resolution, setResolution,
+    imageModel, setImageModel,
     subOptions, setSubOptions,
     hasDraft, setHasDraft,
     draftedPrompt, setDraftedPrompt,
@@ -82,6 +96,9 @@ const App: React.FC = () => {
     // Computed/derived state
     activeProjectImages,
     activeDrafts,
+    campaignCounts,
+    voiceoverCounts,
+    videoCounts,
 
     // Handlers
     handleCreateProject,
@@ -109,6 +126,32 @@ const App: React.FC = () => {
   const [researchPrefillWebsite, setResearchPrefillWebsite] = React.useState<string>('');
   const [videoStudioPrefillPrompt, setVideoStudioPrefillPrompt] = React.useState<string>('');
 
+  // Global video generation banner + toasts (managed outside VideoStudio so generation survives navigation).
+  const [videoGenBanner, setVideoGenBanner] = React.useState(getVideoGenerationState);
+  const [genToast, setGenToast] = React.useState<{ kind: 'error' | 'success'; message: string } | null>(null);
+  const prevGenStatusRef = React.useRef<string>(getVideoGenerationState().status);
+
+  React.useEffect(() => {
+    const unsubscribe = subscribeVideoGeneration(setVideoGenBanner);
+    return unsubscribe;
+  }, []);
+
+  React.useEffect(() => {
+    const status = videoGenBanner.status;
+    if (status === prevGenStatusRef.current) return;
+    prevGenStatusRef.current = status;
+    if (status === 'error') {
+      setGenToast({ kind: 'error', message: videoGenBanner.error || 'Video generation failed. Please try again.' });
+      const t = setTimeout(() => setGenToast(null), 8000);
+      return () => clearTimeout(t);
+    }
+    if (status === 'success') {
+      setGenToast({ kind: 'success', message: 'Your generated video has been saved to the archive.' });
+      const t = setTimeout(() => setGenToast(null), 5000);
+      return () => clearTimeout(t);
+    }
+  }, [videoGenBanner.status]);
+
   // Modal for API Key Selection
   const KeySelectionModal = () => (
     <div className="fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300">
@@ -121,19 +164,19 @@ const App: React.FC = () => {
                         <CreditCard className="w-8 h-8" />
                     </div>
                     <div className="absolute -bottom-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm border-2 border-white dark:border-slate-900 uppercase tracking-wide">
-                        Paid App
+                        Gemini AI
                     </div>
                 </div>
                 
                 <div className="space-y-3">
                     <h2 className="text-2xl font-display font-bold text-slate-900 dark:text-white">
-                        Paid API Key Required
+                        Gemini API Key Required
                     </h2>
                     <p className="text-slate-600 dark:text-slate-300 text-sm leading-relaxed font-medium">
-                        This application uses premium Gemini 3 Pro models which are not available on the free tier.
+                        This application uses Google Gemini models which require a valid API key connection.
                     </p>
                     <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed">
-                        You must select a Google Cloud Project with <span className="font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1 py-0.5 rounded">Billing Enabled</span> to proceed.
+                        You must configure your <span className="font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1 py-0.5 rounded">Gemini API Key</span> to proceed.
                     </p>
                 </div>
 
@@ -143,17 +186,17 @@ const App: React.FC = () => {
                             <DollarSign className="w-4 h-4" />
                          </div>
                          <div className="space-y-1">
-                            <p className="text-xs font-bold text-slate-900 dark:text-slate-200">Billing Required</p>
+                            <p className="text-xs font-bold text-slate-900 dark:text-slate-200">API Key & Billing Setup</p>
                             <p className="text-xs text-slate-500 dark:text-slate-400">
-                                Standard API keys will fail. Please ensure you have set up billing in Google AI Studio.
+                                Get your key from Google AI Studio. Note that premium tiers require billing setup.
                             </p>
                              <a 
-                                href="https://ai.google.dev/gemini-api/docs/billing" 
+                                href="https://aistudio.google.com/" 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-xs font-bold text-cyan-600 dark:text-cyan-400 hover:underline mt-1"
                              >
-                                View Billing Documentation <ExternalLink className="w-3 h-3" />
+                                Get Key in AI Studio <ExternalLink className="w-3 h-3" />
                              </a>
                          </div>
                     </div>
@@ -165,7 +208,7 @@ const App: React.FC = () => {
                     className="w-full py-3.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl font-bold shadow-lg shadow-amber-500/20 transition-all transform hover:scale-[1.02] flex items-center justify-center gap-2"
                 >
                     <Key className="w-4 h-4" />
-                    <span>Select Paid API Key</span>
+                    <span>Select Gemini API Key</span>
                 </button>
             </div>
         </div>
@@ -177,9 +220,9 @@ const App: React.FC = () => {
     {!checkingKey && !hasApiKey && <KeySelectionModal />}
 
     {showIntro ? (
-      <IntroScreen onComplete={() => setShowIntro(false)} />
+      <IntroScreen onComplete={handleIntroComplete} />
     ) : (
-    <div className="h-[100dvh] flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white relative animate-in fade-in duration-1000 transition-colors">
+    <div className="h-[100dvh] flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white relative transition-colors">
       
       {/* Collapsible Sidebar */}
       <Sidebar 
@@ -187,6 +230,9 @@ const App: React.FC = () => {
         onViewChange={setCurrentView}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        projects={projects}
+        selectedProjectId={selectedProjectId}
+        onSelectProject={setSelectedProjectId}
       />
 
       {/* Main Content Area Offsetted by Sidebar Width */}
@@ -199,8 +245,8 @@ const App: React.FC = () => {
             backgroundSize: '40px 40px'
         }}></div>
 
-        {/* Global Navigation Header bar - Only displayed on Projects Space dashboard view */}
-        {currentView === 'dashboard' && (
+        {/* Global Navigation Header bar - Displayed on all views except presenter-studio */}
+        {currentView !== 'presenter-studio' && (
           <header className="border-b border-slate-200 dark:border-white/10 shrink-0 z-50 backdrop-blur-md bg-white/70 dark:bg-slate-950/60 transition-colors">
             <div className="max-w-[1550px] mx-auto px-4 sm:px-6 h-16 md:h-20 flex items-center justify-between">
               <div className="flex items-center gap-2 md:gap-4 group">
@@ -228,16 +274,6 @@ const App: React.FC = () => {
 
               <div className="flex items-center gap-2">
                   <button 
-                    id="header-api-key-btn"
-                    onClick={handleSelectKey}
-                    className="hidden md:flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-cyan-50 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 text-xs font-medium transition-colors border border-slate-200 dark:border-white/10"
-                    title="Change API Key"
-                  >
-                    <Key className="w-3.5 h-3.5" />
-                    <span>API Key</span>
-                  </button>
-
-                  <button 
                     id="header-darkmode-toggle"
                     onClick={() => setIsDarkMode(!isDarkMode)}
                     className="p-2 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-300 transition-colors border border-slate-200 dark:border-white/10 shadow-sm"
@@ -251,8 +287,8 @@ const App: React.FC = () => {
         )}
 
         <main className={`flex-1 overflow-y-auto ${
-          currentView === 'dashboard'
-            ? 'max-w-[1550px] w-full mx-auto px-3 sm:px-6 py-4 md:py-8'
+          currentView === 'dashboard' || currentView === 'canvas'
+            ? 'max-w-[1550px] w-full mx-auto px-4 sm:px-6 py-6 md:py-8'
             : 'w-full p-0'
         } relative z-10`}>
 
@@ -280,6 +316,9 @@ const App: React.FC = () => {
                 onPresentProject={(proj) => setPresentingProject(proj)}
                 images={imageHistory}
                 onViewChange={setCurrentView}
+                campaignCounts={campaignCounts}
+                voiceoverCounts={voiceoverCounts}
+                videoCounts={videoCounts}
               />
             </ErrorBoundary>
           )}
@@ -292,47 +331,51 @@ const App: React.FC = () => {
                 
                 {/* Left Column: Collapsible Control Deck (col-span-4) - Configured to be stationary/sticky with viewport inner scroll to prevent full-page scrolling offset */}
                 {isControlPanelOpen && (
-                  <div className="lg:col-span-4 xl:col-span-3 lg:sticky lg:top-24 pb-6 space-y-6 order-first animate-in slide-in-from-left-6 duration-300 z-30">
-                    <div className="relative">
+                  <div className="lg:col-span-4 xl:col-span-3 lg:sticky lg:top-24 pb-6 order-first animate-in slide-in-from-left-6 duration-300 z-30">
+                    <div className="relative pt-3">
                       {/* Optional ambient badge/label */}
-                      <div className="absolute -top-3 left-6 z-30 px-3 py-1 bg-gradient-to-r from-cyan-500 to-indigo-500 text-white text-[9px] font-bold uppercase tracking-widest rounded-full shadow-md">
+                      <div className="absolute -top-3 left-6 z-35 px-3 py-1 bg-gradient-to-r from-cyan-500 to-indigo-500 text-white text-[9px] font-bold uppercase tracking-widest rounded-full shadow-md">
                         Control Panel
                       </div>
                       {/* Beautiful Collapse Button */}
                       <button
                         id="collapse-control-panel-btn"
                         onClick={() => setIsControlPanelOpen(false)}
-                        className="absolute -top-3 right-6 z-30 px-3 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 text-[9px] font-bold uppercase tracking-widest rounded-full shadow-md transition-colors border border-slate-200 dark:border-white/5 flex items-center gap-1 cursor-pointer"
+                        className="absolute -top-3 right-6 z-35 px-3 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 text-[9px] font-bold uppercase tracking-widest rounded-full shadow-md transition-colors border border-slate-200 dark:border-white/5 flex items-center gap-1 cursor-pointer"
                         title="Collapse Panel"
                       >
                         <ChevronLeft className="w-3 h-3" />
                         <span>Collapse</span>
                       </button>
-                      <ConfigForm 
-                        topic={topic}
-                        setTopic={setTopic}
-                        complexityLevel={complexityLevel}
-                        setComplexityLevel={setComplexityLevel}
-                        visualStyle={visualStyle}
-                        setVisualStyle={setVisualStyle}
-                        language={language}
-                        setLanguage={setLanguage}
-                        resolution={resolution}
-                        setResolution={setResolution}
-                        subOptions={subOptions}
-                        setSubOptions={setSubOptions}
-                        onSubmit={handleGenerate}
-                        onDraft={handleDraftOnly}
-                        isLoading={isLoading}
-                        referenceImage={referenceImage}
-                        setReferenceImage={setReferenceImage}
-                        referenceMode={referenceMode}
-                        setReferenceMode={setReferenceMode}
-                        lastGeneratedImage={activeProjectImages[0]?.data || null}
-                        drafts={activeDrafts}
-                        onLaunchDraft={handleLaunchDraft}
-                        onDeleteDraft={handleDeleteDraft}
-                      />
+                      <div className="lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto p-1.5 scrollbar-thin rounded-3xl">
+                        <ConfigForm 
+                          topic={topic}
+                          setTopic={setTopic}
+                          complexityLevel={complexityLevel}
+                          setComplexityLevel={setComplexityLevel}
+                          visualStyle={visualStyle}
+                          setVisualStyle={setVisualStyle}
+                          language={language}
+                          setLanguage={setLanguage}
+                          resolution={resolution}
+                          setResolution={setResolution}
+                          imageModel={imageModel}
+                          setImageModel={setImageModel}
+                          subOptions={subOptions}
+                          setSubOptions={setSubOptions}
+                          onSubmit={handleGenerate}
+                          onDraft={handleDraftOnly}
+                          isLoading={isLoading}
+                          referenceImage={referenceImage}
+                          setReferenceImage={setReferenceImage}
+                          referenceMode={referenceMode}
+                          setReferenceMode={setReferenceMode}
+                          lastGeneratedImage={activeProjectImages[0]?.data || null}
+                          drafts={activeDrafts}
+                          onLaunchDraft={handleLaunchDraft}
+                          onDeleteDraft={handleDeleteDraft}
+                        />
+                      </div>
                     </div>
                   </div>
                 )}
@@ -359,7 +402,7 @@ const App: React.FC = () => {
                                   onClick={handleSelectKey}
                                   className="mt-2 text-xs font-bold text-red-700 dark:text-red-300 underline hover:text-red-900 dark:hover:text-red-100"
                               >
-                                  Select a different API key
+                                  Select a different Gemini API key
                               </button>
                           )}
                       </div>
@@ -547,6 +590,8 @@ const App: React.FC = () => {
                   <span>Back to Projects Space</span>
                 </button>
                 <DraftsPlanner 
+                  activeTab={draftsTab === 'social' ? 'social-campaign' : 'blueprints'}
+                  onTabChange={(tab) => setDraftsTab(tab === 'social-campaign' ? 'social' : 'drafts')}
                   activeProjectId={selectedProjectId || 'proj-1'}
                   drafts={activeDrafts}
                   onCreateDraft={handleCreateDraft}
@@ -598,9 +643,6 @@ const App: React.FC = () => {
                 images={imageHistory}
                 activeProjectId={selectedProjectId}
                 onBackToDashboard={() => setCurrentView('dashboard')}
-                isDarkMode={isDarkMode}
-                onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
-                onSelectKey={handleSelectKey}
               />
             </ErrorBoundary>
           )}
@@ -614,6 +656,7 @@ const App: React.FC = () => {
                   activeProjectId={selectedProjectId}
                   projects={projects}
                   onBackToDashboard={() => setCurrentView('dashboard')}
+                  onSelectProject={setSelectedProjectId}
                 />
               </div>
             </ErrorBoundary>
@@ -629,6 +672,7 @@ const App: React.FC = () => {
                   projects={projects}
                   onBackToDashboard={() => setCurrentView('dashboard')}
                   initialPrompt={videoStudioPrefillPrompt}
+                  onSelectProject={setSelectedProjectId}
                 />
               </div>
             </ErrorBoundary>
@@ -640,6 +684,20 @@ const App: React.FC = () => {
               <div className="p-4 md:p-6">
                 <SoundStudio />
               </div>
+            </ErrorBoundary>
+          )}
+
+          {/* View 10: Model Management */}
+          {currentView === 'models' && (
+            <ErrorBoundary fallbackTitle="Model Management Display Interrupted">
+              <ModelsSettings onBackToDashboard={() => setCurrentView('dashboard')} />
+            </ErrorBoundary>
+          )}
+
+          {/* View 11: Blog Studio (dedicated blog post management) */}
+          {currentView === 'blog' && (
+            <ErrorBoundary fallbackTitle="Blog Studio Display Interrupted">
+              <BlogStudio onBackToDashboard={() => setCurrentView('dashboard')} />
             </ErrorBoundary>
           )}
           </>
@@ -668,6 +726,88 @@ const App: React.FC = () => {
         onClose={() => setPresentingProject(null)}
       />
     )}
+
+    {/* Persistent "Video Generating" banner — visible from any view */}
+    {videoGenBanner.status === 'running' && (
+      <button
+        type="button"
+        onClick={() => {
+          if (currentView !== 'video-studio') setCurrentView('video-studio');
+        }}
+        className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[150] w-[min(92vw,440px)] bg-slate-900/95 border border-indigo-500/40 rounded-2xl px-4 py-3 shadow-2xl shadow-indigo-500/10 flex items-center gap-3 cursor-pointer hover:border-indigo-400 transition-colors animate-in slide-in-from-bottom-4 duration-200"
+        id="video-generation-banner"
+      >
+        <Loader2 className="w-5 h-5 text-indigo-400 animate-spin shrink-0" />
+        <div className="flex-1 min-w-0 space-y-1.5 text-left">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-bold text-indigo-300 uppercase tracking-widest">Video Generating</span>
+            <span className="text-[9px] text-slate-400 font-mono truncate">{videoGenBanner.model || 'Video'}</span>
+          </div>
+          <p className="text-[11px] text-slate-300 truncate">{videoGenBanner.step || 'Initializing...'}</p>
+          <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 rounded-full transition-all duration-300"
+              style={{ width: `${videoGenBanner.progress}%` }}
+            ></div>
+          </div>
+        </div>
+        {currentView !== 'video-studio' && (
+          <span className="text-[10px] text-slate-400 shrink-0 font-semibold">View</span>
+        )}
+      </button>
+    )}
+
+    {/* Global toast for generation failures / completions */}
+    {genToast && genToast.kind === 'error' && (
+      <div className="fixed bottom-4 right-4 z-[150] w-[min(92vw,380px)] bg-rose-950/95 border border-rose-500/40 rounded-2xl p-4 shadow-2xl shadow-rose-500/10 animate-in slide-in-from-bottom-4 duration-200 space-y-2">
+        <div className="flex items-start gap-2.5">
+          <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-bold text-rose-200 uppercase tracking-wider">Video Generation Failed</p>
+            <p className="text-[11px] text-rose-300/90 mt-1 line-clamp-3 break-words">{genToast.message}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setGenToast(null)}
+            className="text-rose-400 hover:text-white shrink-0 p-0.5"
+            aria-label="Dismiss error"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    )}
+    {genToast && genToast.kind === 'success' && (
+      <div className="fixed bottom-4 right-4 z-[150] w-[min(92vw,380px)] bg-emerald-950/95 border border-emerald-500/40 rounded-2xl p-4 shadow-2xl shadow-emerald-500/10 animate-in slide-in-from-bottom-4 duration-200 space-y-2">
+        <div className="flex items-start gap-2.5">
+          <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-bold text-emerald-200 uppercase tracking-wider">Video Ready</p>
+            <p className="text-[11px] text-emerald-300/90 mt-1">{genToast.message}</p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {currentView !== 'video-studio' && (
+              <button
+                type="button"
+                onClick={() => { setGenToast(null); setCurrentView('video-studio'); }}
+                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold rounded-lg"
+              >
+                View
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setGenToast(null)}
+              className="text-emerald-400 hover:text-white p-0.5"
+              aria-label="Dismiss"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    <Toaster theme={isDarkMode ? 'dark' : 'light'} position="bottom-right" richColors />
     </>
   );
 };

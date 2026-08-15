@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { DBService } from '../services/dbService';
-import { conductResearchChat, generateBlogPostFromCampaign, generateInfographicImage, BlogPostResult, SectionImagePrompt } from '../services/geminiService';
-import { ResearchSession, ChatMessageItem, SavedCampaign, PublishEndpointConfig, SavedBlogDraft, CronScheduleItem } from '../types';
+import { conductResearchChat } from '../services/geminiService';
+import { loadModelSettings } from '@/services/ai/modelService';
+import { gatewayBackendForId, textModelSupportsVision } from '@/types';
+import { ResearchSession, ChatMessageItem } from '../types';
+import { useBlogEngine } from '@/hooks/useBlogEngine';
 
 import { ResearchSidebar } from './research/ResearchSidebar';
 import { ResearchChatArea } from './research/ResearchChatArea';
@@ -14,10 +17,6 @@ import {
 } from 'lucide-react';
 
 const STORAGE_KEY = 'social_studio_x_research_sessions_v3';
-const WEBHOOK_SETTINGS_KEY = 'blog_publish_webhook_settings';
-const DRAFTS_STORAGE_KEY = 'infogenius_saved_blog_drafts';
-const ENDPOINTS_STORAGE_KEY = 'infogenius_publish_endpoints';
-const CRON_STORAGE_KEY = 'infogenius_cron_schedules';
 
 interface ResearchCenterProps {
   onSendToSocialCampaign?: (topic: string, prompt: string, companyContext: string) => void;
@@ -45,75 +44,34 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   const [inputMessage, setInputMessage] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [loadingStatus, setLoadingStatus] = useState<string>('Thinking…');
 
-  // Campaign to Blog Post Converter & Webhook Publishing State
+  // Campaign to Blog Post Converter popup visibility
   const [isBlogStudioOpen, setIsBlogStudioOpen] = useState<boolean>(false);
-  const [savedCampaigns, setSavedCampaigns] = useState<SavedCampaign[]>([]);
-  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
-  const [blogTopicOverride, setBlogTopicOverride] = useState<string>('');
-  const [blogTone, setBlogTone] = useState<string>('Informative, Authoritative & Actionable Guide');
-  const [isGeneratingBlog, setIsGeneratingBlog] = useState<boolean>(false);
-  const [blogResult, setBlogResult] = useState<BlogPostResult | null>(null);
-  const [blogViewMode, setBlogViewMode] = useState<'preview' | 'markdown' | 'drafts' | 'schedules' | 'webhook-settings'>('preview');
-  const [isBlogCopied, setIsBlogCopied] = useState<boolean>(false);
-  const [isSavingDraft, setIsSavingDraft] = useState<boolean>(false);
-  const [draftSaveSuccess, setDraftSaveSuccess] = useState<boolean>(false);
-  const [isDownloadingMd, setIsDownloadingMd] = useState<boolean>(false);
 
   // Inline Message Edit State
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingMessageContent, setEditingMessageContent] = useState<string>('');
 
-  // Saved Blog Drafts & Schedules State
-  const [savedBlogDrafts, setSavedBlogDrafts] = useState<SavedBlogDraft[]>([]);
-  const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
-
-  // Cron Job & Timed Schedules State
-  const [cronSchedules, setCronSchedules] = useState<CronScheduleItem[]>([]);
-  const [newCronTitle, setNewCronTitle] = useState<string>('');
-  const [newCronExpression, setNewCronExpression] = useState<string>('0 9 * * 1');
-  const [selectedDraftForScheduleId, setSelectedDraftForScheduleId] = useState<string>('');
-
-  const getDefaultTomorrowDateTime = () => {
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    return tomorrow.toISOString().slice(0, 16);
-  };
-  const [scheduleDateTime, setScheduleDateTime] = useState<string>(getDefaultTomorrowDateTime());
-  const [scheduleSuccessFeedback, setScheduleSuccessFeedback] = useState<string | null>(null);
-
-  // Multi-Endpoint Webhook Settings State
-  const [publishEndpoints, setPublishEndpoints] = useState<PublishEndpointConfig[]>([
-    {
-      id: 'growency_main',
-      name: 'Growency.ai Production Blog',
-      endpointUrl: 'https://growency.ai/api/blog/publish',
-      secretKey: '',
-      headerName: 'Authorization',
-      enabled: true,
-      isDefault: true
-    }
-  ]);
-  const [selectedEndpointId, setSelectedEndpointId] = useState<string>('growency_main');
-  const [editingEndpoint, setEditingEndpoint] = useState<PublishEndpointConfig | null>(null);
-  const [isEndpointModalOpen, setIsEndpointModalOpen] = useState<boolean>(false);
-
-  // Section Image Prompt & Live Content Edit State
-  const [generatingPromptId, setGeneratingPromptId] = useState<string | null>(null);
-  const [customSectionPromptInput, setCustomSectionPromptInput] = useState<string>('');
-
-  // Webhook publishing process state
-  const [isPublishing, setIsPublishing] = useState<boolean>(false);
-  const [publishResponse, setPublishResponse] = useState<{ success: boolean; message: string; status?: number } | null>(null);
-
   // AI model settings
-  const [selectedModelAlias, setSelectedModelAlias] = useState<string>('gemini-2.5-flash');
-  const [useGoogleSearchGrounding, setUseGoogleSearchGrounding] = useState<boolean>(true);
+  const [selectedModelAlias, setSelectedModelAlias] = useState<string>(() => loadModelSettings().text || 'gemini-3.6-flash');
+  const [researchMode, setResearchMode] = useState<'grounded' | 'deep'>('grounded');
+  const [groundingEnabled, setGroundingEnabled] = useState<boolean>(true);
+  const [nodeDiagramsEnabled, setNodeDiagramsEnabled] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem('infogenius_node_diagrams_enabled') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const [attachedImages, setAttachedImages] = useState<string[]>([]);
 
-  // Inline Title Edit State
-  const [isEditingTitle, setIsEditingTitle] = useState<boolean>(false);
-  const [customTitleInput, setCustomTitleInput] = useState<string>('');
+  // Adaptive loading status: derived from real server-side phases emitted via
+  // SSE (searching → found → synthesizing → done), so the user always sees what
+  // the assistant is actually doing on any backend model.
+  useEffect(() => {
+    if (!isLoading) setLoadingStatus('Thinking…');
+  }, [isLoading]);
 
   // Sessions state
   const [sessions, setSessions] = useState<ResearchSession[]>([]);
@@ -138,28 +96,6 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           setActiveSessionId(initialSession.id);
           await DBService.setItem(STORAGE_KEY, [initialSession]);
         }
-
-        const storedDrafts = await DBService.getItem<SavedBlogDraft[]>(DRAFTS_STORAGE_KEY, []);
-        if (storedDrafts && Array.isArray(storedDrafts)) {
-          setSavedBlogDrafts(storedDrafts);
-        }
-
-        const storedEndpoints = await DBService.getItem<PublishEndpointConfig[]>(ENDPOINTS_STORAGE_KEY, []);
-        if (storedEndpoints && Array.isArray(storedEndpoints) && storedEndpoints.length > 0) {
-          setPublishEndpoints(storedEndpoints);
-          const defaultEp = storedEndpoints.find(e => e.isDefault) || storedEndpoints[0];
-          setSelectedEndpointId(defaultEp.id);
-        }
-
-        const storedSchedules = await DBService.getItem<CronScheduleItem[]>(CRON_STORAGE_KEY, []);
-        if (storedSchedules && Array.isArray(storedSchedules)) {
-          setCronSchedules(storedSchedules);
-        }
-
-        const camps = await DBService.getItem<SavedCampaign[]>('social_studio_x_campaigns_v2', []);
-        if (camps && Array.isArray(camps)) {
-          setSavedCampaigns(camps);
-        }
       } catch (err) {
         console.error("Failed loading data from DBService:", err);
       }
@@ -177,8 +113,67 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
 
   const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
 
+  // Load the session's AI model + mode when switching sessions.
+  useEffect(() => {
+    if (activeSession?.model) setSelectedModelAlias(activeSession.model);
+    if (activeSession?.mode) setResearchMode(activeSession.mode);
+  }, [activeSessionId]);
+
   // Handlers for session management
+  const MAX_ATTACH_DIMENSION = 1280;
+  const ATTACH_JPEG_QUALITY = 0.85;
+
+  /** Downscale + re-encode an image client-side so uploads stay small and fast. */
+  const compressImage = (dataUrl: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, MAX_ATTACH_DIMENSION / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(dataUrl);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', ATTACH_JPEG_QUALITY));
+        } catch (e) {
+          resolve(dataUrl);
+        }
+      };
+      img.onerror = () => reject(new Error('Failed to load image for compression'));
+      img.src = dataUrl;
+    });
+  };
+
+  const handleAddImages = (files: FileList) => {
+    const fileList = Array.from(files);
+    if (fileList.length === 0) return;
+    const readers = fileList.map((file) => {
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Failed to read image file'));
+        reader.readAsDataURL(file);
+      });
+    });
+    Promise.all(readers)
+      .then((urls) => Promise.all(urls.map(compressImage)))
+      .then((compressed) => setAttachedImages(prev => [...prev, ...compressed].slice(0, 4)))
+      .catch((err) => console.error("Failed to read attachment(s):", err));
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setAttachedImages(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleNewSession = async () => {
+    setAttachedImages([]);
     const newSession: ResearchSession = {
       id: `session_${Date.now()}`,
       title: 'New Research Topic',
@@ -220,14 +215,34 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     const promptToUse = customPrompt || inputMessage.trim();
     if (!promptToUse || isLoading || !activeSessionId) return;
 
+    const visionSupported = textModelSupportsVision(selectedModelAlias);
+    if (attachedImages.length > 0 && !visionSupported) {
+      const warnMsg: ChatMessageItem = {
+        id: `msg_warn_${Date.now()}`,
+        role: 'model',
+        content: `⚠️ **Image input not supported**: The selected model (${selectedModelAlias}) does not accept image uploads. Switch to a vision-capable model (e.g. a Gemini or GPT model) or remove the attached image(s) to continue.`,
+        timestamp: Date.now()
+      };
+      setSessions(prev => prev.map(s => {
+        if (s.id === activeSessionId) {
+          return { ...s, updatedAt: Date.now(), messages: [...s.messages, warnMsg] };
+        }
+        return s;
+      }));
+      return;
+    }
+
+    const imageUrlsForSend = [...attachedImages];
     if (!customPrompt) setInputMessage('');
+    setAttachedImages([]);
     setIsLoading(true);
 
     const userMsg: ChatMessageItem = {
       id: `msg_user_${Date.now()}`,
       role: 'user',
       content: promptToUse,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      imageUrls: imageUrlsForSend.length > 0 ? imageUrlsForSend : undefined
     };
 
     const currentSession = sessions.find(s => s.id === activeSessionId) || activeSession;
@@ -240,6 +255,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           ...s,
           title: updatedTitle,
           updatedAt: Date.now(),
+          mode: researchMode,
+          model: selectedModelAlias,
           messages: [...s.messages, userMsg]
         };
       }
@@ -258,8 +275,33 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
       const response = await conductResearchChat(
         chatHistory,
         currentSession.companyContext || '',
-        'grounded',
-        currentSession.competitorWebsite || ''
+        researchMode,
+        currentSession.competitorWebsite || '',
+        selectedModelAlias,
+        groundingEnabled,
+        gatewayBackendForId('text', selectedModelAlias),
+        imageUrlsForSend,
+        (phase) => {
+          switch (phase.type) {
+            case 'searching':
+              setLoadingStatus('Searching Google for the latest information…');
+              break;
+            case 'found':
+              setLoadingStatus(
+                phase.count > 0
+                  ? `Found ${phase.count} live source${phase.count === 1 ? '' : 's'} — reviewing…`
+                  : 'No live sources found — reasoning from knowledge…'
+              );
+              break;
+            case 'synthesizing':
+              setLoadingStatus('Synthesizing findings into a response…');
+              break;
+            case 'done':
+              setLoadingStatus('Finalizing response…');
+              break;
+          }
+        },
+        nodeDiagramsEnabled
       );
 
       const aiMsg: ChatMessageItem = {
@@ -268,7 +310,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         content: response.reply,
         timestamp: Date.now(),
         searchResults: response.searchResults,
-        suggestedCampaignTopic: response.suggestedCampaignTopic || updatedTitle
+        suggestedCampaignTopic: response.suggestedCampaignTopic || updatedTitle,
+        isDeepResearch: researchMode === 'deep'
       };
 
       setSessions(prev => prev.map(s => {
@@ -304,160 +347,50 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     }
   };
 
-  // Helper to save blog draft to IndexedDB
-  const handleSaveBlogDraft = async (draftData: any, status: 'draft' | 'scheduled' | 'published' = 'draft', scheduledAt?: string, publishedToEndpointId?: string) => {
-    const existingIndex = savedBlogDrafts.findIndex(d => d.id === draftData.id || d.title === draftData.title);
-    const nowISO = new Date().toISOString();
-    let updatedDrafts: SavedBlogDraft[];
+  const blogEngine = useBlogEngine({
+    getThreadContext: () => buildResearchThreadSummary(),
+    sessionId: activeSessionId ?? undefined
+  });
+  const setBlogViewMode = blogEngine.setBlogViewMode;
 
-    const wordCount = (draftData.markdownContent || '').split(/\s+/).filter(Boolean).length;
-    const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
-
-    const draftObj: SavedBlogDraft = {
-      id: draftData.id || `draft_${Date.now()}`,
-      sessionId: activeSessionId || undefined,
-      campaignId: selectedCampaignId || undefined,
-      campaignTitle: savedCampaigns.find(c => c.id === selectedCampaignId)?.name || undefined,
-      title: draftData.title || 'Untitled Blog Post',
-      slug: draftData.slug || draftData.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 200) || 'blog-post',
-      excerpt: draftData.excerpt || draftData.metaDescription || (draftData.markdownContent || '').slice(0, 160).replace(/[#*`!\[\]()]/g, ''),
-      metaDescription: draftData.metaDescription || draftData.excerpt || (draftData.markdownContent || '').slice(0, 160).replace(/[#*`!\[\]()]/g, ''),
-      markdownContent: draftData.markdownContent || '',
-      characterCount: draftData.markdownContent?.length || 0,
-      readingTimeMinutes,
-      embeddedImagesCount: (draftData.markdownContent || '').match(/!\[.*?\]\(.*?\)/g)?.length || 0,
-      sectionImagePrompts: draftData.sectionImagePrompts || [],
-      status,
-      createdAt: existingIndex >= 0 ? savedBlogDrafts[existingIndex].createdAt : nowISO,
-      updatedAt: nowISO,
-      scheduledAt: scheduledAt || (existingIndex >= 0 ? savedBlogDrafts[existingIndex].scheduledAt : undefined),
-      publishedAt: status === 'published' ? nowISO : (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedAt : undefined),
-      publishedEndpointId: publishedToEndpointId || (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedEndpointId : undefined)
-    };
-
-    if (existingIndex >= 0) {
-      updatedDrafts = [...savedBlogDrafts];
-      updatedDrafts[existingIndex] = draftObj;
-    } else {
-      updatedDrafts = [draftObj, ...savedBlogDrafts];
-    }
-
-    setSavedBlogDrafts(updatedDrafts);
-    setActiveDraftId(draftObj.id);
-    await DBService.setItem(DRAFTS_STORAGE_KEY, updatedDrafts);
-    return draftObj;
+  const buildResearchThreadSummary = (): string => {
+    if (!activeSession || activeSession.messages.length === 0) return '';
+    return activeSession.messages
+      .filter((m) =>
+        (m.role === 'user' || m.role === 'model') &&
+        !m.content.startsWith('### 📝') &&
+        !m.content.startsWith('⚠️')
+      )
+      .slice(-5)
+      .map((m) => `${m.role === 'user' ? 'User asked' : 'AI Research Assistant answered'}: ${m.content.replace(/\s+/g, ' ').trim()}`)
+      .join('\n\n');
   };
 
-  const handleDeleteBlogDraft = async (draftId: string) => {
-    const updated = savedBlogDrafts.filter(d => d.id !== draftId);
-    setSavedBlogDrafts(updated);
-    if (activeDraftId === draftId) setActiveDraftId(null);
-    await DBService.setItem(DRAFTS_STORAGE_KEY, updated);
-  };
+  const handleGenerateBlogPost = async (forcedTopic?: string, forcedContext?: string) => {
+    const result = await blogEngine.generateBlogPost(forcedTopic, forcedContext);
 
-  const handleSaveCronSchedule = async (sched: CronScheduleItem) => {
-    const updated = [sched, ...cronSchedules];
-    setCronSchedules(updated);
-    await DBService.setItem(CRON_STORAGE_KEY, updated);
-  };
+    if (result && activeSessionId) {
+      const blogMsg: ChatMessageItem = {
+        id: `msg_blog_${Date.now()}`,
+        role: 'model',
+        content: `### 📝 **Generated Blog Post Draft**: ${result.title}\n\n*Character Count: ${result.characterCount.toLocaleString()} | Est. Reading Time: ${result.readingTimeMinutes} mins*\n\n${result.markdownContent}`,
+        timestamp: Date.now(),
+        suggestedCampaignTopic: result.title
+      };
 
-  const handleDeleteCronSchedule = async (id: string) => {
-    const updated = cronSchedules.filter(c => c.id !== id);
-    setCronSchedules(updated);
-    await DBService.setItem(CRON_STORAGE_KEY, updated);
-  };
-
-  const handleSaveEndpointsList = async (newList: PublishEndpointConfig[]) => {
-    setPublishEndpoints(newList);
-    await DBService.setItem(ENDPOINTS_STORAGE_KEY, newList);
-  };
-
-  const handleDeleteEndpoint = async (endpointId: string) => {
-    if (publishEndpoints.length <= 1) return;
-    const newList = publishEndpoints.filter(e => e.id !== endpointId);
-    if (selectedEndpointId === endpointId) {
-      setSelectedEndpointId(newList[0].id);
-    }
-    await handleSaveEndpointsList(newList);
-  };
-
-  const handleGenerateBlogPost = async (forcedTopic?: string) => {
-    setIsGeneratingBlog(true);
-    setPublishResponse(null);
-
-    try {
-      let topicToUse = forcedTopic || blogTopicOverride.trim() || activeSession?.title || 'Comprehensive Tech Guide';
-      let campaignSummaryText = '';
-      let imagesList: { title: string; url: string }[] = [];
-
-      if (selectedCampaignId) {
-        const selectedCamp = savedCampaigns.find(c => c.id === selectedCampaignId);
-        if (selectedCamp) {
-          if (!forcedTopic && !blogTopicOverride.trim()) {
-            topicToUse = selectedCamp.mainTopic || selectedCamp.name;
-          }
-          const lines: string[] = [`Campaign Title: ${selectedCamp.name}`, `Main Topic: ${selectedCamp.mainTopic}`, `Platform: ${selectedCamp.platform}`];
-          selectedCamp.posts?.forEach((p, idx) => {
-            lines.push(`\nPost #${idx + 1}: ${p.topic || p.day}`);
-            if (p.caption) lines.push(`Caption: ${p.caption}`);
-            if (p.imageUrl) imagesList.push({ title: p.topic || `Campaign Post ${idx + 1}`, url: p.imageUrl });
-            p.slides?.forEach(s => {
-              lines.push(`  - Slide ${s.slideNumber}: ${s.title || ''} (${s.contentText || ''})`);
-              if (s.imageUrl) imagesList.push({ title: s.title || `Slide ${s.slideNumber}`, url: s.imageUrl });
-            });
-          });
-          campaignSummaryText = lines.join('\n');
+      setSessions(prev => prev.map(s => {
+        if (s.id === activeSessionId) {
+          return {
+            ...s,
+            updatedAt: Date.now(),
+            messages: [...s.messages, blogMsg]
+          };
         }
-      } else {
-        campaignSummaryText = `Topic: "${topicToUse}". Provide an in-depth, step-by-step master guide expanding on key principles, practical execution frameworks, and audience value propositions.`;
-      }
+        return s;
+      }));
 
-      const result = await generateBlogPostFromCampaign(
-        topicToUse,
-        campaignSummaryText,
-        imagesList,
-        activeSession?.companyContext || '',
-        blogTone
-      );
-
-      setBlogResult(result);
-
-      await handleSaveBlogDraft({
-        sessionId: activeSessionId || undefined,
-        campaignId: selectedCampaignId || undefined,
-        title: result.title,
-        markdownContent: result.markdownContent,
-        characterCount: result.characterCount,
-        readingTimeMinutes: result.readingTimeMinutes,
-        embeddedImagesCount: result.embeddedImagesCount,
-        sectionImagePrompts: result.sectionImagePrompts
-      }, 'draft');
-
-      if (activeSessionId) {
-        const blogMsg: ChatMessageItem = {
-          id: `msg_blog_${Date.now()}`,
-          role: 'model',
-          content: `### 📝 **Generated Blog Post Draft**: ${result.title}\n\n*Character Count: ${result.characterCount.toLocaleString()} | Est. Reading Time: ${result.readingTimeMinutes} mins*\n\n${result.markdownContent}`,
-          timestamp: Date.now(),
-          suggestedCampaignTopic: result.title
-        };
-
-        setSessions(prev => prev.map(s => {
-          if (s.id === activeSessionId) {
-            return {
-              ...s,
-              updatedAt: Date.now(),
-              messages: [...s.messages, blogMsg]
-            };
-          }
-          return s;
-        }));
-      }
-
-    } catch (err: any) {
-      console.error("Failed to generate blog post:", err);
-    } finally {
-      setIsGeneratingBlog(false);
+      setIsBlogStudioOpen(true);
+      setBlogViewMode('preview');
     }
   };
 
@@ -477,257 +410,6 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     setEditingMessageContent('');
   };
 
-  const extractExcerptFromMarkdown = (markdown: string): string => {
-    const cleanText = markdown
-      .replace(/!\[.*?\]\(.*?\)/g, '')
-      .replace(/\[IMAGE_PROMPT:.*?\]/gi, '')
-      .replace(/#+\s+/g, '')
-      .replace(/```[\s\S]*?```/g, '')
-      .replace(/`([^`]+)`/g, '$1')
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/\*([^*]+)\*/g, '$1')
-      .replace(/>\s+/g, '')
-      .replace(/[\r\n]+/g, ' ')
-      .trim();
-
-    return cleanText.slice(0, 480) || 'Authoritative guide and actionable insights.';
-  };
-
-  const extractPrimaryImageUrl = (markdown: string): string | undefined => {
-    const imageMatch = markdown.match(/!\[.*?\]\((.*?)\)/);
-    if (imageMatch && imageMatch[1]) {
-      const url = imageMatch[1].trim();
-      if (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:image/')) {
-        return url;
-      }
-    }
-    return undefined;
-  };
-
-  const handlePublishBlogToEndpoint = async (customDraftToPublish?: SavedBlogDraft) => {
-    const postToPublish = customDraftToPublish || (blogResult ? {
-      id: activeDraftId || undefined,
-      title: blogResult.title,
-      markdownContent: blogResult.markdownContent,
-      characterCount: blogResult.characterCount,
-      readingTimeMinutes: blogResult.readingTimeMinutes
-    } : null);
-
-    if (!postToPublish) return;
-
-    const targetEndpoint = publishEndpoints.find(e => e.id === selectedEndpointId) || publishEndpoints[0];
-    const targetUrl = targetEndpoint?.endpointUrl.trim() || 'https://growency.ai/api/blog/publish';
-
-    setIsPublishing(true);
-    setPublishResponse(null);
-
-    try {
-      const slug = (postToPublish as any).slug || postToPublish.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/(^-|-$)/g, '')
-        .slice(0, 200) || 'blog-post';
-
-      const excerpt = (postToPublish as any).excerpt || extractExcerptFromMarkdown(postToPublish.markdownContent).slice(0, 500);
-      const metaDescription = (postToPublish as any).metaDescription || excerpt.slice(0, 160);
-      const keywords = (postToPublish as any).keywords || [];
-      const primaryImageUrl = extractPrimaryImageUrl(postToPublish.markdownContent);
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-
-      if (targetEndpoint.secretKey.trim()) {
-        const headerName = targetEndpoint.headerName.trim() || 'Authorization';
-        let keyVal = targetEndpoint.secretKey.trim();
-
-        if (headerName.toLowerCase() === 'authorization' && !keyVal.toLowerCase().startsWith('bearer ')) {
-          keyVal = `Bearer ${keyVal}`;
-        }
-
-        headers[headerName] = keyVal;
-      }
-
-      const payload = {
-        title: postToPublish.title,
-        slug,
-        content: postToPublish.markdownContent,
-        excerpt,
-        metaDescription,
-        keywords,
-        author: 'AI Research Studio',
-        publishedAt: new Date().toISOString(),
-        featuredImage: primaryImageUrl,
-        source: 'Social Studio X AI Research Center'
-      };
-
-      const res = await fetch(targetUrl, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload)
-      });
-
-      const status = res.status;
-      let resText = '';
-      try {
-        const data = await res.json();
-        resText = data?.message || data?.error || JSON.stringify(data);
-      } catch {
-        resText = await res.text();
-      }
-
-      if (res.ok || status === 201 || status === 200) {
-        setPublishResponse({
-          success: true,
-          status,
-          message: `Published successfully to ${targetEndpoint.name} (${targetUrl})! (HTTP ${status})`
-        });
-
-        await handleSaveBlogDraft({
-          id: postToPublish.id,
-          title: postToPublish.title,
-          markdownContent: postToPublish.markdownContent
-        }, 'published', undefined, targetEndpoint.id);
-
-      } else {
-        let errorDetail = resText || 'Publish failed.';
-        if (status === 401) {
-          errorDetail = `401 Unauthorized: Invalid or missing Bearer token. Please check your secret key in endpoint settings.`;
-        } else if (status === 409) {
-          errorDetail = `409 Conflict: A blog post with slug "${slug}" already exists.`;
-        } else if (status === 400) {
-          errorDetail = `400 Validation Error: ${resText || 'Check title, slug, excerpt, and body content.'}`;
-        }
-
-        setPublishResponse({
-          success: false,
-          status,
-          message: `Endpoint "${targetEndpoint.name}" returned HTTP ${status}: ${errorDetail}`
-        });
-      }
-    } catch (err: any) {
-      console.error("Blog publishing endpoint error:", err);
-      setPublishResponse({
-        success: false,
-        message: `Network Error connecting to ${targetEndpoint.name} (${targetUrl}): ${err?.message || 'Unable to connect.'}`
-      });
-    } finally {
-      setIsPublishing(false);
-    }
-  };
-
-  const handleGenerateSectionImage = async (promptObj: SectionImagePrompt) => {
-    if (!blogResult || generatingPromptId) return;
-    setGeneratingPromptId(promptObj.id);
-
-    try {
-      const generatedDataUrl = await generateInfographicImage(promptObj.prompt, '16:9');
-
-      let updatedMarkdown = blogResult.markdownContent;
-      const markdownImageTag = `![Section Illustration: ${promptObj.prompt.slice(0, 35)}](${generatedDataUrl})`;
-
-      if (promptObj.tag && updatedMarkdown.includes(promptObj.tag)) {
-        updatedMarkdown = updatedMarkdown.replace(promptObj.tag, markdownImageTag);
-      } else {
-        const fallbackRegex = new RegExp(`\\[IMAGE_PROMPT:\\s*${promptObj.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`, 'i');
-        if (fallbackRegex.test(updatedMarkdown)) {
-          updatedMarkdown = updatedMarkdown.replace(fallbackRegex, markdownImageTag);
-        } else {
-          updatedMarkdown += `\n\n${markdownImageTag}\n\n`;
-        }
-      }
-
-      const updatedPrompts = (blogResult.sectionImagePrompts || []).map(p => {
-        if (p.id === promptObj.id) {
-          return { ...p, generatedUrl: generatedDataUrl };
-        }
-        return p;
-      });
-
-      const imageMatches = updatedMarkdown.match(/!\[.*?\]\(.*?\)/g) || [];
-
-      setBlogResult({
-        ...blogResult,
-        markdownContent: updatedMarkdown,
-        characterCount: updatedMarkdown.length,
-        embeddedImagesCount: imageMatches.length,
-        sectionImagePrompts: updatedPrompts
-      });
-    } catch (err: any) {
-      console.error("Failed to generate section image:", err);
-    } finally {
-      setGeneratingPromptId(null);
-    }
-  };
-
-  const handleMarkdownContentEdit = (newMarkdown: string) => {
-    if (!blogResult) return;
-    const wordCount = newMarkdown.split(/\s+/).filter(Boolean).length;
-    const readingTimeMinutes = Math.max(1, Math.ceil(wordCount / 200));
-    const imageMatches = newMarkdown.match(/!\[.*?\]\(.*?\)/g) || [];
-
-    const promptRegex = /\[IMAGE_PROMPT:\s*([^\]]+)\]/gi;
-    const sectionImagePrompts: SectionImagePrompt[] = [];
-    let match: RegExpExecArray | null;
-    let count = 0;
-    while ((match = promptRegex.exec(newMarkdown)) !== null) {
-      count++;
-      sectionImagePrompts.push({
-        id: `img_prompt_edit_${Date.now()}_${count}`,
-        prompt: match[1].trim(),
-        tag: match[0]
-      });
-    }
-
-    setBlogResult({
-      ...blogResult,
-      markdownContent: newMarkdown,
-      characterCount: newMarkdown.length,
-      readingTimeMinutes,
-      embeddedImagesCount: imageMatches.length,
-      sectionImagePrompts: sectionImagePrompts.length > 0 ? sectionImagePrompts : (blogResult.sectionImagePrompts || [])
-    });
-  };
-
-  const handleAddCustomImagePrompt = () => {
-    if (!blogResult || !customSectionPromptInput.trim()) return;
-    const promptText = customSectionPromptInput.trim();
-    const tag = `[IMAGE_PROMPT: ${promptText}]`;
-    const newMarkdown = `${blogResult.markdownContent}\n\n${tag}\n\n`;
-
-    setCustomSectionPromptInput('');
-    handleMarkdownContentEdit(newMarkdown);
-  };
-
-  const handleSaveTitleEdit = () => {
-    if (!blogResult || !customTitleInput.trim()) return;
-    const newTitle = customTitleInput.trim();
-    const newSlug = newTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 200);
-    const updated = { ...blogResult, title: newTitle, slug: newSlug };
-    setBlogResult(updated);
-    setIsEditingTitle(false);
-
-    handleSaveBlogDraft({
-      id: activeDraftId || undefined,
-      title: newTitle,
-      slug: newSlug,
-      markdownContent: blogResult.markdownContent
-    }, 'draft');
-  };
-
-  const formatCronExpression = (cronExpr: string): string => {
-    const parts = cronExpr.trim().split(/\s+/);
-    if (parts.length !== 5) return 'Custom Cron Schedule';
-    const [min, hour, dom, mon, dow] = parts;
-
-    if (min === '0' && hour === '9' && dow === '1') return 'Every Monday at 9:00 AM';
-    if (min === '0' && hour === '12') return 'Daily at 12:00 PM';
-    if (min === '0' && hour === '9' && dom === '1') return '1st Day of Month at 9:00 AM';
-    if (min === '0' && dow === '5') return 'Every Friday at 9:00 AM';
-
-    return `Cron Rule: ${cronExpr}`;
-  };
-
   const samplePrompts = [
     {
       icon: Video,
@@ -744,7 +426,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   ];
 
   return (
-    <div className="flex h-screen w-full bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans overflow-hidden">
+    <div className="flex h-full w-full bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans overflow-hidden">
       {/* Sidebar Component */}
       <ResearchSidebar
         isSidebarOpen={isSidebarOpen}
@@ -756,8 +438,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         handleDeleteSession={handleDeleteSession}
         handleClearAllSessions={handleClearAllSessions}
         activeSession={activeSession}
-        savedBlogDrafts={savedBlogDrafts}
-        cronSchedules={cronSchedules}
+        savedBlogDrafts={blogEngine.savedBlogDrafts}
+        cronSchedules={blogEngine.cronSchedules}
         setIsBlogStudioOpen={setIsBlogStudioOpen}
         setBlogViewMode={setBlogViewMode}
         onBackToDashboard={onBackToDashboard}
@@ -768,6 +450,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         <ResearchChatArea
           activeSession={activeSession}
           isLoading={isLoading}
+          loadingStatus={loadingStatus}
           copiedId={copiedId}
           setCopiedId={setCopiedId}
           editingMessageId={editingMessageId}
@@ -789,12 +472,19 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           inputMessage={inputMessage}
           setInputMessage={setInputMessage}
           isLoading={isLoading}
-          useGoogleSearchGrounding={useGoogleSearchGrounding}
-          setUseGoogleSearchGrounding={setUseGoogleSearchGrounding}
+          researchMode={researchMode}
+          setResearchMode={setResearchMode}
           selectedModelAlias={selectedModelAlias}
           setSelectedModelAlias={setSelectedModelAlias}
+          groundingEnabled={groundingEnabled}
+          setGroundingEnabled={setGroundingEnabled}
+          nodeDiagramsEnabled={nodeDiagramsEnabled}
+          setNodeDiagramsEnabled={setNodeDiagramsEnabled}
           handleSendMessage={handleSendMessage}
           samplePrompts={samplePrompts}
+          attachedImages={attachedImages}
+          onAddImages={handleAddImages}
+          onRemoveImage={handleRemoveImage}
         />
       </div>
 
@@ -802,69 +492,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
       <BlogStudioModal
         isOpen={isBlogStudioOpen}
         onClose={() => setIsBlogStudioOpen(false)}
-        blogResult={blogResult}
-        setBlogResult={setBlogResult}
-        blogViewMode={blogViewMode}
-        setBlogViewMode={setBlogViewMode}
-        isGeneratingBlog={isGeneratingBlog}
-        savedCampaigns={savedCampaigns}
-        selectedCampaignId={selectedCampaignId}
-        setSelectedCampaignId={setSelectedCampaignId}
-        blogTopicOverride={blogTopicOverride}
-        setBlogTopicOverride={setBlogTopicOverride}
-        blogTone={blogTone}
-        setBlogTone={setBlogTone}
         handleGenerateBlogPost={handleGenerateBlogPost}
-        isBlogCopied={isBlogCopied}
-        setIsBlogCopied={setIsBlogCopied}
-        isSavingDraft={isSavingDraft}
-        setIsSavingDraft={setIsSavingDraft}
-        draftSaveSuccess={draftSaveSuccess}
-        setDraftSaveSuccess={setDraftSaveSuccess}
-        isDownloadingMd={isDownloadingMd}
-        setIsDownloadingMd={setIsDownloadingMd}
-        handleSaveBlogDraft={handleSaveBlogDraft}
-        handleDeleteBlogDraft={handleDeleteBlogDraft}
-        savedBlogDrafts={savedBlogDrafts}
-        activeDraftId={activeDraftId}
-        setActiveDraftId={setActiveDraftId}
-        cronSchedules={cronSchedules}
-        handleSaveCronSchedule={handleSaveCronSchedule}
-        handleDeleteCronSchedule={handleDeleteCronSchedule}
-        newCronTitle={newCronTitle}
-        setNewCronTitle={setNewCronTitle}
-        newCronExpression={newCronExpression}
-        setNewCronExpression={setNewCronExpression}
-        selectedDraftForScheduleId={selectedDraftForScheduleId}
-        setSelectedDraftForScheduleId={setSelectedDraftForScheduleId}
-        scheduleDateTime={scheduleDateTime}
-        setScheduleDateTime={setScheduleDateTime}
-        scheduleSuccessFeedback={scheduleSuccessFeedback}
-        setScheduleSuccessFeedback={setScheduleSuccessFeedback}
-        publishEndpoints={publishEndpoints}
-        selectedEndpointId={selectedEndpointId}
-        setSelectedEndpointId={setSelectedEndpointId}
-        editingEndpoint={editingEndpoint}
-        setEditingEndpoint={setEditingEndpoint}
-        isEndpointModalOpen={isEndpointModalOpen}
-        setIsEndpointModalOpen={setIsEndpointModalOpen}
-        handleSaveEndpointsList={handleSaveEndpointsList}
-        handleDeleteEndpoint={handleDeleteEndpoint}
-        handlePublishBlogToEndpoint={handlePublishBlogToEndpoint}
-        isPublishing={isPublishing}
-        publishResponse={publishResponse}
-        generatingPromptId={generatingPromptId}
-        handleGenerateSectionImage={handleGenerateSectionImage}
-        handleMarkdownContentEdit={handleMarkdownContentEdit}
-        customSectionPromptInput={customSectionPromptInput}
-        setCustomSectionPromptInput={setCustomSectionPromptInput}
-        handleAddCustomImagePrompt={handleAddCustomImagePrompt}
-        isEditingTitle={isEditingTitle}
-        setIsEditingTitle={setIsEditingTitle}
-        customTitleInput={customTitleInput}
-        setCustomTitleInput={setCustomTitleInput}
-        handleSaveTitleEdit={handleSaveTitleEdit}
-        formatCronExpression={formatCronExpression}
+        engine={blogEngine}
       />
     </div>
   );

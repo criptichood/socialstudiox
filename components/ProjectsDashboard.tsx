@@ -11,9 +11,11 @@ import {
   Clock,
   LayoutGrid,
   Pencil,
-  Play
+  Play,
+  Mic,
+  Film
 } from 'lucide-react';
-import { Project, GeneratedImage } from '../types';
+import { Project, GeneratedImage } from '@/types';
 
 interface ProjectsDashboardProps {
   projects: Project[];
@@ -24,7 +26,10 @@ interface ProjectsDashboardProps {
   onDeleteProject: (id: string) => void;
   onPresentProject: (project: Project) => void;
   images: GeneratedImage[];
-  onViewChange: (view: 'dashboard' | 'canvas' | 'drafts' | 'gallery') => void;
+  onViewChange: (view: any) => void;
+  campaignCounts?: Record<string, number>;
+  voiceoverCounts?: Record<string, number>;
+  videoCounts?: Record<string, number>;
 }
 
 const ProjectsDashboard: React.FC<ProjectsDashboardProps> = ({
@@ -36,7 +41,10 @@ const ProjectsDashboard: React.FC<ProjectsDashboardProps> = ({
   onDeleteProject,
   onPresentProject,
   images,
-  onViewChange
+  onViewChange,
+  campaignCounts = {},
+  voiceoverCounts = {},
+  videoCounts = {}
 }) => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
@@ -68,12 +76,17 @@ const ProjectsDashboard: React.FC<ProjectsDashboardProps> = ({
   // Helper stats
   const totalGenerations = images.length;
   const projectStats = projects.map(proj => {
-    // In Phase 2, we will filter images belonging to this specific project ID
-    // For Phase 1 layout, we can distribute them or show counts
     const projImages = images.filter(img => img.subOptions?.projectId === proj.id);
+    const campaignCount = campaignCounts[proj.id] || 0;
+    const voiceoverCount = voiceoverCounts[proj.id] || 0;
+    const videoCount = videoCounts[proj.id] || 0;
     return {
       ...proj,
-      count: projImages.length
+      imageCount: projImages.length,
+      campaignCount,
+      voiceoverCount,
+      videoCount,
+      totalAssets: projImages.length + campaignCount + voiceoverCount + videoCount
     };
   });
 
@@ -222,14 +235,64 @@ const ProjectsDashboard: React.FC<ProjectsDashboardProps> = ({
                   </p>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/60 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>{proj.count} Graphics</span>
-                    </div>
+                {/* Unified stats grid */}
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 mt-4 pt-4 border-t border-slate-100 dark:border-slate-800/60">
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectProject(proj.id);
+                      onViewChange('canvas');
+                    }}
+                    className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-450 hover:text-cyan-500 dark:hover:text-cyan-400 transition-colors font-semibold cursor-pointer"
+                    title="Open Image Generator Workspace"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-cyan-500 shrink-0" />
+                    <span className="truncate">{proj.imageCount} Graphic{proj.imageCount !== 1 ? 's' : ''}</span>
+                  </div>
 
-                    {proj.count > 0 && (
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectProject(proj.id);
+                      onViewChange('drafts');
+                    }}
+                    className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-455 hover:text-purple-500 dark:hover:text-purple-400 transition-colors font-semibold cursor-pointer"
+                    title="Open Campaign Workspace"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                    <span className="truncate">{proj.campaignCount} Campaign{proj.campaignCount !== 1 ? 's' : ''}</span>
+                  </div>
+
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectProject(proj.id);
+                      onViewChange('voiceover-studio');
+                    }}
+                    className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-455 hover:text-emerald-500 dark:hover:text-emerald-400 transition-colors font-semibold cursor-pointer"
+                    title="Open Voiceover Studio Scoped Workspace"
+                  >
+                    <Mic className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    <span className="truncate">{proj.voiceoverCount} Audio{proj.voiceoverCount !== 1 ? 's' : ''}</span>
+                  </div>
+
+                  <div 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSelectProject(proj.id);
+                      onViewChange('video-studio');
+                    }}
+                    className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-455 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors font-semibold cursor-pointer"
+                    title="Open Video Studio Scoped Workspace"
+                  >
+                    <Film className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    <span className="truncate">{proj.videoCount} Video{proj.videoCount !== 1 ? 's' : ''}</span>
+                  </div>
+                </div>
+
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/30 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    {proj.imageCount > 0 && (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -241,6 +304,9 @@ const ProjectsDashboard: React.FC<ProjectsDashboardProps> = ({
                         <Play className="w-3.5 h-3.5 fill-current" />
                       </button>
                     )}
+                    <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest font-mono">
+                      {proj.totalAssets} Asset{proj.totalAssets !== 1 ? 's' : ''}
+                    </span>
                   </div>
 
                   <button

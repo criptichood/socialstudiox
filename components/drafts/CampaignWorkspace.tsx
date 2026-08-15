@@ -1,27 +1,29 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Sparkles, 
   Plus, 
   Loader2, 
   CheckCircle2, 
-  X, 
-  Maximize2 
+  X 
 } from 'lucide-react';
-import { SocialPostCampaignItem, SavedCampaign } from '../DraftsPlanner';
-import { VisualStyle, AspectRatio, CarouselSlide } from '../../types';
-import { CampaignImage } from './CampaignImage';
-import { ImageDownloadDropdown } from '../ImageDownloadDropdown';
+import { SocialPostCampaignItem, SavedCampaign } from '@/components/DraftsPlanner';
+import { VisualStyle, AspectRatio, CarouselSlide } from '@/types';
+import { CampaignImage } from '@/components/drafts/CampaignImage';
+import { ImageDownloadDropdown } from '@/components/ImageDownloadDropdown';
+import { AIModelDropdown } from '@/components/CustomDropdown';
 
-import { generateInfographicImage, generateVoiceOverAndVideoPrompt, generateVoiceOverSpeech } from '../../services/geminiService';
-import { compileProgrammaticVideo } from '../../services/programmaticVideoCompiler';
-import { saveVoiceoverSession } from '../../services/audioStorageService';
-import { loadVideoBlobUrl } from '../../services/videoStorageService';
+import { generateInfographicImage, generateVoiceOverAndVideoPrompt, enhanceVoiceOverWithGuidelines, generateVoiceOverSpeech } from '@/services/geminiService';
+import { compileProgrammaticVideo } from '@/services/programmaticVideoCompiler';
+import { saveVoiceoverSession } from '@/services/audioStorageService';
+import { loadVideoBlobUrl } from '@/services/videoStorageService';
 
-import { CampaignWorkspaceHeader } from './campaign/CampaignWorkspaceHeader';
-import { CampaignRefinementModal } from './campaign/CampaignRefinementModal';
-import { SingleAIPostForm } from './campaign/SingleAIPostForm';
-import { VideoStudioLightboxModal } from './campaign/VideoStudioLightboxModal';
-import { PostCardItem } from './campaign/PostCardItem';
+import { CampaignWorkspaceHeader } from '@/components/drafts/campaign/CampaignWorkspaceHeader';
+import { CampaignRefinementModal } from '@/components/drafts/campaign/CampaignRefinementModal';
+import { SingleAIPostForm } from '@/components/drafts/campaign/SingleAIPostForm';
+import { VideoStudioLightboxModal } from '@/components/drafts/campaign/VideoStudioLightboxModal';
+import { PostCardItem } from '@/components/drafts/campaign/PostCardItem';
+import { PostDetailModal } from '@/components/drafts/campaign/PostDetailModal';
 
 interface CampaignWorkspaceProps {
   activeCampaignId: string;
@@ -120,11 +122,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
   saveEditedPost,
   handleUpdatePostAspect,
   handleUpdatePostStyle,
-  copiedIndex,
-  copiedType,
-  handleCopyToClipboard,
   handleSavePostAsDraft,
-  handleSaveAllSlidesAsDrafts,
   handleLaunchPost,
   refinementText,
   setRefinementText,
@@ -144,9 +142,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
   if (!currentCampaign) return null;
 
   const [showRefinementModal, setShowRefinementModal] = useState(false);
-  const [inlineRefineIndex, setInlineRefineIndex] = useState<number | null>(null);
-  const [inlineRefineText, setInlineRefineText] = useState('');
-  const [activeSlideMap, setActiveSlideMap] = useState<Record<number, number>>({});
+  const [showCampaignDetails, setShowCampaignDetails] = useState(false);
   
   // Video and Voiceover Studio State managers
   const [videoRenderingMap, setVideoRenderingMap] = useState<Record<string, boolean>>({});
@@ -278,34 +274,57 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     return `${postIdx}-${slideIdx !== null ? slideIdx : 'post'}`;
   };
 
+  const updatePostField = (postIdx: number | undefined, slideIdx: number | null | undefined, field: string, value: any) => {
+    if (postIdx === undefined || !campaignPosts || !campaignPosts[postIdx]) return;
+    const updatedPosts = [...campaignPosts];
+    if (slideIdx !== null && slideIdx !== undefined && updatedPosts[postIdx].slides && updatedPosts[postIdx].slides[slideIdx]) {
+      updatedPosts[postIdx].slides![slideIdx] = {
+        ...updatedPosts[postIdx].slides![slideIdx],
+        [field]: value
+      };
+    } else {
+      updatedPosts[postIdx] = {
+        ...updatedPosts[postIdx],
+        [field]: value
+      };
+    }
+    onUpdateCampaignPosts(updatedPosts);
+  };
+
   const handleSelectVoiceActor = (voice: any, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_voice_actor', voice);
     setSelectedVoiceActor(voice);
+    updatePostField(postIdx, slideIdx, 'voiceName', voice);
   };
 
-  const handleSelectAudioEngine = (model: string) => {
+  const handleSelectAudioEngine = (model: string, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_audio_engine', model);
     setSelectedAudioEngine(model);
+    updatePostField(postIdx, slideIdx, 'ttsModel', model);
   };
 
-  const handleSelectAccent = (accent: string) => {
+  const handleSelectAccent = (accent: string, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_voice_accent', accent);
     setSelectedAccent(accent);
+    updatePostField(postIdx, slideIdx, 'accent', accent);
   };
 
-  const handleSelectPersonaStyle = (persona: string) => {
+  const handleSelectPersonaStyle = (persona: string, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_voice_persona', persona);
     setSelectedPersonaStyle(persona);
+    updatePostField(postIdx, slideIdx, 'personaStyle', persona);
   };
 
-  const handleSelectDeliveryTone = (tone: string) => {
+  const handleSelectDeliveryTone = (tone: string, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_voice_tone', tone);
     setSelectedDeliveryTone(tone);
+    updatePostField(postIdx, slideIdx, 'deliveryTone', tone);
   };
 
-  const handleSelectSpeechSpeed = (speed: string) => {
+  const handleSelectSpeechSpeed = (speed: string, postIdx?: number, slideIdx?: number | null) => {
     localStorage.setItem('social_studio_voice_speed', speed);
     setSelectedSpeechSpeed(speed);
+    updatePostField(postIdx, slideIdx, 'speechSpeed', speed);
   };
 
   const handleSelectCameraAnim = (anim: any) => {
@@ -350,6 +369,9 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     }
   };
 
+  const stripNarrationCues = (script: string) =>
+    script.replace(/\s*\[[^\]]*\]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
   const handleSynthesizeVoice = async (
     postIdx: number, 
     slideIdx: number | null, 
@@ -366,7 +388,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
 
     try {
       const audioUrl = await generateVoiceOverSpeech(
-        text, 
+        stripNarrationCues(text), 
         voice || selectedVoiceActor, 
         deliveryTone || selectedDeliveryTone, 
         engineModel || selectedAudioEngine,
@@ -375,6 +397,12 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         speechSpeed || selectedSpeechSpeed
       );
       
+      const finalVoice = voice || selectedVoiceActor;
+      const finalEngine = engineModel || selectedAudioEngine;
+      const finalAccent = accentStyle || selectedAccent;
+      const finalPersona = personaStyle || selectedPersonaStyle;
+      const finalSpeed = speechSpeed || selectedSpeechSpeed;
+
       const updatedPosts = [...(campaignPosts || [])];
       const post = updatedPosts[postIdx];
 
@@ -382,11 +410,21 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         post.slides[slideIdx] = {
           ...post.slides[slideIdx],
           audioUrl,
+          voiceName: finalVoice,
+          ttsModel: finalEngine,
+          accent: finalAccent,
+          personaStyle: finalPersona,
+          speechSpeed: finalSpeed,
         };
       } else {
         updatedPosts[postIdx] = {
           ...post,
           audioUrl,
+          voiceName: finalVoice,
+          ttsModel: finalEngine,
+          accent: finalAccent,
+          personaStyle: finalPersona,
+          speechSpeed: finalSpeed,
         };
       }
 
@@ -409,6 +447,34 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     }
   };
 
+  const buildCampaignNarrationContext = (currentPostIdx: number, currentSlideIdx: number | null) => {
+    const posts = campaignPosts || [];
+    const lines: string[] = [];
+    lines.push(`Campaign: ${currentCampaign?.name || ''}`);
+    lines.push(`Main topic: ${currentCampaign?.mainTopic || ''}`);
+    lines.push(`Platform: ${currentCampaign?.platform || ''}`);
+    if (currentCampaign?.customRequirements) {
+      lines.push(`Custom angle / requirements: ${currentCampaign.customRequirements}`);
+    }
+    lines.push('Full campaign outline (in listening order):');
+    posts.forEach((p, i) => {
+      if (p.slides && p.slides.length > 0) {
+        p.slides.forEach((s, si) => {
+          const isCurrent = i === currentPostIdx && si === currentSlideIdx;
+          lines.push(
+            `  - ${isCurrent ? '[<<< THIS IS THE EPISODE BEING NARRATED >>>] ' : ''}${p.topic} / Slide ${s.slideNumber}: ${s.title}${s.contentText ? ' — ' + s.contentText : ''}`
+          );
+        });
+      } else {
+        const isCurrent = i === currentPostIdx && currentSlideIdx === null;
+        lines.push(
+          `  - ${isCurrent ? '[<<< THIS IS THE EPISODE BEING NARRATED >>>] ' : ''}${p.topic}${p.caption ? ' — ' + p.caption : ''}`
+        );
+      }
+    });
+    return lines.join('\n');
+  };
+
   const handleGenerateVideoScriptAI = async (postIdx: number, slideIdx: number | null) => {
     const key = getStudioKey(postIdx, slideIdx);
     setScriptGeneratingMap(prev => ({ ...prev, [key]: true }));
@@ -416,30 +482,60 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     try {
       const post = (campaignPosts || [])[postIdx];
       const slide = (slideIdx !== null && post.slides) ? post.slides[slideIdx] : null;
+      const existingScript = (slide ? slide.voiceOver : post.voiceOver) || '';
+      const campaignContext = buildCampaignNarrationContext(postIdx, slideIdx);
+      const topicLabel = slide ? `${post.topic} — Slide ${slide.slideNumber}` : post.topic;
 
-      const scriptRes = await generateVoiceOverAndVideoPrompt(
-        slide ? `${post.topic} — Slide ${slide.slideNumber}` : post.topic,
-        slide ? slide.visualPrompt : post.visualPrompt,
-        slide ? slide.contentText || post.caption : post.caption
-      );
+      let scriptRes;
+      if (existingScript.trim()) {
+        // Re-pass the existing script so the AI annotates it with spoken-word
+        // narration guidelines and casts delivery tone + speech speed.
+        scriptRes = await enhanceVoiceOverWithGuidelines(topicLabel, existingScript, campaignContext);
+      } else {
+        scriptRes = await generateVoiceOverAndVideoPrompt(
+          topicLabel,
+          slide ? slide.contentText || post.caption : post.caption,
+          slide ? slide.visualPrompt : post.visualPrompt,
+          '16:9',
+          campaignContext
+        );
+      }
 
       const updatedPosts = [...(campaignPosts || [])];
+      const target = (slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx])
+        ? updatedPosts[postIdx].slides![slideIdx]
+        : updatedPosts[postIdx];
+      const patch = {
+        voiceOver: scriptRes.voiceOver,
+        videoPrompt: 'videoPrompt' in scriptRes ? scriptRes.videoPrompt : (target as any)?.videoPrompt,
+        suggestedVoiceCharacter: scriptRes.suggestedVoiceCharacter || (target as any)?.suggestedVoiceCharacter,
+        // When enhancing, the annotated script IS the speech guideline, so the AI's
+        // delivery tone + speed decisions override any manual selection.
+        deliveryTone: existingScript.trim()
+          ? (scriptRes.suggestedDeliveryTone || (target as any)?.deliveryTone)
+          : ((target as any)?.deliveryTone || scriptRes.suggestedDeliveryTone),
+        speechSpeed: existingScript.trim()
+          ? (scriptRes.suggestedSpeechSpeed || (target as any)?.speechSpeed)
+          : ((target as any)?.speechSpeed || scriptRes.suggestedSpeechSpeed),
+      };
       if (slideIdx !== null && updatedPosts[postIdx]?.slides?.[slideIdx]) {
         updatedPosts[postIdx].slides![slideIdx] = {
           ...updatedPosts[postIdx].slides![slideIdx],
-          voiceOver: scriptRes.voiceOver,
-          videoPrompt: scriptRes.videoPrompt
+          ...patch
         };
       } else if (updatedPosts[postIdx]) {
         updatedPosts[postIdx] = {
           ...updatedPosts[postIdx],
-          voiceOver: scriptRes.voiceOver,
-          videoPrompt: scriptRes.videoPrompt
+          ...patch
         };
       }
 
       onUpdateCampaignPosts(updatedPosts);
-      triggerToast("AI Script & Directions generated!");
+      triggerToast(
+        existingScript.trim()
+          ? "Speech guidelines & delivery notes added to script!"
+          : "AI narration script & production notes generated!"
+      );
     } catch (err) {
       console.error(err);
       triggerToast("Failed to generate AI video script.");
@@ -526,8 +622,8 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     onUpdateCampaignPosts(updatedPosts);
   };
 
-  const handleStartVisualGeneration = async (idx: number, post: SocialPostCampaignItem) => {
-    const slideIdx = activeSlideMap[idx] || 0;
+  const handleStartVisualGeneration = async (idx: number, post: SocialPostCampaignItem, slideIdxOverride?: number | null) => {
+    const slideIdx = slideIdxOverride ?? 0;
     setGeneratorState({
       isOpen: true,
       postIndex: idx,
@@ -562,6 +658,17 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     }
   };
 
+  // Focused post state for the detail/zoom lightbox
+  const [focusedPostIndex, setFocusedPostIndex] = useState<number | null>(null);
+
+  const handleOpenPostDetail = (idx: number) => {
+    setFocusedPostIndex(idx);
+  };
+
+  const handleClosePostDetail = () => {
+    setFocusedPostIndex(null);
+  };
+
   return (
     <div className="flex-1 flex flex-col min-h-screen bg-slate-50 dark:bg-slate-950">
       <CampaignWorkspaceHeader
@@ -584,8 +691,64 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         campaignError={campaignError}
         campaignPosts={campaignPosts}
         handleAutoGenerateCampaignPosts={handleAutoGenerateCampaignPosts}
+        showDetails={showCampaignDetails}
+        setShowDetails={setShowCampaignDetails}
         onUpdateCampaignModel={onUpdateCampaignModel}
+        triggerToast={triggerToast}
       />
+
+      {showCampaignDetails && (
+        <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 p-4 md:p-6 animate-in slide-in-from-top-2 duration-200 shadow-sm shrink-0">
+          <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Company Website URL</span>
+                <a 
+                  href={currentCampaign.websiteUrl} 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="text-xs text-purple-600 dark:text-purple-400 hover:underline font-semibold block mt-1 break-all"
+                >
+                  {currentCampaign.websiteUrl}
+                </a>
+              </div>
+
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Campaign Topic / Objective</span>
+                <p className="text-xs text-slate-700 dark:text-slate-200 mt-1 font-medium leading-relaxed">
+                  {currentCampaign.mainTopic}
+                </p>
+              </div>
+
+              {currentCampaign.customRequirements && (
+                <div>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono">Custom Style Guidelines</span>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-1 leading-relaxed italic">
+                    "{currentCampaign.customRequirements}"
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block font-mono font-bold">AI Generation Engine</span>
+                <div className="w-56 mt-1.5">
+                  {onUpdateCampaignModel && (
+                    <AIModelDropdown
+                      value={currentCampaign.aiModel || 'gemini-3.6-flash'}
+                      onChange={(model) => onUpdateCampaignModel(model)}
+                    />
+                  )}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Change model engine for subsequent AI concept refinements and visual asset generation.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <SingleAIPostForm
         show={showSingleAIPostForm}
@@ -642,50 +805,53 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
                 key={idx}
                 idx={idx}
                 post={post}
-                editingPostIndex={editingPostIndex}
-                setEditingPostIndex={setEditingPostIndex}
-                editTopic={editTopic}
-                setEditTopic={setEditTopic}
-                editVisualPrompt={editVisualPrompt}
-                setEditVisualPrompt={setEditVisualPrompt}
-                editCaption={editCaption}
-                setEditCaption={setEditCaption}
-                editHashtags={editHashtags}
-                setEditHashtags={setEditHashtags}
-                editStyle={editStyle}
-                setEditStyle={setEditStyle}
-                editAspect={editAspect}
-                setEditAspect={setEditAspect}
-                startEditingPost={startEditingPost}
-                saveEditedPost={saveEditedPost}
+                onOpenPost={() => handleOpenPostDetail(idx)}
                 handleDeletePost={handleDeletePost}
-                activeSlideMap={activeSlideMap}
-                setActiveSlideMap={setActiveSlideMap}
-                handleCopyToClipboard={handleCopyToClipboard}
-                copiedIndex={copiedIndex}
-                copiedType={copiedType}
-                handleStartVisualGeneration={handleStartVisualGeneration}
-                generatorState={generatorState}
-                setPreviewImageModal={setPreviewImageModal}
-                handleUpdatePostAspect={handleUpdatePostAspect}
-                handleUpdatePostStyle={handleUpdatePostStyle}
-                handleSavePostAsDraft={handleSavePostAsDraft}
-                handleSaveAllSlidesAsDrafts={handleSaveAllSlidesAsDrafts}
-                handleLaunchPost={handleLaunchPost}
-                savedDraftIndex={null}
-                currentCampaign={currentCampaign}
-                triggerToast={triggerToast}
-                inlineRefineIndex={inlineRefineIndex}
-                setInlineRefineIndex={setInlineRefineIndex}
-                inlineRefineText={inlineRefineText}
-                setInlineRefineText={setInlineRefineText}
-                handleRefineSinglePostAI={handleRefineSinglePostAI}
-                isRefining={isRefining}
               />
             ))}
           </div>
         )}
       </div>
+
+      {/* Post Detail / Zoom Lightbox */}
+      {focusedPostIndex !== null && campaignPosts && campaignPosts[focusedPostIndex] && (
+        <PostDetailModal
+          isOpen={focusedPostIndex !== null}
+          post={campaignPosts[focusedPostIndex]}
+          postIndex={focusedPostIndex}
+          allPosts={campaignPosts}
+          onClose={handleClosePostDetail}
+          onNavigate={(newIdx) => setFocusedPostIndex(newIdx)}
+          handleStartVisualGeneration={handleStartVisualGeneration}
+          generatorState={generatorState}
+          handleSavePostAsDraft={handleSavePostAsDraft}
+          handleLaunchPost={handleLaunchPost}
+          handleDeletePost={handleDeletePost}
+          handleUpdatePostAspect={handleUpdatePostAspect}
+          handleUpdatePostStyle={handleUpdatePostStyle}
+          handleRefineSinglePostAI={handleRefineSinglePostAI}
+          isRefining={isRefining}
+          setPreviewImageModal={setPreviewImageModal}
+          editingPostIndex={editingPostIndex}
+          setEditingPostIndex={setEditingPostIndex}
+          editTopic={editTopic}
+          setEditTopic={setEditTopic}
+          editVisualPrompt={editVisualPrompt}
+          setEditVisualPrompt={setEditVisualPrompt}
+          editCaption={editCaption}
+          setEditCaption={setEditCaption}
+          editHashtags={editHashtags}
+          setEditHashtags={setEditHashtags}
+          editStyle={editStyle}
+          setEditStyle={setEditStyle}
+          editAspect={editAspect}
+          setEditAspect={setEditAspect}
+          startEditingPost={startEditingPost}
+          saveEditedPost={saveEditedPost}
+          campaignName={currentCampaign?.name}
+          campaignId={currentCampaign?.id}
+        />
+      )}
 
       {/* Modals & Overlay Lightboxes */}
       <CampaignRefinementModal
@@ -719,6 +885,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
         handleGenerateVideoScriptAI={handleGenerateVideoScriptAI}
         handleCompileProgrammaticVideoFrame={handleCompileProgrammaticVideoFrame}
         handleUpdateScriptField={handleUpdateScriptField}
+        campaignPosts={campaignPosts}
         synthesizingSpeechMap={synthesizingSpeechMap}
         scriptGeneratingMap={scriptGeneratingMap}
         videoRenderingMap={videoRenderingMap}
@@ -736,8 +903,8 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
       />
 
       {/* Full-res Zoom Modal */}
-      {zoomImageModalUrl && (
-        <div className="fixed inset-0 z-[99999] bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+      {zoomImageModalUrl && createPortal(
+        <div className="fixed inset-0 z-[100000] bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-5xl flex items-center justify-between mb-4 text-white">
             <span className="text-xs font-bold font-mono text-purple-400 uppercase tracking-widest">
               High-Resolution Image Inspector
@@ -767,7 +934,8 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
               Close
             </button>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Floating Toast Notification */}

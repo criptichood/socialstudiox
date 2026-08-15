@@ -19,7 +19,6 @@ import {
   ArrowLeft, 
   Sun, 
   Moon, 
-  Key, 
   RefreshCw, 
   Loader2, 
   Sliders, 
@@ -523,12 +522,6 @@ export const PresenterStudio: React.FC<PresenterStudioProps> = ({
             <Play className="w-4 h-4 fill-current text-amber-300" />
             <span>Present Slides</span>
           </button>
-
-          {onSelectKey && (
-            <button onClick={onSelectKey} className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl transition-colors border border-slate-200 dark:border-slate-700" title="API Key">
-              <Key className="w-4 h-4" />
-            </button>
-          )}
 
           {onToggleDarkMode && (
             <button onClick={onToggleDarkMode} className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl transition-colors border border-slate-200 dark:border-slate-700" title="Toggle Theme">

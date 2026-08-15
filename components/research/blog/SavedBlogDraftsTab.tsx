@@ -18,6 +18,7 @@ interface SavedBlogDraftsTabProps {
   setSelectedEndpointId: (id: string) => void;
   handlePublishBlogToEndpoint: (draft?: SavedBlogDraft) => void;
   isPublishing: boolean;
+  publishingDraftId: string | null;
 }
 
 export const SavedBlogDraftsTab: React.FC<SavedBlogDraftsTabProps> = ({
@@ -34,7 +35,7 @@ export const SavedBlogDraftsTab: React.FC<SavedBlogDraftsTabProps> = ({
   selectedEndpointId,
   setSelectedEndpointId,
   handlePublishBlogToEndpoint,
-  isPublishing,
+  publishingDraftId,
 }) => {
   return (
     <div className="space-y-4">
@@ -69,7 +70,7 @@ export const SavedBlogDraftsTab: React.FC<SavedBlogDraftsTabProps> = ({
           <BookOpen className="w-10 h-10 text-slate-400 mx-auto" />
           <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300">No Saved Drafts Yet</h4>
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
-            Generate a blog post from a campaign or session topic, then click "Save to Drafts" to manage it here.
+            Create a new post with "New Post" or "I'm feeling lucky", then refine it and save it to drafts to manage it here.
           </p>
         </div>
       ) : (
@@ -171,7 +172,8 @@ export const SavedBlogDraftsTab: React.FC<SavedBlogDraftsTabProps> = ({
                         characterCount: draft.characterCount || draft.markdownContent.length,
                         readingTimeMinutes: draft.readingTimeMinutes || 4,
                         embeddedImagesCount: draft.embeddedImagesCount || 0,
-                        sectionImagePrompts: draft.sectionImagePrompts || []
+                        sectionImagePrompts: draft.sectionImagePrompts || [],
+                        relatedPosts: draft.relatedPosts || []
                       });
                       setActiveDraftId(draft.id);
                       setBlogViewMode('preview');
@@ -184,12 +186,12 @@ export const SavedBlogDraftsTab: React.FC<SavedBlogDraftsTabProps> = ({
 
                   <button
                     type="button"
-                    disabled={isPublishing}
+                    disabled={publishingDraftId !== null}
                     onClick={() => handlePublishBlogToEndpoint(draft)}
                     className="px-3.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
                   >
-                    {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                    <span>Publish Now</span>
+                    {publishingDraftId === draft.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    <span>{publishingDraftId === draft.id ? 'Publishing...' : 'Publish Now'}</span>
                   </button>
                 </div>
               </div>

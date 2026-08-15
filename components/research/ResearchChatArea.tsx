@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { 
   Bot, 
   User, 
@@ -22,6 +22,7 @@ import { BlogMarkdownRenderer } from './blog/BlogMarkdownRenderer';
 interface ResearchChatAreaProps {
   activeSession: ResearchSession | undefined;
   isLoading: boolean;
+  loadingStatus?: string;
   copiedId: string | null;
   setCopiedId: (id: string | null) => void;
   editingMessageId: string | null;
@@ -32,7 +33,7 @@ interface ResearchChatAreaProps {
   onSendToSocialCampaign?: (topic: string, prompt: string, companyContext: string) => void;
   onSendToVideoStudio?: (videoPrompt: string, scriptText?: string) => void;
   onSaveToDraftPlanner?: (topic: string, prompt: string) => void;
-  handleGenerateBlogPost: (forcedTopic?: string) => Promise<void>;
+  handleGenerateBlogPost: (forcedTopic?: string, forcedContext?: string) => Promise<void>;
   setIsBlogStudioOpen: (val: boolean) => void;
   setBlogViewMode: (mode: any) => void;
   samplePrompts: { icon: any; badge: string; title: string; prompt: string }[];
@@ -42,6 +43,7 @@ interface ResearchChatAreaProps {
 export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
   activeSession,
   isLoading,
+  loadingStatus = 'Thinking…',
   copiedId,
   setCopiedId,
   editingMessageId,
@@ -59,6 +61,49 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
   handleSendMessage,
 }) => {
   const isSessionEmpty = !activeSession || activeSession.messages.length === 0;
+
+  // Scroll behavior:
+  // - Sending a message always scrolls to the bottom (to the new message).
+  // - An AI reply never yanks the user down: if they're already near the bottom
+  //   it follows, otherwise it only nudges ~10% of the viewport down and stops.
+  // - Any user interaction (wheel / touch / click) during generation cancels
+  //   the auto-scroll so the user stays in control.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const userScrolledRef = useRef(false);
+  const lastSeenRef = useRef<{ id?: string; len: number }>({ id: undefined, len: 0 });
+
+  useEffect(() => {
+    const msgs = activeSession?.messages;
+    const id = activeSession?.id;
+    if (!msgs) return;
+    const len = msgs.length;
+    const prev = lastSeenRef.current;
+    lastSeenRef.current = { id, len };
+    if (prev.id !== id) return; // session switch — don't auto scroll
+    if (len === prev.len) return; // no new message added
+    const last = msgs[len - 1];
+    const el = scrollRef.current;
+    if (!el) return;
+
+    if (last.role === 'user') {
+      // A message was just sent: always bring the new message into view.
+      userScrolledRef.current = false;
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    } else if (!userScrolledRef.current) {
+      // AI reply landed: gentle nudge only, never a full jump.
+      const nearBottom = el.scrollHeight - el.clientHeight - el.scrollTop < 16;
+      if (nearBottom) {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      } else {
+        const nudge = Math.max(32, Math.round(el.clientHeight * 0.1));
+        el.scrollTo({ top: el.scrollTop + nudge, behavior: 'smooth' });
+      }
+    }
+  }, [activeSession?.id, activeSession?.messages.length]);
+
+  const markUserScrolled = () => {
+    userScrolledRef.current = true;
+  };
 
   if (isSessionEmpty) {
     return (
@@ -125,7 +170,13 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
   }
 
   return (
-    <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6">
+    <div
+      ref={scrollRef}
+      onWheel={markUserScrolled}
+      onTouchMove={markUserScrolled}
+      onPointerDown={markUserScrolled}
+      className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6"
+    >
       {activeSession.messages.map((msg) => {
         const isUser = msg.role === 'user';
         const isEditingThis = editingMessageId === msg.id;
@@ -182,8 +233,34 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
                   </div>
                 ) : (
                   <div>
+                    {!isUser && ((msg.searchResults && msg.searchResults.length > 0) || (msg.groundingSources && msg.groundingSources.length > 0)) && (
+                      <div className="inline-flex items-center gap-1 mb-2.5 px-2 py-0.5 rounded-full bg-cyan-100/70 dark:bg-cyan-950/30 text-cyan-700 dark:text-cyan-400 text-[9px] font-bold uppercase tracking-wider font-mono border border-cyan-200 dark:border-cyan-500/20 shadow-xs">
+                        <Globe className="w-3 h-3 text-cyan-600 dark:text-cyan-400 shrink-0" />
+                        <span>Grounded via Google Search</span>
+                      </div>
+                    )}
+                    {!isUser && msg.isDeepResearch && (
+                      <div className="inline-flex items-center gap-1 mb-2.5 px-2 py-0.5 rounded-full bg-indigo-100/70 dark:bg-indigo-950/30 text-indigo-700 dark:text-indigo-400 text-[9px] font-bold uppercase tracking-wider font-mono border border-indigo-200 dark:border-indigo-500/20 shadow-xs">
+                        <Sparkles className="w-3 h-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        <span>Deep Research Mode</span>
+                      </div>
+                    )}
                     {isUser ? (
-                      <p className="text-xs sm:text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
+                      <div className="space-y-2">
+                        {msg.imageUrls && msg.imageUrls.length > 0 && (
+                          <div className="flex flex-wrap justify-end gap-2">
+                            {msg.imageUrls.map((src, idx) => (
+                              <img
+                                key={idx}
+                                src={src}
+                                alt={`Uploaded image ${idx + 1}`}
+                                className="max-w-[160px] max-h-40 object-cover rounded-xl border border-purple-400/40 shadow-sm"
+                              />
+                            ))}
+                          </div>
+                        )}
+                        <p className="text-xs sm:text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
+                      </div>
                     ) : (
                       <BlogMarkdownRenderer content={msg.content} />
                     )}
@@ -271,7 +348,7 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
                     onClick={() => {
                       setIsBlogStudioOpen(true);
                       setBlogViewMode('preview');
-                      handleGenerateBlogPost(msg.suggestedCampaignTopic || activeSession.title);
+                      handleGenerateBlogPost(msg.suggestedCampaignTopic || activeSession.title, msg.content);
                     }}
                     className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg text-[11px] font-bold shadow-xs transition-all flex items-center gap-1 cursor-pointer"
                   >
@@ -290,9 +367,14 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-sm animate-pulse">
             <Bot className="w-4 h-4" />
           </div>
-          <div className="p-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center gap-2 text-xs text-purple-600 dark:text-purple-300 font-medium">
+          <div className="p-4 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-2xl flex items-center gap-2.5 text-xs text-purple-600 dark:text-purple-300 font-medium">
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span>Searching Google & synthesizing multi-source analysis...</span>
+            <span>{loadingStatus}</span>
+            <span className="ml-1 inline-flex gap-1">
+              <span className="w-1 h-1 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-1 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1 h-1 rounded-full bg-purple-400 animate-bounce" style={{ animationDelay: '300ms' }} />
+            </span>
           </div>
         </div>
       )}

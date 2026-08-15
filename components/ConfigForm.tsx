@@ -9,7 +9,8 @@ import {
   CustomDropdown, 
   ComplexityDropdown, 
   StyleDropdown, 
-  LanguageDropdown 
+  LanguageDropdown,
+  ImageModelDropdown
 } from './CustomDropdown';
 import { 
   Search, 
@@ -46,6 +47,8 @@ interface ConfigFormProps {
   setLanguage: (l: Language) => void;
   resolution: AspectRatio;
   setResolution: (r: AspectRatio) => void;
+  imageModel?: string;
+  setImageModel?: (m: string) => void;
   subOptions: Record<string, string>;
   setSubOptions: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   onSubmit: (e: React.FormEvent) => void;
@@ -72,6 +75,8 @@ const ConfigForm: React.FC<ConfigFormProps> = ({
   setLanguage,
   resolution,
   setResolution,
+  imageModel = 'gemini-3.1-flash-image',
+  setImageModel = () => {},
   subOptions,
   setSubOptions,
   onSubmit,
@@ -165,6 +170,15 @@ const ConfigForm: React.FC<ConfigFormProps> = ({
                   <CustomDropdown 
                       value={resolution} 
                       onChange={(val) => setResolution(val)} 
+                  />
+              </div>
+
+              {/* Image Model Selector */}
+              <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider font-display block px-1">Image Model</label>
+                  <ImageModelDropdown 
+                      value={imageModel} 
+                      onChange={(val) => setImageModel(val)} 
                   />
               </div>
 

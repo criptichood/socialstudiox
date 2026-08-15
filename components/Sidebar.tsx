@@ -1,5 +1,5 @@
 import React from 'react';
-import { ViewType } from '../types';
+import { ViewType, Project } from '@/types';
 import { 
   LayoutDashboard, 
   Sparkles, 
@@ -12,7 +12,9 @@ import {
   Presentation,
   Mic,
   Film,
-  Music
+  Music,
+  Cpu,
+  Newspaper
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -20,13 +22,19 @@ interface SidebarProps {
   onViewChange: (view: ViewType) => void;
   isOpen: boolean;
   onToggle: () => void;
+  projects?: Project[];
+  selectedProjectId?: string | null;
+  onSelectProject?: (id: string | null) => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
   currentView, 
   onViewChange, 
   isOpen, 
-  onToggle 
+  onToggle,
+  projects = [],
+  selectedProjectId = null,
+  onSelectProject = () => {}
 }) => {
   const menuItems = [
     { 
@@ -72,8 +80,20 @@ const Sidebar: React.FC<SidebarProps> = ({
       icon: Music 
     },
     { 
+      id: 'models' as const, 
+      label: 'Models', 
+      description: 'AI model management',
+      icon: Cpu 
+    },
+    { 
+      id: 'blog' as const, 
+      label: 'Blog Studio', 
+      description: 'Write, edit & publish posts',
+      icon: Newspaper 
+    },
+    { 
       id: 'drafts' as const, 
-      label: 'Draft Planner', 
+      label: 'Campaigns', 
       description: 'Tweak visual blueprints',
       icon: BookOpen 
     },
@@ -129,6 +149,27 @@ const Sidebar: React.FC<SidebarProps> = ({
           {isOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
         </button>
       </div>
+
+      {/* Project Selector inside Sidebar */}
+      {isOpen && projects && projects.length > 0 && (
+        <div className="px-4 py-3.5 bg-slate-50/50 dark:bg-slate-950/20 border-b border-slate-200 dark:border-slate-800/80 shrink-0 animate-in fade-in duration-200">
+          <label className="block text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest font-mono mb-1.5">
+            Active Workspace
+          </label>
+          <select
+            value={selectedProjectId || ''}
+            onChange={(e) => onSelectProject(e.target.value || null)}
+            className="w-full text-xs font-semibold px-2.5 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl outline-none focus:ring-1 focus:ring-cyan-500 text-slate-850 dark:text-slate-200 cursor-pointer"
+          >
+            <option value="">Standalone Space</option>
+            {projects.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Navigation Links */}
       <nav className="flex-1 px-3 py-6 space-y-2 overflow-y-auto custom-scrollbar">

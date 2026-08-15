@@ -59,10 +59,10 @@ export const ImageDownloadDropdown: React.FC<ImageDownloadDropdownProps> = ({
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
 
   const updatePosition = () => {
-    if (!buttonRef.current) return;
+    if (!buttonRef.current || !menuRef.current) return;
     const rect = buttonRef.current.getBoundingClientRect();
-    const menuWidth = 256; // w-64 = 16rem = 256px
-    const menuHeight = 220; // approximate menu height
+    const menuWidth = menuRef.current.offsetWidth || 256;
+    const menuHeight = menuRef.current.offsetHeight || 220;
 
     let left = rect.right - menuWidth;
     if (left < 8) {
@@ -76,6 +76,8 @@ export const ImageDownloadDropdown: React.FC<ImageDownloadDropdownProps> = ({
     if (rect.bottom + menuHeight > window.innerHeight - 8 && rect.top - menuHeight > 8) {
       top = rect.top - menuHeight - 8;
     }
+    // Final clamp so the menu never runs off-screen even when it grows taller than the estimate
+    top = Math.max(8, Math.min(top, window.innerHeight - menuHeight - 8));
 
     setMenuPosition({ top, left });
   };
@@ -164,7 +166,7 @@ export const ImageDownloadDropdown: React.FC<ImageDownloadDropdownProps> = ({
           top: `${menuPosition.top}px`,
           left: `${menuPosition.left}px`,
         }}
-        className="w-64 rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl z-[99999] overflow-hidden backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 p-1.5 space-y-1 text-left"
+        className="w-64 max-h-[min(70vh,30rem)] overflow-y-auto custom-scrollbar rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl z-[99999] backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 p-1.5 space-y-1 text-left"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
