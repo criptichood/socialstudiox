@@ -32,8 +32,13 @@ import { PostDetailModal } from '@/components/drafts/campaign/PostDetailModal';
  * on-slide text comes from the slide's own `title` / `contentText`, which is
  * injected separately so the model displays that content instead of inventing
  * text out of design-description phrases (e.g. "crisp high-contrast bold text").
+ *
+ * When generating slide N, the titles/content of slides 1..N-1 are injected as
+ * CONTEXT so continuation slides (a summary, checklist, or "what we covered"
+ * final slide) know what was actually discussed before and can base their
+ * rendered items on it instead of starting from a blank slate.
  */
-const buildSlideImagePrompt = (slide: CarouselSlide | null, post: SocialPostCampaignItem): string => {
+const buildSlideImagePrompt = (slide: CarouselSlide | null, post: SocialPostCampaignItem, slideIdx?: number): string => {
   if (!slide) return post.visualPrompt || '';
   const designSpec = (slide.visualPrompt || '').trim();
   const displayText = [slide.title, slide.contentText]
@@ -41,17 +46,40 @@ const buildSlideImagePrompt = (slide: CarouselSlide | null, post: SocialPostCamp
     .map(t => t.trim())
     .join('\n');
 
+  let prevContext = '';
+  if (post.slides && post.slides.length > 0 && typeof slideIdx === 'number' && slideIdx > 0) {
+    const earlierSlides = post.slides
+      .slice(0, slideIdx)
+      .map(s => {
+        const title = (s.title || '').trim();
+        const content = (s.contentText || '').trim();
+        const contentClip = content.length > 400 ? `${content.slice(0, 400)}…` : content;
+        return `- Slide ${s.slideNumber}: ${title}${contentClip ? ` — ${contentClip}` : ''}`;
+      })
+      .filter(Boolean)
+      .join('\n');
+    if (earlierSlides) {
+      prevContext = `
+
+[CONTENT OF THE PREVIOUS SLIDES IN THIS DECK — context ONLY, do NOT render any of it on this slide]:
+${earlierSlides}`;
+    }
+  }
+
+  const contextRule = `
+- If this slide summarizes, checks, or follows up on earlier slides, base its listed points (e.g. summary items or checklist entries) on the actual topics covered in the [CONTENT OF THE PREVIOUS SLIDES] section.`;
+
   const noRenderWording = `
 CRITICAL RULES:
 - The description above is ONLY a design specification (layout, composition, objects, colors, and typography styling). It is NOT text to be displayed.
 - Do NOT render any words from the design specification as literal text on the image (e.g. never print phrases like "crisp high-contrast bold white text", "precise text labels", "title goes here", or "Slide N showing...").
-- Only render text that the specification explicitly quotes for display.`;
+- Only render text that the specification explicitly quotes for display.${contextRule}`;
 
   if (!displayText) {
-    return `${designSpec}${noRenderWording}`;
+    return `${designSpec}${prevContext}${noRenderWording}`;
   }
 
-  return `${designSpec}
+  return `${designSpec}${prevContext}
 
 [TEXT TO DISPLAY ON THE SLIDE — render EXACTLY this text and nothing else]:
 ${displayText}
@@ -60,7 +88,7 @@ CRITICAL RULES:
 - The description above is ONLY a design specification (layout, composition, objects, colors, and typography styling). It is NOT text to be displayed.
 - Render ONLY the words from the [TEXT TO DISPLAY ON THE SLIDE] section as the text on the image — no more, no less.
 - Do NOT render any words from the design specification as literal text on the image (e.g. never print phrases like "crisp high-contrast bold white text", "precise text labels", "title goes here", or "Slide N showing...").
-- Apply the typography, color, contrast, and styling implied by the design specification to that text.`;
+- Apply the typography, color, contrast, and styling implied by the design specification to that text.${contextRule}`;
 };
 
 interface CampaignWorkspaceProps {
@@ -671,7 +699,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
 
     try {
       const activeSlide = (post.slides && post.slides.length > 0) ? post.slides[slideIdx] : null;
-      const promptToUse = buildSlideImagePrompt(activeSlide, post);
+      const promptToUse = buildSlideImagePrompt(activeSlide, post, activeSlide ? slideIdx : undefined);
 
       const base64Data = await generateInfographicImage(
         promptToUse,
