@@ -34,6 +34,8 @@ import {
 } from '@/services/videoGenerationManager';
 import { DBService } from '@/services/dbService';
 import { PENDING_CAMPAIGN_KEY, PENDING_VIDEO_KEY } from '@/lib/pendingPrefills';
+import { curateResearchBrief } from '@/services/ai/campaignService';
+import { beginLoading, resolveToast, logTechnicalError } from '@/lib/feedback';
 import { 
   AlertCircle, 
   Compass, 
@@ -547,11 +549,26 @@ const App: React.FC = () => {
           {currentView === 'research' && (
             <ErrorBoundary fallbackTitle="Research Center Display Interrupted">
               <ResearchCenter 
-                onSendToSocialCampaign={(topic, prompt, companyContext) => {
+                onSendToSocialCampaign={async (topic, prompt, companyContext) => {
+                  let objective = topic || '';
+                  let styleGuide = prompt || '';
+                  if (prompt) {
+                    const toastId = beginLoading('Curating campaign brief…');
+                    try {
+                      const brief = await curateResearchBrief(topic || '', prompt, companyContext || '', 'campaign');
+                      if (brief.objective) objective = brief.objective;
+                      if (brief.styleGuide) styleGuide = brief.styleGuide;
+                      resolveToast(toastId, 'success', 'Campaign brief ready');
+                    } catch (err) {
+                      resolveToast(toastId, 'error', 'Could not curate brief — using original topic');
+                      logTechnicalError('curateResearchBrief', err);
+                    }
+                  }
                   try {
                     sessionStorage.setItem(PENDING_CAMPAIGN_KEY, JSON.stringify({
-                      topic: topic || '',
-                      prompt: prompt || '',
+                      name: topic || '',
+                      topic: objective,
+                      prompt: styleGuide,
                       website: companyContext || ''
                     }));
                   } catch { /* no-op */ }

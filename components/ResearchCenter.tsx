@@ -5,6 +5,8 @@ import { loadModelSettings } from '@/services/ai/modelService';
 import { gatewayBackendForId, textModelSupportsVision } from '@/types';
 import { ResearchSession, ChatMessageItem } from '../types';
 import { useBlogEngine } from '@/hooks/useBlogEngine';
+import { curateResearchBrief } from '@/services/ai/campaignService';
+import { beginLoading, resolveToast, logTechnicalError } from '@/lib/feedback';
 
 import { ResearchSidebar } from './research/ResearchSidebar';
 import { ResearchChatArea } from './research/ResearchChatArea';
@@ -385,12 +387,28 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   // user can review the bundled data before clicking generate.
   const pendingBlogContextRef = React.useRef<string>('');
 
-  const handleOpenBlogComposer = (topic: string, context: string) => {
+  const handleOpenBlogComposer = async (topic: string, context: string) => {
     pendingBlogContextRef.current = context || '';
     blogEngine.setNewPostIdeaInput(topic || '');
     setIsBlogStudioOpen(true);
     setBlogViewMode('preview');
     blogEngine.setIsNewPostComposerOpen(true);
+
+    // Curate the clicked reply into a rich blog brief instead of leaving the
+    // composer prefilled with just the plain topic name. Won't clobber input
+    // the user already started typing.
+    if (!context) return;
+    const toastId = beginLoading('Curating blog brief…');
+    try {
+      const brief = await curateResearchBrief(topic || '', context, activeSession?.companyContext || '', 'blog');
+      if (brief.objective && blogEngine.newPostIdeaInput === (topic || '')) {
+        blogEngine.setNewPostIdeaInput(brief.objective);
+      }
+      resolveToast(toastId, 'success', 'Blog brief ready');
+    } catch (err) {
+      resolveToast(toastId, 'error', 'Could not curate brief — using original topic');
+      logTechnicalError('curateResearchBrief', err);
+    }
   };
 
   const buildResearchThreadSummary = (): string => {

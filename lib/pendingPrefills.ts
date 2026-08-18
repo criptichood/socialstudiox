@@ -11,6 +11,9 @@ export const PENDING_CAMPAIGN_KEY = 'social_studio_x_pending_campaign_v1';
 export const PENDING_VIDEO_KEY = 'social_studio_x_pending_video_v1';
 
 export interface PendingCampaignPrefill {
+  /** Short human-readable campaign name (from the clicked message heading). */
+  name?: string;
+  /** Curated objective — prefilled into the Main Campaign Topic / Objective field. */
   topic: string;
   prompt: string;
   website: string;

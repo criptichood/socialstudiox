@@ -1145,3 +1145,105 @@ export const suggestBlogTopics = async (
   }
 };
 
+export interface CuratedResearchBrief {
+  objective: string;
+  styleGuide: string;
+}
+
+/**
+ * Curate a research-chat reply into a concise, structured brief the moment the
+ * user clicks "Send to Social Campaign" / "Create Blog Post". This keeps the
+ * prefilled objective field rich and faithful to the reply instead of dumping
+ * the raw topic name (or the entire noisy reply) into the composer.
+ *
+ * `target` tailors the extraction: 'campaign' returns a social campaign
+ * objective (angle, coverage, visual/slide direction), 'blog' returns a
+ * title-worthy blog idea (topic, angle, sections, audience).
+ */
+export const curateResearchBrief = async (
+  topic: string,
+  replyContent: string,
+  website?: string,
+  target: 'campaign' | 'blog' = 'campaign',
+  modelName: string = TEXT_MODEL,
+  customApiKey?: string
+): Promise<CuratedResearchBrief> => {
+  const source = replyContent.trim().slice(0, 12000);
+
+  const targetInstruction = target === 'campaign'
+    ? `"objective" must be a focused SOCIAL CAMPAIGN brief (3-6 sentences or short bullets) that:
+       - States what the campaign is about and its core angle, derived from the reply content — not just the topic name "${topic}".
+       - Captures the key points, structure, and "how to go about it" the reply actually covers.
+       - Includes any visual/slide direction the reply describes (how the carousel deck should look, slide layouts, styling).
+       - Never invents facts, lead-gen funnels, or CTAs that aren't in the reply.`
+    : `"objective" must be a compelling BLOG POST idea (2-4 sentences) that:
+       - Leads with a strong, title-worthy topic derived from the reply content — not just the topic name "${topic}".
+       - States the core angle, the key sections the post should cover, and who it's for.
+       - Never invents facts or claims that aren't in the reply.`;
+
+  const styleGuideInstruction = target === 'campaign'
+    ? `"styleGuide" must be a short (2-4 sentences) VISUAL direction string for image generation: branding/color cues, slide layout, illustration style — only what the reply says or reasonably implies. If the reply has no visual guidance, return "".`
+    : `"styleGuide" must be an empty string "" (not used for blog posts).`;
+
+  const prompt = `
+    You are an expert content strategist. A user researched a brand using an AI research chat and now wants to turn ONE of the research replies into content. Read the research reply below and extract a concise, high-quality brief that captures its substance.
+
+    **TOPIC (short heading the user clicked)**: "${topic}"
+    ${website ? `**BRAND WEBSITE**: "${website}"` : ""}
+
+    **TARGET**: ${target}
+
+    **REQUIREMENTS**:
+    - Filter out the reply's noise (chat framing, meta commentary, disclaimers, repetition) and keep only what genuinely belongs in the target content.
+    ${targetInstruction}
+    ${styleGuideInstruction}
+
+    Return ONLY a valid JSON object with exactly these two keys:
+    {
+      "objective": "...",
+      "styleGuide": "..."
+    }
+    Do not include markdown wraps or any text outside the JSON.
+  `;
+
+  const fallback: CuratedResearchBrief = {
+    objective: topic?.trim() || 'Research Insights',
+    styleGuide: ''
+  };
+
+  try {
+    const response = await getAi(customApiKey).models.generateContent({
+      model: modelName || TEXT_MODEL,
+      contents: `${prompt}\n\n**RESEARCH REPLY**:\n${source}`,
+      config: {
+        responseMimeType: 'application/json',
+      },
+    });
+
+    const candidates = response.candidates || [];
+    const parts = candidates[0]?.content?.parts || [];
+    let text = parts
+      .filter((p: { text?: string }) => typeof p.text === 'string')
+      .map((p: { text?: string }) => p.text ?? '')
+      .join('');
+
+    if (!text) {
+      try { text = response.text || ''; } catch { text = ''; }
+    }
+
+    text = text.replace(/```json/gi, '').replace(/```/g, '').trim();
+    if (!text) return fallback;
+
+    const parsed = JSON.parse(text) as Partial<CuratedResearchBrief>;
+    return {
+      objective: typeof parsed.objective === 'string' && parsed.objective.trim()
+        ? parsed.objective.trim()
+        : fallback.objective,
+      styleGuide: typeof parsed.styleGuide === 'string' ? parsed.styleGuide.trim() : '',
+    };
+  } catch (err: any) {
+    console.error("[Campaign Service] curateResearchBrief failed:", err?.message || err);
+    return fallback;
+  }
+};
+

@@ -126,13 +126,14 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
     try {
       const parsed = JSON.parse(raw) as Partial<PendingCampaignPrefill>;
       pendingCampaignRef.current = {
+        name: typeof parsed.name === 'string' ? parsed.name : '',
         topic: typeof parsed.topic === 'string' ? parsed.topic : '',
         prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
         website: typeof parsed.website === 'string' ? parsed.website : ''
       };
       if (pendingCampaignRef.current.topic || pendingCampaignRef.current.prompt) {
         if (pendingCampaignRef.current.topic) {
-          setNewCampName(`${pendingCampaignRef.current.topic} Campaign`);
+          setNewCampName(pendingCampaignRef.current.name || `${pendingCampaignRef.current.topic} Campaign`);
           setNewCampTopic(pendingCampaignRef.current.topic);
         }
         if (pendingCampaignRef.current.prompt) {

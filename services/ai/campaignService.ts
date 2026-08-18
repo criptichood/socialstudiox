@@ -90,6 +90,48 @@ export const generateSocialCampaign = async (
   }
 };
 
+export interface CuratedResearchBrief {
+  objective: string;
+  styleGuide: string;
+}
+
+/**
+ * Curate a research-chat reply into a concise brief before handing it off to
+ * the social campaign or blog composer. See services/server/campaignService.ts.
+ */
+export const curateResearchBrief = async (
+  topic: string,
+  replyContent: string,
+  website?: string,
+  target: 'campaign' | 'blog' = 'campaign',
+  modelName?: string
+): Promise<CuratedResearchBrief> => {
+  const response = await fetch("/api/campaign/curate", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      topic,
+      replyContent,
+      website,
+      target,
+      modelName
+    })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || "Brief curation failed");
+  }
+
+  const data = await response.json();
+  if (!data.brief || typeof data.brief.objective !== 'string') {
+    throw new Error("Brief curation returned no usable result");
+  }
+  return data.brief as CuratedResearchBrief;
+};
+
 export const generateSingleSocialPost = async (
   websiteUrl: string,
   campaignTopic: string,
