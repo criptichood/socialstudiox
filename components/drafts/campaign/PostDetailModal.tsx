@@ -204,12 +204,13 @@ export const PostDetailModal: React.FC<PostDetailModalProps> = ({
   const aspectRatioClass = (ar?: AspectRatio) => {
     switch (ar) {
       case '9:16': return 'aspect-[9/16] max-h-[60vh]';
+      case '4:5': return 'aspect-[4/5] max-h-[60vh]';
       case '16:9': return 'aspect-video';
       default: return 'aspect-square';
     }
   };
 
-  const aspectOptions: AspectRatio[] = ['1:1', '9:16', '16:9'];
+  const aspectOptions: AspectRatio[] = ['1:1', '4:5', '9:16', '16:9'];
   const styleOptions: VisualStyle[] = ['Default', 'Minimalist', 'Realistic', 'Cartoon', 'Vintage', 'Futuristic', '3D Render', 'Sketch', 'Carousel'];
 
   return createPortal(

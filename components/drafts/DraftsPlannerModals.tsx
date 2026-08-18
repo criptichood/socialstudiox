@@ -603,7 +603,7 @@ export const AddPostManualModal: React.FC<ManualPostModalProps> = ({
                   onChange={(e) => setAspect(e.target.value as AspectRatio)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer font-medium"
                 >
-                  {['1:1', '16:9', '9:16'].map(r => (
+                  {['1:1', '4:5', '16:9', '9:16'].map(r => (
                     <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{r}</option>
                   ))}
                 </select>

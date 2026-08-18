@@ -16,6 +16,8 @@ const buildAspectInstruction = (resolution: AspectRatio): string => {
     case '1:1':
     default:
       return 'IMPORTANT: Generate this image in SQUARE format (1:1 aspect ratio, equal width and height, like an Instagram post or profile picture).';
+    case '4:5':
+      return 'IMPORTANT: Generate this image in PORTRAIT / 4:5 aspect ratio (slightly taller than wide, like a standard Instagram / LinkedIn feed post). The canvas should be a bit taller than it is wide.';
   }
 };
 

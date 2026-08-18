@@ -216,7 +216,7 @@ export const generateSocialCampaign = async (
     }
 
     The "suggestedStyle" property MUST be one of: "Default", "Minimalist", "Realistic", "Cartoon", "Vintage", "Futuristic", "3D Render", "Sketch", "Carousel".
-    The "aspectRatio" property MUST be one of: "16:9", "9:16", "1:1".
+    The "aspectRatio" property MUST be one of: "16:9", "9:16", "1:1", "4:5".
     If a post is a multi-slide carousel, set "isCarousel": true and include exactly ${effectiveSlidesPerPost} slides in the "slides" array.
     
     Return ONLY a valid JSON array. Do not include markdown wraps, code block symbols, or any introductory/concluding text.
@@ -317,7 +317,7 @@ export const generateSingleSocialPost = async (
     }
 
     The "suggestedStyle" property MUST be one of: "Default", "Minimalist", "Realistic", "Cartoon", "Vintage", "Futuristic", "3D Render", "Sketch".
-    The "aspectRatio" property MUST be one of: "16:9", "9:16", "1:1".
+    The "aspectRatio" property MUST be one of: "16:9", "9:16", "1:1", "4:5".
     
     Return ONLY a valid JSON object. Do not include markdown wraps, code block symbols, or any introductory/concluding text.
   `;
@@ -470,7 +470,7 @@ export const conductResearchChat = async (
     - **Topic**: [Short clean campaign name]
     - **Visual & Campaign Prompt**: [Comprehensive prompt describing post objective, visual layout, and slide structure]
     - **Target Platform**: [Instagram / LinkedIn / TikTok / Twitter]
-    - **Aspect Ratio**: [9:16 Portrait / 1:1 Square / 16:9 Landscape]
+    - **Aspect Ratio**: [9:16 Portrait / 1:1 Square / 4:5 Feed / 16:9 Landscape]
     - **Visual Style**: [Carousel / Minimalist / Realistic / 3D Render]
     ---
 
@@ -479,7 +479,7 @@ export const conductResearchChat = async (
     ### 🎥 Recommended Video Script & Scene Setup
     - **Video Scene Prompt**: [Detailed camera motion & visual description for AI video rendering, e.g., "Cinematic slow motion macro shot of..."]
     - **Full Video Script**: [Voiceover narration & text overlay script with timestamps]
-    - **Aspect Ratio**: [9:16 Portrait / 1:1 Square / 16:9 Landscape]
+    - **Aspect Ratio**: [9:16 Portrait / 1:1 Square / 4:5 Feed / 16:9 Landscape]
     ---
   `;
 

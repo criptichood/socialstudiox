@@ -20,6 +20,12 @@ export const AspectRatioIcon: React.FC<AspectRatioIconProps> = ({ aspect, classN
           <span className="w-4 h-2.5 border-2 border-current rounded-[3px] block flex-shrink-0" />
         </span>
       );
+    case '4:5':
+      return (
+        <span className={`inline-flex items-center justify-center ${className}`} title="4:5 Portrait Feed Post">
+          <span className="w-2.5 h-[13px] border-2 border-current rounded-[3px] block flex-shrink-0" />
+        </span>
+      );
     case '1:1':
     default:
       return (
@@ -36,6 +42,8 @@ export const getAspectLabel = (aspect: AspectRatio): string => {
       return '9:16 Portrait (Mobile Story / Reel)';
     case '16:9':
       return '16:9 Landscape (Banner / Desktop)';
+    case '4:5':
+      return '4:5 Portrait (Social Feed Post)';
     case '1:1':
     default:
       return '1:1 Square (Feed Post)';
@@ -48,6 +56,8 @@ export const getAspectShortLabel = (aspect: AspectRatio): string => {
       return '9:16 Portrait';
     case '16:9':
       return '16:9 Landscape';
+    case '4:5':
+      return '4:5 Portrait';
     case '1:1':
     default:
       return '1:1 Square';

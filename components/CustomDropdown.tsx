@@ -5,6 +5,7 @@ import {
   Monitor, 
   Smartphone, 
   Square, 
+  Image,
   GraduationCap, 
   Palette, 
   Globe, 
@@ -138,6 +139,12 @@ export const CustomDropdown: React.FC<CustomDropdownProps> = ({ value, onChange,
       label: 'Portrait',
       sublabel: '9:16 Vertical mobile story',
       icon: <Smartphone className="w-4 h-4 text-purple-400" />
+    },
+    {
+      value: '4:5',
+      label: 'Feed Post',
+      sublabel: '4:5 Classic social feed post',
+      icon: <Image className="w-4 h-4 text-emerald-400" />
     },
     {
       value: '1:1',

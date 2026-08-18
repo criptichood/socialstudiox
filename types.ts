@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-export type AspectRatio = '16:9' | '9:16' | '1:1';
+export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:5';
 
 export type ImageModelId =
   | 'gemini-3.1-flash-image'
