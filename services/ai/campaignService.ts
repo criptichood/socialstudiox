@@ -91,6 +91,7 @@ export const generateSocialCampaign = async (
 };
 
 export interface CuratedResearchBrief {
+  name: string;
   objective: string;
   styleGuide: string;
 }

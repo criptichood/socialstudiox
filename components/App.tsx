@@ -550,12 +550,14 @@ const App: React.FC = () => {
             <ErrorBoundary fallbackTitle="Research Center Display Interrupted">
               <ResearchCenter 
                 onSendToSocialCampaign={async (topic, prompt, companyContext) => {
+                  let campaignName = topic || '';
                   let objective = topic || '';
                   let styleGuide = prompt || '';
                   if (prompt) {
                     const toastId = beginLoading('Curating campaign brief…');
                     try {
                       const brief = await curateResearchBrief(topic || '', prompt, companyContext || '', 'campaign');
+                      if (brief.name) campaignName = brief.name;
                       if (brief.objective) objective = brief.objective;
                       if (brief.styleGuide) styleGuide = brief.styleGuide;
                       resolveToast(toastId, 'success', 'Campaign brief ready');
@@ -566,7 +568,7 @@ const App: React.FC = () => {
                   }
                   try {
                     sessionStorage.setItem(PENDING_CAMPAIGN_KEY, JSON.stringify({
-                      name: topic || '',
+                      name: campaignName,
                       topic: objective,
                       prompt: styleGuide,
                       website: companyContext || ''

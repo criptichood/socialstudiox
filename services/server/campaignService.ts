@@ -1146,6 +1146,8 @@ export const suggestBlogTopics = async (
 };
 
 export interface CuratedResearchBrief {
+  /** Short catchy campaign/blog title, derived from the reply — not the raw topic heading. */
+  name: string;
   objective: string;
   styleGuide: string;
 }
@@ -1185,6 +1187,10 @@ export const curateResearchBrief = async (
     ? `"styleGuide" must be a short (2-4 sentences) VISUAL direction string for image generation: branding/color cues, slide layout, illustration style — only what the reply says or reasonably implies. If the reply has no visual guidance, return "".`
     : `"styleGuide" must be an empty string "" (not used for blog posts).`;
 
+  const nameInstruction = target === 'campaign'
+    ? `"name" must be a short, catchy SOCIAL CAMPAIGN NAME (3-8 words, no trailing "Campaign") that captures the campaign's focus and angle — something a marketer would write on a project folder. Do NOT just reuse the raw topic heading "${topic}".`
+    : `"name" must be a short WORKING BLOG TITLE (3-8 words) for the blog post, derived from the reply.`;
+
   const prompt = `
     You are an expert content strategist. A user researched a brand using an AI research chat and now wants to turn ONE of the research replies into content. Read the research reply below and extract a concise, high-quality brief that captures its substance.
 
@@ -1195,11 +1201,13 @@ export const curateResearchBrief = async (
 
     **REQUIREMENTS**:
     - Filter out the reply's noise (chat framing, meta commentary, disclaimers, repetition) and keep only what genuinely belongs in the target content.
+    ${nameInstruction}
     ${targetInstruction}
     ${styleGuideInstruction}
 
-    Return ONLY a valid JSON object with exactly these two keys:
+    Return ONLY a valid JSON object with exactly these three keys:
     {
+      "name": "...",
       "objective": "...",
       "styleGuide": "..."
     }
@@ -1207,6 +1215,7 @@ export const curateResearchBrief = async (
   `;
 
   const fallback: CuratedResearchBrief = {
+    name: topic?.trim() || 'Research Insights',
     objective: topic?.trim() || 'Research Insights',
     styleGuide: ''
   };
@@ -1236,6 +1245,9 @@ export const curateResearchBrief = async (
 
     const parsed = JSON.parse(text) as Partial<CuratedResearchBrief>;
     return {
+      name: typeof parsed.name === 'string' && parsed.name.trim()
+        ? parsed.name.trim()
+        : fallback.name,
       objective: typeof parsed.objective === 'string' && parsed.objective.trim()
         ? parsed.objective.trim()
         : fallback.objective,
