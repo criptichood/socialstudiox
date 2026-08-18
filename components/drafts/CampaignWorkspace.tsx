@@ -25,6 +25,44 @@ import { VideoStudioLightboxModal } from '@/components/drafts/campaign/VideoStud
 import { PostCardItem } from '@/components/drafts/campaign/PostCardItem';
 import { PostDetailModal } from '@/components/drafts/campaign/PostDetailModal';
 
+/**
+ * Compose the image-generation prompt for a carousel slide. The slide's
+ * `visualPrompt` is a DESIGN SPECIFICATION (layout, objects, colors, styling) —
+ * the AI must NOT render its wording as literal text on the image. The actual
+ * on-slide text comes from the slide's own `title` / `contentText`, which is
+ * injected separately so the model displays that content instead of inventing
+ * text out of design-description phrases (e.g. "crisp high-contrast bold text").
+ */
+const buildSlideImagePrompt = (slide: CarouselSlide | null, post: SocialPostCampaignItem): string => {
+  if (!slide) return post.visualPrompt || '';
+  const designSpec = (slide.visualPrompt || '').trim();
+  const displayText = [slide.title, slide.contentText]
+    .filter((t): t is string => !!t && t.trim().length > 0)
+    .map(t => t.trim())
+    .join('\n');
+
+  const noRenderWording = `
+CRITICAL RULES:
+- The description above is ONLY a design specification (layout, composition, objects, colors, and typography styling). It is NOT text to be displayed.
+- Do NOT render any words from the design specification as literal text on the image (e.g. never print phrases like "crisp high-contrast bold white text", "precise text labels", "title goes here", or "Slide N showing...").
+- Only render text that the specification explicitly quotes for display.`;
+
+  if (!displayText) {
+    return `${designSpec}${noRenderWording}`;
+  }
+
+  return `${designSpec}
+
+[TEXT TO DISPLAY ON THE SLIDE — render EXACTLY this text and nothing else]:
+${displayText}
+
+CRITICAL RULES:
+- The description above is ONLY a design specification (layout, composition, objects, colors, and typography styling). It is NOT text to be displayed.
+- Render ONLY the words from the [TEXT TO DISPLAY ON THE SLIDE] section as the text on the image — no more, no less.
+- Do NOT render any words from the design specification as literal text on the image (e.g. never print phrases like "crisp high-contrast bold white text", "precise text labels", "title goes here", or "Slide N showing...").
+- Apply the typography, color, contrast, and styling implied by the design specification to that text.`;
+};
+
 interface CampaignWorkspaceProps {
   activeCampaignId: string;
   savedCampaigns: SavedCampaign[];
@@ -633,7 +671,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
 
     try {
       const activeSlide = (post.slides && post.slides.length > 0) ? post.slides[slideIdx] : null;
-      const promptToUse = activeSlide ? activeSlide.visualPrompt : post.visualPrompt;
+      const promptToUse = buildSlideImagePrompt(activeSlide, post);
 
       const base64Data = await generateInfographicImage(
         promptToUse,
