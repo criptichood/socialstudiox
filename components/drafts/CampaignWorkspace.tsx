@@ -658,6 +658,12 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
     }
   };
 
+  // Save an edited visual prompt (slide-level for carousels, post-level otherwise)
+  const handleUpdateSlidePrompt = (postIdx: number, slideIdx: number | null, prompt: string) => {
+    updatePostField(postIdx, slideIdx, 'visualPrompt', prompt);
+    triggerToast('Visual prompt updated');
+  };
+
   // Focused post state for the detail/zoom lightbox
   const [focusedPostIndex, setFocusedPostIndex] = useState<number | null>(null);
 
@@ -824,6 +830,7 @@ export const CampaignWorkspace: React.FC<CampaignWorkspaceProps> = ({
           onNavigate={(newIdx) => setFocusedPostIndex(newIdx)}
           handleStartVisualGeneration={handleStartVisualGeneration}
           generatorState={generatorState}
+          handleUpdateSlidePrompt={handleUpdateSlidePrompt}
           handleSavePostAsDraft={handleSavePostAsDraft}
           handleLaunchPost={handleLaunchPost}
           handleDeletePost={handleDeletePost}
