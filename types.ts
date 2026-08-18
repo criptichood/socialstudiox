@@ -517,6 +517,8 @@ export interface SavedCampaign {
   mainTopic: string;
   platform: string;
   postCount: number;
+  /** Number of carousel slides per carousel deck post (user-selected at creation) */
+  slidesPerPost?: number;
   customRequirements?: string;
   aiModel?: string;
   /** User-selected aspect ratio at campaign creation — preserved across re-generations */

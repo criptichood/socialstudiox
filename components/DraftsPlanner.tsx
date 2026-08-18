@@ -56,6 +56,7 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
     newCampTopic, setNewCampTopic,
     newCampPlatform, setNewCampPlatform,
     newCampPostCount, setNewCampPostCount,
+    newCampSlidesPerPost, setNewCampSlidesPerPost,
     newCampStyleGuide, setNewCampStyleGuide,
     newCampAspect, setNewCampAspect,
     newCampStyle, setNewCampStyle,
@@ -425,6 +426,8 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
         setPlatform={setNewCampPlatform}
         postCount={newCampPostCount}
         setPostCount={setNewCampPostCount}
+        slidesPerPost={newCampSlidesPerPost}
+        setSlidesPerPost={setNewCampSlidesPerPost}
         styleGuide={newCampStyleGuide}
         setStyleGuide={setNewCampStyleGuide}
         startMethod={startMethod}

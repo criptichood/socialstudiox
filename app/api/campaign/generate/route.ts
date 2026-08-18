@@ -4,7 +4,7 @@ import { generateSocialCampaign } from "@/services/server/campaignService";
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { websiteUrl, mainTopic, platform, postCount, refinementInstructions, templateName, modelName } = body;
+    const { websiteUrl, mainTopic, platform, postCount, slidesPerPost, refinementInstructions, templateName, modelName } = body;
     const customApiKey = request.headers.get("x-gemini-api-key") || undefined;
 
     if (!websiteUrl || !mainTopic || !platform || !postCount) {
@@ -16,6 +16,7 @@ export async function POST(request: Request) {
       mainTopic,
       platform,
       postCount,
+      slidesPerPost,
       refinementInstructions,
       templateName,
       modelName,

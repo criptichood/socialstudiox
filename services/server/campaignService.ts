@@ -112,6 +112,7 @@ export const generateSocialCampaign = async (
   mainTopic: string,
   platform: string,
   postCount: number,
+  slidesPerPost?: number,
   refinementInstructions?: string,
   templateName?: string,
   modelName: string = TEXT_MODEL,
@@ -153,12 +154,16 @@ export const generateSocialCampaign = async (
     }
   }
 
+  const effectiveSlidesPerPost = slidesPerPost && slidesPerPost >= 1 && slidesPerPost <= 12 ? Math.round(slidesPerPost) : 5;
+
   const prompt = `
     You are an expert Social Media Campaign Strategist and Visual Carousel Creator.
     Your goal is to research the following company/website: "${websiteUrl}"
     and plan a highly engaging, high-performing campaign about: "${mainTopic}" for platform: "${platform}".
     
-    Generate exactly ${postCount} highly tailored posts/carousels.
+    Generate exactly ${postCount} post(s). Do NOT generate extra posts beyond this count — each object in the response array is ONE post.
+    
+    **SLIDE COUNT (USER-SELECTED — OVERRIDES TEMPLATES)**: When a post is a carousel deck, its "slides" array must contain EXACTLY ${effectiveSlidesPerPost} slides — no more, no less. This is the number of carousel slides the user picked for each post; it overrides any slide-count range (e.g. "4 to 6 slides") mentioned in a Content Format Template.
     
     ${templatePrompt ? `**CONTENT FORMAT TEMPLATE (FORMAT-ONLY — NEVER REPLACES THE USER'S OBJECTIVE BELOW)**: ${templatePrompt}` : ""}
     
@@ -175,7 +180,7 @@ export const generateSocialCampaign = async (
     
     **CAMPAIGN NARRATIVE CONTINUITY**:
     Ensure that Post #1, Post #2, Post #3... form a cohesive, back-to-back narrative sequence where each post seamlessly builds upon the previous post's concepts without breaking topic context or branding tone.
-    If the template is a Carousel or if the visual style is "Carousel", set "isCarousel": true for every post and generate 3 to 6 detailed slides per post.
+    If the template is a Carousel or if the visual style is "Carousel", set "isCarousel": true for every post and generate exactly ${effectiveSlidesPerPost} detailed slides per post.
 
     
     You must return your response as a JSON array of post objects. Each object in the array MUST strictly follow this JSON structure:
@@ -212,7 +217,7 @@ export const generateSocialCampaign = async (
 
     The "suggestedStyle" property MUST be one of: "Default", "Minimalist", "Realistic", "Cartoon", "Vintage", "Futuristic", "3D Render", "Sketch", "Carousel".
     The "aspectRatio" property MUST be one of: "16:9", "9:16", "1:1".
-    If a post is a multi-slide carousel, set "isCarousel": true and include 3 to 6 slides in the "slides" array.
+    If a post is a multi-slide carousel, set "isCarousel": true and include exactly ${effectiveSlidesPerPost} slides in the "slides" array.
     
     Return ONLY a valid JSON array. Do not include markdown wraps, code block symbols, or any introductory/concluding text.
   `;

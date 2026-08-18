@@ -39,6 +39,7 @@ export const generateSocialCampaign = async (
   mainTopic: string,
   platform: string,
   postCount: number,
+  slidesPerPost?: number,
   refinementInstructions?: string,
   templateName?: string,
   modelName?: string
@@ -48,6 +49,7 @@ export const generateSocialCampaign = async (
     mainTopic,
     platform,
     postCount,
+    slidesPerPost,
     refinementInstructions,
     templateName,
     modelName
@@ -64,6 +66,7 @@ export const generateSocialCampaign = async (
         mainTopic,
         platform,
         postCount,
+        slidesPerPost,
         refinementInstructions,
         templateName,
         modelName
