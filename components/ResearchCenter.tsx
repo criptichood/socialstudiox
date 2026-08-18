@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 
 const STORAGE_KEY = 'social_studio_x_research_sessions_v3';
+const ACTIVE_SESSION_KEY = 'social_studio_x_active_research_session_id';
 
 interface ResearchCenterProps {
   onSendToSocialCampaign?: (topic: string, prompt: string, companyContext: string) => void;
@@ -83,7 +84,21 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         const storedSessions = await DBService.getItem<ResearchSession[]>(STORAGE_KEY, []);
         if (storedSessions && Array.isArray(storedSessions) && storedSessions.length > 0) {
           setSessions(storedSessions);
-          setActiveSessionId(storedSessions[0].id);
+          // Restore the last active session (so navigating back to the Research
+          // Center resumes the conversation you were in), falling back to the
+          // most recently updated session, then the first stored session.
+          let restoredId: string | null = null;
+          try {
+            const savedActiveId = window.localStorage.getItem(ACTIVE_SESSION_KEY);
+            if (savedActiveId && storedSessions.some(s => s.id === savedActiveId)) {
+              restoredId = savedActiveId;
+            }
+          } catch { /* no-op */ }
+          if (!restoredId) {
+            const mostRecent = [...storedSessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+            restoredId = mostRecent?.id || storedSessions[0].id;
+          }
+          setActiveSessionId(restoredId);
         } else {
           const initialSession: ResearchSession = {
             id: `session_${Date.now()}`,
@@ -103,6 +118,14 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
 
     loadAllInitialData();
   }, []);
+
+  // Persist the active session id so navigation away and back restores it.
+  useEffect(() => {
+    if (!activeSessionId) return;
+    try {
+      window.localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId);
+    } catch { /* no-op */ }
+  }, [activeSessionId]);
 
   // Sync sessions to IndexedDB
   useEffect(() => {
@@ -184,6 +207,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     const updated = [newSession, ...sessions];
     setSessions(updated);
     setActiveSessionId(newSession.id);
+    try { window.localStorage.setItem(ACTIVE_SESSION_KEY, newSession.id); } catch { /* no-op */ }
     await DBService.setItem(STORAGE_KEY, updated);
   };
 
@@ -192,7 +216,9 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     const filtered = sessions.filter(s => s.id !== sessionId);
     setSessions(filtered);
     if (activeSessionId === sessionId) {
-      setActiveSessionId(filtered[0].id);
+      const nextId = filtered[0].id;
+      setActiveSessionId(nextId);
+      try { window.localStorage.setItem(ACTIVE_SESSION_KEY, nextId); } catch { /* no-op */ }
     }
     await DBService.setItem(STORAGE_KEY, filtered);
   };
@@ -207,6 +233,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     };
     setSessions([fresh]);
     setActiveSessionId(fresh.id);
+    try { window.localStorage.setItem(ACTIVE_SESSION_KEY, fresh.id); } catch { /* no-op */ }
     await DBService.setItem(STORAGE_KEY, [fresh]);
   };
 
@@ -310,7 +337,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         content: response.reply,
         timestamp: Date.now(),
         searchResults: response.searchResults,
-        suggestedCampaignTopic: response.suggestedCampaignTopic || updatedTitle,
+        ...(response.suggestedCampaignTopic ? { suggestedCampaignTopic: response.suggestedCampaignTopic } : {}),
         isDeepResearch: researchMode === 'deep'
       };
 
@@ -353,6 +380,19 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   });
   const setBlogViewMode = blogEngine.setBlogViewMode;
 
+  // When "Create Blog Post" is opened from a research message, we prefill the
+  // composer's topic and remember the message as generation context so the
+  // user can review the bundled data before clicking generate.
+  const pendingBlogContextRef = React.useRef<string>('');
+
+  const handleOpenBlogComposer = (topic: string, context: string) => {
+    pendingBlogContextRef.current = context || '';
+    blogEngine.setNewPostIdeaInput(topic || '');
+    setIsBlogStudioOpen(true);
+    setBlogViewMode('preview');
+    blogEngine.setIsNewPostComposerOpen(true);
+  };
+
   const buildResearchThreadSummary = (): string => {
     if (!activeSession || activeSession.messages.length === 0) return '';
     return activeSession.messages
@@ -367,7 +407,9 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   };
 
   const handleGenerateBlogPost = async (forcedTopic?: string, forcedContext?: string) => {
-    const result = await blogEngine.generateBlogPost(forcedTopic, forcedContext);
+    const contextToUse = forcedContext || pendingBlogContextRef.current;
+    const result = await blogEngine.generateBlogPost(forcedTopic, contextToUse || undefined);
+    pendingBlogContextRef.current = '';
 
     if (result && activeSessionId) {
       const blogMsg: ChatMessageItem = {
@@ -461,6 +503,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           onSendToSocialCampaign={onSendToSocialCampaign}
           onSendToVideoStudio={onSendToVideoStudio}
           onSaveToDraftPlanner={onSaveToDraftPlanner}
+          onOpenBlogComposer={handleOpenBlogComposer}
           handleGenerateBlogPost={handleGenerateBlogPost}
           setIsBlogStudioOpen={setIsBlogStudioOpen}
           setBlogViewMode={setBlogViewMode}

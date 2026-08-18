@@ -32,6 +32,8 @@ import {
   getVideoGenerationState,
   subscribeVideoGeneration
 } from '@/services/videoGenerationManager';
+import { DBService } from '@/services/dbService';
+import { PENDING_CAMPAIGN_KEY, PENDING_VIDEO_KEY } from '@/lib/pendingPrefills';
 import { 
   AlertCircle, 
   Compass, 
@@ -120,11 +122,8 @@ const App: React.FC = () => {
     handleImportImagesToProject
   } = useAppEngine();
 
-  // Research prefill state for seamless bridge between Research Center and Social Campaign / Drafts / Video Studio
-  const [researchPrefillTopic, setResearchPrefillTopic] = React.useState<string>('');
-  const [researchPrefillPrompt, setResearchPrefillPrompt] = React.useState<string>('');
-  const [researchPrefillWebsite, setResearchPrefillWebsite] = React.useState<string>('');
-  const [videoStudioPrefillPrompt, setVideoStudioPrefillPrompt] = React.useState<string>('');
+  // Cross-view "send to" prefills are handed off via sessionStorage because
+  // view navigation remounts this component (see lib/pendingPrefills.ts).
 
   // Global video generation banner + toasts (managed outside VideoStudio so generation survives navigation).
   const [videoGenBanner, setVideoGenBanner] = React.useState(getVideoGenerationState);
@@ -549,14 +548,22 @@ const App: React.FC = () => {
             <ErrorBoundary fallbackTitle="Research Center Display Interrupted">
               <ResearchCenter 
                 onSendToSocialCampaign={(topic, prompt, companyContext) => {
-                  setResearchPrefillTopic(topic);
-                  setResearchPrefillPrompt(prompt);
-                  setResearchPrefillWebsite(companyContext);
-                  setCurrentView('drafts');
+                  try {
+                    sessionStorage.setItem(PENDING_CAMPAIGN_KEY, JSON.stringify({
+                      topic: topic || '',
+                      prompt: prompt || '',
+                      website: companyContext || ''
+                    }));
+                  } catch { /* no-op */ }
+                  // Backtrack any previously open workspace so the freshly
+                  // mounted planner lands on the campaign list dashboard.
+                  DBService.removeItem('infogenius_active_campaign_id').catch(() => {});
+                  try { localStorage.removeItem('infogenius_active_campaign_id'); } catch { /* no-op */ }
+                  setDraftsTab('social');
                 }}
                 onSendToVideoStudio={(videoPrompt, scriptText) => {
                   const combined = videoPrompt + (scriptText ? `\n\n[Script Breakdown]:\n${scriptText}` : '');
-                  setVideoStudioPrefillPrompt(combined);
+                  try { sessionStorage.setItem(PENDING_VIDEO_KEY, combined); } catch { /* no-op */ }
                   setCurrentView('video-studio');
                 }}
                 onSaveToDraftPlanner={(topic, prompt) => {
@@ -597,9 +604,6 @@ const App: React.FC = () => {
                   onCreateDraft={handleCreateDraft}
                   onDeleteDraft={handleDeleteDraft}
                   onLaunchDraft={handleLaunchDraft}
-                  initialTopic={researchPrefillTopic}
-                  initialPrompt={researchPrefillPrompt}
-                  initialWebsite={researchPrefillWebsite}
                 />
               </div>
             </ErrorBoundary>
@@ -671,7 +675,6 @@ const App: React.FC = () => {
                   activeProjectId={selectedProjectId}
                   projects={projects}
                   onBackToDashboard={() => setCurrentView('dashboard')}
-                  initialPrompt={videoStudioPrefillPrompt}
                   onSelectProject={setSelectedProjectId}
                 />
               </div>

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { DraftPrompt, ComplexityLevel, VisualStyle, Language, AspectRatio, SavedCampaign, SocialPostCampaignItem } from '../types';
 import { useCampaigns } from './drafts/useCampaigns';
+import { PENDING_CAMPAIGN_KEY, PendingCampaignPrefill } from '@/lib/pendingPrefills';
 
 // Re-export types for compatibility with sub-components
 export type { SavedCampaign, SocialPostCampaignItem };
@@ -23,9 +24,6 @@ interface DraftsPlannerProps {
   onLaunchDraft: (draft: DraftPrompt) => void;
   activeTab: 'blueprints' | 'social-campaign';
   onTabChange: (tab: 'blueprints' | 'social-campaign') => void;
-  initialTopic?: string;
-  initialPrompt?: string;
-  initialWebsite?: string;
 }
 
 const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
@@ -35,16 +33,15 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
   onDeleteDraft,
   onLaunchDraft,
   activeTab,
-  onTabChange,
-  initialTopic,
-  initialPrompt,
-  initialWebsite
+  onTabChange
 }) => {
   // Navigation tabs: 'blueprints' or 'social-campaign' (controlled via URL routing)
   const [showCreateBlueprintModal, setShowCreateBlueprintModal] = useState(false);
   const [showCreateCampaignModal, setShowCreateCampaignModal] = useState(false);
   const [showAddPostModal, setShowAddPostModal] = useState(false);
-
+  // When a campaign is prefilled from the Research Center, open the modal
+  // straight at the details step so the bundled data is visible immediately.
+  const [campaignModalInitialStep, setCampaignModalInitialStep] = useState<'method' | 'details'>('method');
   // Standard blueprint creation state
   const [blueprintTopic, setBlueprintTopic] = useState('');
   const [blueprintLevel, setBlueprintLevel] = useState<ComplexityLevel>('Default');
@@ -65,12 +62,12 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
     newCampModel, setNewCampModel,
     startMethod, setStartMethod,
     newCampTemplate, setNewCampTemplate,
-    campaignPosts,
     isGeneratingCampaign,
     campaignError, setCampaignError,
     campaignStatus,
     savedCampaigns, setSavedCampaigns,
-    activeCampaignId,
+    activeCampaignId, setActiveCampaignId,
+    campaignPosts, setCampaignPosts,
     isRenaming, setIsRenaming,
     tempName, setTempName,
     editingPostIndex, setEditingPostIndex,
@@ -115,22 +112,51 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
     isLoadingCampaigns,
   } = useCampaigns({ activeProjectId, onCreateDraft, onLaunchDraft });
 
+  // Research Center -> Social Campaign sends are handed off via sessionStorage
+  // (App view navigation remounts this component, so React state can't carry it).
+  // Consume it on mount: open the prefilled modal straight at the details step.
+  const pendingCampaignRef = React.useRef<PendingCampaignPrefill | null>(null);
+
   React.useEffect(() => {
-    if (initialTopic || initialPrompt) {
-      onTabChange('social-campaign');
-      if (initialTopic) {
-        setNewCampName(`${initialTopic} Campaign`);
-        setNewCampTopic(initialTopic);
+    let raw: string | null = null;
+    try { raw = sessionStorage.getItem(PENDING_CAMPAIGN_KEY); } catch { /* no-op */ }
+    if (!raw) return;
+    try { sessionStorage.removeItem(PENDING_CAMPAIGN_KEY); } catch { /* no-op */ }
+    try {
+      const parsed = JSON.parse(raw) as Partial<PendingCampaignPrefill>;
+      pendingCampaignRef.current = {
+        topic: typeof parsed.topic === 'string' ? parsed.topic : '',
+        prompt: typeof parsed.prompt === 'string' ? parsed.prompt : '',
+        website: typeof parsed.website === 'string' ? parsed.website : ''
+      };
+      if (pendingCampaignRef.current.topic || pendingCampaignRef.current.prompt) {
+        if (pendingCampaignRef.current.topic) {
+          setNewCampName(`${pendingCampaignRef.current.topic} Campaign`);
+          setNewCampTopic(pendingCampaignRef.current.topic);
+        }
+        if (pendingCampaignRef.current.prompt) {
+          setNewCampStyleGuide(pendingCampaignRef.current.prompt);
+        }
+        if (pendingCampaignRef.current.website) {
+          setNewCampWebsite(pendingCampaignRef.current.website);
+        }
+        setStartMethod('ai');
+        setCampaignModalInitialStep('details');
+        setShowCreateCampaignModal(true);
       }
-      if (initialPrompt) {
-        setNewCampStyleGuide(initialPrompt);
-      }
-      if (initialWebsite) {
-        setNewCampWebsite(initialWebsite);
-      }
-      setShowCreateCampaignModal(true);
+    } catch { /* no-op */ }
+  }, []);
+
+  // Once the IndexedDB restore finishes, force the workspace closed so the
+  // user lands back on the campaign list dashboard with the prefilled modal
+  // open (regardless of whether an old workspace was previously active).
+  React.useEffect(() => {
+    if (!isLoadingCampaigns && pendingCampaignRef.current) {
+      setActiveCampaignId(null);
+      setCampaignPosts(null);
+      pendingCampaignRef.current = null;
     }
-  }, [initialTopic, initialPrompt, initialWebsite, onTabChange]);
+  }, [isLoadingCampaigns, setActiveCampaignId, setCampaignPosts]);
 
   const handleCreateBlueprintSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -230,7 +256,11 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
               </button>
             ) : (
               <button
-                onClick={() => setShowCreateCampaignModal(true)}
+                onClick={() => {
+                  setStartMethod('ai');
+                  setCampaignModalInitialStep('method');
+                  setShowCreateCampaignModal(true);
+                }}
                 className="px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md shadow-purple-500/20 flex items-center gap-2 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
@@ -294,7 +324,11 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
               savedCampaigns={savedCampaigns}
               onSelectCampaign={handleSelectCampaign}
               onDeleteCampaign={(id) => setSavedCampaigns(prev => prev.filter(c => c.id !== id))}
-              onOpenCreateModal={() => setShowCreateCampaignModal(true)}
+              onOpenCreateModal={() => {
+                setStartMethod('ai');
+                setCampaignModalInitialStep('method');
+                setShowCreateCampaignModal(true);
+              }}
               getPlatformClass={getPlatformClass}
               getPlatformBadgeColor={getPlatformBadgeColor}
               getPlatformIcon={getPlatformIcon}
@@ -403,6 +437,7 @@ const DraftsPlanner: React.FC<DraftsPlannerProps> = ({
         setPreferredStyle={setNewCampStyle}
         aiModel={newCampModel}
         setAiModel={setNewCampModel}
+        initialStep={campaignModalInitialStep}
         onSubmit={(e) => {
           handleCreateCampaignProject(e);
           setShowCreateCampaignModal(false);

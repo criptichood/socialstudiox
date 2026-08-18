@@ -287,7 +287,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
       const statuses = [
         "Analyzing company core competencies...",
         "Scraping brand aesthetic anchors...",
-        "Generating high-converting captions and viral hashtags...",
+        "Generating engaging captions and viral hashtags...",
         "Formulating structured visual generator prompt ideas...",
         "Polishing campaign sequence layout..."
       ];

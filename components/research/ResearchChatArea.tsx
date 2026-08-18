@@ -19,6 +19,19 @@ import {
 import { ChatMessageItem, ResearchSession } from '../../types';
 import { BlogMarkdownRenderer } from './blog/BlogMarkdownRenderer';
 
+// The "send to campaign / video / blog" buttons bundle the specific reply the
+// user clicked. Prefer the model's curated topic; otherwise derive a short
+// heading from that reply's own content rather than falling back to the
+// session title (which is just the opening message).
+const topicForMessage = (msg: ChatMessageItem): string => {
+  if (msg.suggestedCampaignTopic) return msg.suggestedCampaignTopic;
+  const heading = msg.content
+    .split('\n')
+    .map(l => l.replace(/^#{1,6}\s*/, '').replace(/^[-*•]\s*/, '').trim())
+    .find(l => l.length > 0);
+  return heading ? heading.slice(0, 80) : 'Research Insights';
+};
+
 interface ResearchChatAreaProps {
   activeSession: ResearchSession | undefined;
   isLoading: boolean;
@@ -33,6 +46,7 @@ interface ResearchChatAreaProps {
   onSendToSocialCampaign?: (topic: string, prompt: string, companyContext: string) => void;
   onSendToVideoStudio?: (videoPrompt: string, scriptText?: string) => void;
   onSaveToDraftPlanner?: (topic: string, prompt: string) => void;
+  onOpenBlogComposer?: (topic: string, context: string) => void;
   handleGenerateBlogPost: (forcedTopic?: string, forcedContext?: string) => Promise<void>;
   setIsBlogStudioOpen: (val: boolean) => void;
   setBlogViewMode: (mode: any) => void;
@@ -54,6 +68,7 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
   onSendToSocialCampaign,
   onSendToVideoStudio,
   onSaveToDraftPlanner,
+  onOpenBlogComposer,
   handleGenerateBlogPost,
   setIsBlogStudioOpen,
   setBlogViewMode,
@@ -99,6 +114,18 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
         el.scrollTo({ top: el.scrollTop + nudge, behavior: 'smooth' });
       }
     }
+  }, [activeSession?.id, activeSession?.messages.length]);
+
+  // When a session is first shown (mount or returning from another view),
+  // jump to the latest message so navigation back resumes where you left off.
+  const didInitialScrollRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const id = activeSession?.id;
+    const el = scrollRef.current;
+    if (!id || !el) return;
+    if (didInitialScrollRef.current.has(id)) return;
+    didInitialScrollRef.current.add(id);
+    el.scrollTop = el.scrollHeight;
   }, [activeSession?.id, activeSession?.messages.length]);
 
   const markUserScrolled = () => {
@@ -324,7 +351,7 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
                   {onSendToSocialCampaign && (
                     <button
                       type="button"
-                      onClick={() => onSendToSocialCampaign(msg.suggestedCampaignTopic || activeSession.title, msg.content, activeSession.companyContext || '')}
+                      onClick={() => onSendToSocialCampaign(topicForMessage(msg), msg.content, activeSession.companyContext || '')}
                       className="px-2.5 py-1 bg-purple-500/10 hover:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-500/20 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       <Share2 className="w-3 h-3" />
@@ -335,7 +362,7 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
                   {onSendToVideoStudio && (
                     <button
                       type="button"
-                      onClick={() => onSendToVideoStudio(msg.suggestedCampaignTopic || activeSession.title, msg.content)}
+                      onClick={() => onSendToVideoStudio(topicForMessage(msg), msg.content)}
                       className="px-2.5 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 cursor-pointer"
                     >
                       <Video className="w-3 h-3" />
@@ -346,9 +373,13 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setIsBlogStudioOpen(true);
-                      setBlogViewMode('preview');
-                      handleGenerateBlogPost(msg.suggestedCampaignTopic || activeSession.title, msg.content);
+                      if (onOpenBlogComposer) {
+                        onOpenBlogComposer(topicForMessage(msg), msg.content);
+                      } else {
+                        setIsBlogStudioOpen(true);
+                        setBlogViewMode('preview');
+                        handleGenerateBlogPost(topicForMessage(msg), msg.content);
+                      }
                     }}
                     className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg text-[11px] font-bold shadow-xs transition-all flex items-center gap-1 cursor-pointer"
                   >

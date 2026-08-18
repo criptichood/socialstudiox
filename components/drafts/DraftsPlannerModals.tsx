@@ -148,6 +148,7 @@ interface CampaignModalProps {
   setPreferredStyle?: (s: VisualStyle) => void;
   aiModel?: string;
   setAiModel?: (m: string) => void;
+  initialStep?: 'method' | 'details';
   onSubmit: (e: React.FormEvent) => void;
 }
 
@@ -176,16 +177,18 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
   setPreferredStyle,
   aiModel = 'gemini-3.6-flash',
   setAiModel,
+  initialStep = 'method',
   onSubmit,
 }) => {
   const [modalStep, setModalStep] = useState<'method' | 'details'>('method');
 
-  // Reset the onboarding step to start on reopen
+  // Reset the onboarding step to start on reopen (or open straight at details
+  // when the campaign is prefilled from the Research Center).
   useEffect(() => {
     if (show) {
-      setModalStep('method');
+      setModalStep(initialStep);
     }
-  }, [show]);
+  }, [show, initialStep]);
 
   if (!show) return null;
 

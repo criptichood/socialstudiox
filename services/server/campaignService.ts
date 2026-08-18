@@ -121,7 +121,7 @@ export const generateSocialCampaign = async (
   if (templateName) {
     switch (templateName) {
       case "carousel_step_by_step":
-        templatePrompt = `Campaign Format Template: Step-by-Step Educational Carousel Deck. Each post MUST be a multi-slide Carousel Deck (set "isCarousel": true and provide 4 to 6 structured "slides"). Slide 1 is the Attention Hook Cover, Slides 2-5 breakdown actionable step-by-step methods with clear visual prompts and content text, and the final Slide is a Summary & CTA.`;
+        templatePrompt = `Campaign Format Template: Step-by-Step Educational Carousel Deck. Each post MUST be a multi-slide Carousel Deck (set "isCarousel": true and provide 4 to 6 structured "slides"). Slide 1 is the Attention Hook Cover, Slides 2-5 breakdown actionable step-by-step methods with clear visual prompts and content text, and the final Slide is a Summary (a closing CTA only if the user's objective calls for one).`;
         break;
       case "carousel_product_feature":
         templatePrompt = `Campaign Format Template: Feature Deep-Dive Storyboard Carousel. Each post MUST be a multi-slide Carousel Deck (set "isCarousel": true and provide 4 to 5 structured "slides") detailing unique feature highlights, real dashboard callouts, visual diagrams, and customer benefits across sequential slides.`;
@@ -133,7 +133,7 @@ export const generateSocialCampaign = async (
         templatePrompt = `Campaign Format Template: Top Tips & Listicle Carousel Deck. Each post MUST be a multi-slide Carousel Deck (set "isCarousel": true and provide 4 to 6 structured "slides") sharing actionable tips, framework pillars, or quote callouts per slide.`;
         break;
       case "product_launch":
-        templatePrompt = `Campaign Format Template: Product Launch & Feature Showcase. Each post should highlight a distinct core feature, solve specific customer pain points, detail unique value propositions, and contain compelling CTA hooks to drive product registration or testing.`;
+        templatePrompt = `Campaign Format Template: Product Launch & Feature Showcase. Each post should highlight a distinct core feature, solve specific customer pain points, and detail unique value propositions. Any CTA (registration, testing, demo) must only be used if it fits the user's stated objective — never force one.`;
         break;
       case "educational":
         templatePrompt = `Campaign Format Template: Educational Carousel & Deep Dive. Focus on high-value industry educational concepts, breakdown complex workflows step-by-step, set "isCarousel": true with 4 to 6 structured "slides" per carousel post.`;
@@ -154,13 +154,21 @@ export const generateSocialCampaign = async (
   }
 
   const prompt = `
-    You are an expert Social Media Campaign Strategist, Visual Carousel Creator, and Premium Growth Marketer.
+    You are an expert Social Media Campaign Strategist and Visual Carousel Creator.
     Your goal is to research the following company/website: "${websiteUrl}"
     and plan a highly engaging, high-performing campaign about: "${mainTopic}" for platform: "${platform}".
     
     Generate exactly ${postCount} highly tailored posts/carousels.
     
-    ${templatePrompt ? `**CRITICAL TEMPLATE GOAL**: ${templatePrompt}` : ""}
+    ${templatePrompt ? `**CONTENT FORMAT TEMPLATE (FORMAT-ONLY — NEVER REPLACES THE USER'S OBJECTIVE BELOW)**: ${templatePrompt}` : ""}
+    
+    **OBJECTIVE FIDELITY (CRITICAL — SINGLE SOURCE OF TRUTH)**:
+    - The user's "Main Campaign Topic / Objective" (above) is the single source of truth for what this campaign is about and what it must accomplish. Everything you generate must serve exactly that stated objective.
+    - If a Content Format Template is provided, it controls ONLY the structural/visual format (carousel vs single post, slide count, layout). It never defines the campaign's goal, tone, or CTAs. If a template instruction conflicts with the user's stated objective, the user's objective WINS.
+    - Match the campaign objective to exactly what the user asked for and to what the topic itself implies. Do NOT invent a lead-generation, sales, or conversion objective.
+    - Unless the user explicitly requested lead generation, sign-ups, demos, registrations, or sales, do NOT insert lead-conversion funnels, "30-day lead conversion" plans, demo-booking CTAs, "DM me for a quote", "link in bio to buy", or any sales-pitch framing in captions, visual prompts, or image text.
+    - Keep every post in the register of the objective: educational, awareness, brand-building, community, thought-leadership, or entertainment content stays in that register. A call-to-action should only appear when it genuinely fits the objective (e.g. "follow for more", "share your thoughts", "save this guide", "tag a colleague"), never a forced sales push.
+    - If the user DID ask for lead generation or sales, only then use conversion-focused CTAs.
     
     **IMPORTANT**: Use the Google Search tool to search for the company website "${websiteUrl}" and find exactly what they do, their branding style, colors, and key value propositions.
     Also search for high-trending ${platform} hashtags, trends, and viral angles relevant to this business sector.
@@ -175,7 +183,7 @@ export const generateSocialCampaign = async (
       "day": "Post Title/Day (e.g. Carousel Deck 1: Step-by-Step Breakdown)",
       "topic": "Clean topic name",
       "visualPrompt": "A highly detailed, professional-grade descriptive prompt for our cover visual knowledge generator. Tell it exactly how to illustrate this topic: central subject, layout composition, background, color theme, icons, and precise text labels matching the company branding. Tell it to render it in high-contrast.",
-      "caption": "An engaging, high-converting social media caption tailored for ${platform}. Include hooks, main benefits, and clear calls-to-action.",
+      "caption": "An engaging social media caption tailored for ${platform}. Include hooks, main benefits, and a call-to-action only if it genuinely fits the topic (see OBJECTIVE FIDELITY above).",
       "hashtags": ["tag1", "tag2"],
       "suggestedStyle": "Carousel",
       "aspectRatio": "1:1",
@@ -277,7 +285,7 @@ export const generateSingleSocialPost = async (
   customApiKey?: string
 ): Promise<SocialPostCampaignItem> => {
   const prompt = `
-    You are an expert Social Media Campaign Strategist and Premium Growth Marketer.
+    You are an expert Social Media Campaign Strategist.
     We are running a campaign on ${platform} with the main topic/objective: "${campaignTopic}".
     The brand website is "${websiteUrl}".
     There are currently ${existingPostsCount} posts in this campaign.
@@ -285,12 +293,17 @@ export const generateSingleSocialPost = async (
     Your goal is to generate exactly ONE additional high-quality, high-performing post for this campaign.
     Focus specifically on this angle, instruction, or topic for the new post: "${customInstructions}".
     
+    **OBJECTIVE FIDELITY (CRITICAL)**:
+    - Match the post to the campaign topic and instructions exactly as provided. Do NOT invent a lead-generation, sales, or conversion objective.
+    - Unless the user explicitly requested lead generation, sign-ups, demos, registrations, or sales, do NOT insert lead-conversion funnels, "30-day lead conversion" plans, demo-booking CTAs, "DM me for a quote", "link in bio to buy", or sales-pitch framing in captions, visual prompts, or image text.
+    - Keep the post in the register of the topic (educational, awareness, brand-building, community, thought-leadership, or entertainment). A call-to-action only when it genuinely fits the topic (e.g. "follow for more", "share your thoughts", "save this guide"), never a forced sales push.
+    
     You must return your response as a single JSON object. It MUST strictly follow this JSON structure:
     {
       "day": "Post Title/Day (e.g. Day ${existingPostsCount + 1}: Promo Special or Post #${existingPostsCount + 1})",
       "topic": "Clean topic name",
       "visualPrompt": "A highly detailed, professional-grade descriptive prompt for our visual knowledge generator. Tell it exactly how to illustrate this topic: central subject, layout composition, background, color theme, icons, and precise text labels matching the company branding. Tell it to render it in high-contrast.",
-      "caption": "An engaging, high-converting social media caption tailored for ${platform}. Include hooks, main benefits, and clear calls-to-action.",
+      "caption": "An engaging social media caption tailored for ${platform}. Include hooks, main benefits, and a call-to-action only if it genuinely fits the topic (see OBJECTIVE FIDELITY above).",
       "hashtags": ["tag1", "tag2"],
       "suggestedStyle": "Default",
       "aspectRatio": "1:1",
@@ -421,7 +434,7 @@ export const conductResearchChat = async (
     YOUR CORE CAPABILITIES & METHODOLOGY:
     1. **Multipurpose Video & Content Strategy**:
        - Research and generate viral short-form video concepts (Reels, TikTok, Shorts) and 3-minute video explainer scripts with visual scene directions, camera motions (e.g., cinematic zoom, orbit, macro tilt), voiceover scripts, and audio cues.
-       - Outline multi-slide educational carousels, B2B thought leadership posts, and high-converting ad concepts.
+       - Outline multi-slide educational carousels, B2B thought leadership posts, and persuasive ad concepts.
 
     2. **Competitor & Market Intelligence**:
        - Leverage the injected live search results to scan competitor websites, social media content strategies, posting schedules, and viral hooks in the target industry.
@@ -432,14 +445,14 @@ export const conductResearchChat = async (
        - Never respond with a blank stub or demand endless inputs.
        - If the user provides a vague or brief idea (e.g. "I want to create video content for my business"), **proactively infer** standard target audiences, key pain points, and 3 viral video angles right away.
        - Offer 2-3 brief, helpful clarifying questions (e.g. target platform, primary CTA) while delivering immediate, complete research recommendations in the response.
-       - Proactively suggest logical next steps, such as launching a Video Campaign or running paid social ads.
+       - Proactively suggest logical next steps aligned with the user's stated objective (e.g. a content calendar, a video campaign, or growth ideas) — but only when they naturally follow from what the user asked. Do not push paid ads, lead generation, or sales funnels unless the user's goal implies them.
 
     ${isDeepMode ? `
     DEEP RESEARCH REPORT STRUCTURE:
     Provide an exhaustive, multi-tier analysis structured with clean Markdown:
     - 🎯 **Market & Competitor Intelligence Matrix**: Competitor strategy breakdown, content gaps, viral angles.
     - 🎥 **Video & Visual Content Blueprint**: Hook options, script breakdown with timestamps, visual camera directions.
-    - 🌐 **Audience Traffic & Conversion Funnel**: How to turn video views into website traffic and sales.
+    - 🌐 **Audience Engagement & Growth Path**: How to turn attention into engagement, followers, and (only if the user asks) website traffic and sales.
     - 📈 **Proactive Next Steps & Campaign Recommendations**.
     ` : ''}
 
@@ -843,7 +856,7 @@ export const generateBlogPostFromCampaign = async (
        - 3 to 5 clear H2 section headings ("## Section Title"). For longer posts use more H2s + H3 sub-sections.
        - Bulleted key insights or step-by-step framework takeaways with spaces before and after list groups.
        - A quote callout box ("> Key Insight...") or prompt code block if applicable.
-       - A concluding summary with a strategic call-to-action.
+        - A concluding summary, with a closing call-to-action only if one genuinely fits the article's purpose (e.g. "subscribe", "share your thoughts") — never a forced sales push.
     3. **Image Integration & Prompts**:
        - If pre-generated images exist above, embed them as markdown images:
          ![Slide Visual: Title](Image_URL)

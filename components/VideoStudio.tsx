@@ -14,6 +14,7 @@ import {
   OMNI_FLASH_MODEL
 } from '@/types';
 import { DBService } from '@/services/dbService';
+import { PENDING_VIDEO_KEY } from '@/lib/pendingPrefills';
 import { loadModelSettings, getEnabledModelIds } from '@/services/ai/modelService';
 import { fetchVideoModelCatalog } from '@/services/geminiService';
 import {
@@ -58,7 +59,6 @@ interface VideoStudioProps {
   activeProjectId?: string | null;
   projects?: Project[];
   onBackToDashboard?: () => void;
-  initialPrompt?: string;
   onSelectProject?: (id: string | null) => void;
 }
 
@@ -98,17 +98,20 @@ export const VideoStudio: React.FC<VideoStudioProps> = ({
   activeProjectId,
   projects,
   onBackToDashboard,
-  initialPrompt,
   onSelectProject
 }) => {
   // Input states
-  const [prompt, setPrompt] = useState(initialPrompt || '');
+  const [prompt, setPrompt] = useState('');
 
+  // Research Center -> Video Studio sends are handed off via sessionStorage
+  // (view navigation remounts this component, so React state can't carry it).
   useEffect(() => {
-    if (initialPrompt) {
-      setPrompt(initialPrompt);
-    }
-  }, [initialPrompt]);
+    let raw: string | null = null;
+    try { raw = sessionStorage.getItem(PENDING_VIDEO_KEY); } catch { /* no-op */ }
+    if (!raw) return;
+    try { sessionStorage.removeItem(PENDING_VIDEO_KEY); } catch { /* no-op */ }
+    setPrompt(raw);
+  }, []);
   const [aspectRatio, setAspectRatio] = useState<VideoAspectRatio>('16:9');
   const [selectedModel, setSelectedModel] = useState<string>(() => loadModelSettings().video || DEFAULT_VIDEO_MODEL);
   const [videoResolution, setVideoResolution] = useState<VideoResolution>('720p');
