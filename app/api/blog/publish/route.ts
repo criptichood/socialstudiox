@@ -3,13 +3,13 @@ import { publishToExternalEndpoint } from "@/services/server/blogPublishService"
 
 export async function POST(request: Request) {
   try {
-    const { targetUrl, headers, payload } = await request.json();
+    const { targetUrl, headers, payload, method } = await request.json();
 
     if (!targetUrl || !payload) {
       return NextResponse.json({ error: "Missing required targetUrl or payload" }, { status: 400 });
     }
 
-    const result = await publishToExternalEndpoint({ targetUrl, headers, payload });
+    const result = await publishToExternalEndpoint({ targetUrl, headers, payload, method });
 
     return NextResponse.json({
       success: result.ok,

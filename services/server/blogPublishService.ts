@@ -2,6 +2,8 @@ export interface PublishRequestPayload {
   targetUrl: string;
   headers: Record<string, string>;
   payload: Record<string, unknown>;
+  /** HTTP method to use (POST for new posts, PUT/PATCH for updates by slug). */
+  method?: 'POST' | 'PUT' | 'PATCH';
 }
 
 export interface PublishResult {
@@ -21,8 +23,9 @@ export const publishToExternalEndpoint = async (req: PublishRequestPayload): Pro
     throw new Error('Invalid endpoint URL. Must be an absolute http(s) URL.');
   }
 
+  const method = req.method || 'POST';
   const res = await fetch(req.targetUrl, {
-    method: 'POST',
+    method,
     headers: req.headers || { 'Content-Type': 'application/json' },
     body: JSON.stringify(req.payload),
     signal: AbortSignal.timeout(60000)

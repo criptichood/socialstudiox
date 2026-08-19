@@ -869,7 +869,7 @@ export const generateBlogPostFromCampaign = async (
          
          [IMAGE_PROMPT: Detailed prompt describing a high-quality 16:9 infographic/illustration for this section]
          
-       - Limit image prompts to 1 or 2 strategic section breaks so the user can generate images on demand (3 for very long posts).
+       - Use image prompts where the content genuinely benefits from a visual (concept explanations, statistics, step previews, key takeaways) — anywhere from zero to several across the post, guided by what the section needs. Do not force a fixed minimum or maximum; a short text-only post may have none, while a long, visual-heavy post may have 4+. Ensure each prompt clearly describes one specific, self-contained illustration.
     ${nodeDiagramsEnabled ? nodeDiagramInstruction : disabledNodeDiagramInstruction}
     Output ONLY the raw Markdown blog post. Do not add introductory conversational filler before or after the markdown text.
   `;

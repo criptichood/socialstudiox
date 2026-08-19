@@ -619,6 +619,8 @@ export interface PublishEndpointConfig {
   isDefault?: boolean;
   /** Public base URL where published posts are reachable (e.g. https://growency.ai/blog). Used to build backlink URLs. */
   blogBaseUrl?: string;
+  /** HTTP method used to update an already-published post by slug (defaults to PUT). */
+  updateMethod?: 'PUT' | 'PATCH';
 }
 
 /** A related, previously published post the AI links back to (SEO interlinking). */
@@ -660,6 +662,10 @@ export interface SavedBlogDraft {
   scheduledAt?: string;
   publishedAt?: string;
   publishedEndpointId?: string;
+  /** Snapshot of the markdown body that was last successfully published (for dirty-state comparison). */
+  publishedMarkdown?: string;
+  /** Snapshot of the title that was last successfully published (for dirty-state comparison). */
+  publishedTitle?: string;
   createdAt: number | string;
   updatedAt: number | string;
 }

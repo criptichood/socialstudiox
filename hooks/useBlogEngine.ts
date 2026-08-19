@@ -35,7 +35,16 @@ const DEFAULT_ENDPOINT: PublishEndpointConfig = {
   headerName: 'Authorization',
   enabled: true,
   isDefault: true,
+  updateMethod: 'PUT',
 };
+
+/** Strip unresolved [IMAGE_PROMPT: ...] placeholder lines so raw prompt text never ships to the blog endpoint. */
+const sanitizeBodyForPublish = (markdown: string): string =>
+  markdown
+    .replace(/^[ \t]*\[?IMAGE_PROMPT:\s*[^\]\n]*\]?[ \t]*\n?/gim, '')
+    .replace(/\[?IMAGE_PROMPT:\s*[^\]\n]*\]?/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim() + '\n';
 
 export type BlogViewMode = 'preview' | 'markdown' | 'drafts' | 'published' | 'schedules' | 'webhook-settings';
 
@@ -261,19 +270,25 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       characterCount: draftData.markdownContent?.length || 0,
       readingTimeMinutes,
       embeddedImagesCount: (draftData.markdownContent || '').match(/!\[.*?\]\(.*?\)/g)?.length || 0,
-      relatedPosts: draftData.relatedPosts || undefined,
-      sectionImagePrompts: (draftData.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
-        // Never persist raw base64 preview blobs — only the hosted Cloudinary URL.
-        if (!p.previewDataUrl) return p;
-        const { previewDataUrl, ...rest } = p;
-        return rest;
-      }),
+      relatedPosts: draftData.relatedPosts ?? (existingIndex >= 0 ? savedBlogDrafts[existingIndex].relatedPosts : undefined),
+      sectionImagePrompts: (draftData.sectionImagePrompts
+        ? draftData.sectionImagePrompts.map((p: SectionImagePrompt) => {
+            // Never persist raw base64 preview blobs — only the hosted Cloudinary URL.
+            if (!p.previewDataUrl) return p;
+            const { previewDataUrl, ...rest } = p;
+            return rest;
+          })
+        : (existingIndex >= 0 ? savedBlogDrafts[existingIndex].sectionImagePrompts : [])),
       status,
       createdAt: existingIndex >= 0 ? savedBlogDrafts[existingIndex].createdAt : nowISO,
       updatedAt: nowISO,
       scheduledAt: scheduledAt || (existingIndex >= 0 ? savedBlogDrafts[existingIndex].scheduledAt : undefined),
-      publishedAt: status === 'published' ? nowISO : (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedAt : undefined),
-      publishedEndpointId: publishedToEndpointId || (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedEndpointId : undefined)
+      publishedAt: (existingIndex >= 0 && savedBlogDrafts[existingIndex].publishedAt)
+        ? savedBlogDrafts[existingIndex].publishedAt
+        : (status === 'published' ? nowISO : (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedAt : undefined)),
+      publishedEndpointId: publishedToEndpointId || (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedEndpointId : undefined),
+      publishedMarkdown: draftData.publishedMarkdown ?? (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedMarkdown : undefined),
+      publishedTitle: draftData.publishedTitle ?? (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedTitle : undefined)
     };
 
     if (existingIndex >= 0) {
@@ -469,6 +484,82 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     return undefined;
   };
 
+  const buildPublishHeaders = (endpoint: PublishEndpointConfig): Record<string, string> => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (endpoint.secretKey.trim()) {
+      const headerName = endpoint.headerName.trim() || 'Authorization';
+      let keyVal = endpoint.secretKey.trim();
+      if (headerName.toLowerCase() === 'authorization' && !keyVal.toLowerCase().startsWith('bearer ')) {
+        keyVal = `Bearer ${keyVal}`;
+      }
+      headers[headerName] = keyVal;
+    }
+    return headers;
+  };
+
+  interface PublishPayloadInput {
+    title: string;
+    slug: string;
+    markdownContent: string;
+    excerpt?: string;
+    metaDescription?: string;
+    keywords?: string[];
+  }
+
+  /** Build the payload sent to a blog endpoint. The body is sanitized so
+   *  unresolved [IMAGE_PROMPT: ...] placeholders never ship to the live site. */
+  const buildPublishPayload = (post: PublishPayloadInput) => {
+    const body = sanitizeBodyForPublish(post.markdownContent);
+    const excerpt = post.excerpt || extractExcerptFromMarkdown(body).slice(0, 500);
+    const metaDescription = post.metaDescription || excerpt.slice(0, 160);
+    const keywords = post.keywords || [];
+    const primaryImageUrl = extractPrimaryImageUrl(body);
+    return {
+      title: post.title,
+      slug: post.slug,
+      body,
+      content: body,
+      excerpt,
+      metaDescription,
+      keywords,
+      image_url: primaryImageUrl,
+      featuredImage: primaryImageUrl,
+      author: 'AI Research Studio',
+      publishedAt: new Date().toISOString(),
+      source: 'Social Studio X AI Research Center'
+    };
+  };
+
+  const stripPreviewBlobs = (prompts: SectionImagePrompt[] | undefined): SectionImagePrompt[] =>
+    (prompts || []).map((p) => {
+      if (!p.previewDataUrl) return p;
+      const { previewDataUrl, ...rest } = p;
+      return rest;
+    });
+
+  /** The saved record (if any) that represents the CURRENTLY EDITED post's published version. */
+  const findPublishedRecord = useCallback((): SavedBlogDraft | undefined => {
+    if (!blogResult) return undefined;
+    const byId = activeDraftId
+      ? savedBlogDrafts.find(d => d.id === activeDraftId && d.publishedEndpointId)
+      : undefined;
+    if (byId) return byId;
+    const bySlug = blogResult.slug
+      ? savedBlogDrafts.find(d => d.publishedEndpointId && d.slug === blogResult.slug)
+      : undefined;
+    if (bySlug) return bySlug;
+    return savedBlogDrafts.find(d => d.publishedEndpointId && d.title === blogResult.title);
+  }, [blogResult, activeDraftId, savedBlogDrafts]);
+
+  /** Whether the currently edited post differs from what was last published to its endpoint. */
+  const hasUnpublishedChanges = useCallback((): boolean => {
+    const record = findPublishedRecord();
+    if (!blogResult) return false;
+    const baseline = sanitizeBodyForPublish(record?.publishedMarkdown ?? record?.markdownContent ?? '');
+    const current = sanitizeBodyForPublish(blogResult.markdownContent);
+    return current !== baseline || (record?.publishedTitle || '') !== blogResult.title;
+  }, [blogResult, findPublishedRecord]);
+
   const handlePublishBlogToEndpoint = useCallback(async (customDraftToPublish?: SavedBlogDraft) => {
     const postToPublish = customDraftToPublish || (blogResult ? {
       id: activeDraftId || undefined,
@@ -497,40 +588,17 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
         .replace(/(^-|-$)/g, '')
         .slice(0, 200) || 'blog-post';
 
-      const excerpt = (postToPublish as any).excerpt || extractExcerptFromMarkdown(postToPublish.markdownContent).slice(0, 500);
-      const metaDescription = (postToPublish as any).metaDescription || excerpt.slice(0, 160);
-      const keywords = (postToPublish as any).keywords || [];
-      const primaryImageUrl = extractPrimaryImageUrl(postToPublish.markdownContent);
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-
-      if (targetEndpoint.secretKey.trim()) {
-        const headerName = targetEndpoint.headerName.trim() || 'Authorization';
-        let keyVal = targetEndpoint.secretKey.trim();
-        if (headerName.toLowerCase() === 'authorization' && !keyVal.toLowerCase().startsWith('bearer ')) {
-          keyVal = `Bearer ${keyVal}`;
-        }
-        headers[headerName] = keyVal;
-      }
-
-      const payload = {
+      const headers = buildPublishHeaders(targetEndpoint);
+      const payload = buildPublishPayload({
         title: postToPublish.title,
         slug,
-        body: postToPublish.markdownContent,
-        content: postToPublish.markdownContent,
-        excerpt,
-        metaDescription,
-        keywords,
-        image_url: primaryImageUrl,
-        featuredImage: primaryImageUrl,
-        author: 'AI Research Studio',
-        publishedAt: new Date().toISOString(),
-        source: 'Social Studio X AI Research Center'
-      };
+        markdownContent: postToPublish.markdownContent,
+        excerpt: (postToPublish as any).excerpt,
+        metaDescription: (postToPublish as any).metaDescription,
+        keywords: (postToPublish as any).keywords
+      });
 
-      const result = await publishBlogToEndpoint(targetUrl, headers, payload);
+      const result = await publishBlogToEndpoint(targetUrl, headers, payload, 'POST');
 
       const status = result.status;
       let resText = result.responseText;
@@ -544,14 +612,21 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
         await handleSaveBlogDraft({
           id: postToPublish.id,
           title: postToPublish.title,
-          markdownContent: postToPublish.markdownContent
+          slug,
+          excerpt: payload.excerpt,
+          metaDescription: payload.metaDescription,
+          keywords: payload.keywords,
+          markdownContent: postToPublish.markdownContent,
+          sectionImagePrompts: stripPreviewBlobs((postToPublish as any).sectionImagePrompts),
+          publishedMarkdown: payload.body,
+          publishedTitle: postToPublish.title
         }, 'published', undefined, targetEndpoint.id);
       } else {
         let errorDetail = resText || 'Publish failed.';
         if (status === 401) {
           errorDetail = `401 Unauthorized: Invalid or missing Bearer token. Check the secret key in Webhook settings.`;
         } else if (status === 409) {
-          errorDetail = `409 Conflict: A blog post with slug "${slug}" already exists.`;
+          errorDetail = `409 Conflict: A blog post with slug "${slug}" already exists. Use "Update Published Post" to modify it instead.`;
         } else if (status === 400) {
           errorDetail = `400 Validation Error: ${resText || 'Check title, slug, excerpt, and body content.'}`;
         }
@@ -566,6 +641,80 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       setPublishingDraftId(null);
     }
   }, [blogResult, activeDraftId, publishEndpoints, selectedEndpointId, handleSaveBlogDraft]);
+
+  /** Update an already-published post in place (PUT/PATCH by slug) using the current editor content. */
+  const handleUpdatePublishedPost = useCallback(async (customRecord?: SavedBlogDraft) => {
+    const record = customRecord || findPublishedRecord();
+    if (!record || !record.publishedEndpointId || !blogResult) return;
+
+    const endpoint = publishEndpoints.find(e => e.id === record.publishedEndpointId) || publishEndpoints[0];
+    const targetUrl = endpoint?.endpointUrl.trim();
+    if (!targetUrl) return;
+
+    const method = endpoint.updateMethod || 'PUT';
+    const slug = record.slug || blogResult.slug || blogResult.title
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 200);
+
+    setIsPublishing(true);
+    setPublishingDraftId(record.id);
+
+    try {
+      const headers = buildPublishHeaders(endpoint);
+      const payload = buildPublishPayload({
+        title: blogResult.title,
+        slug,
+        markdownContent: blogResult.markdownContent,
+        excerpt: blogResult.excerpt,
+        metaDescription: blogResult.metaDescription,
+        keywords: blogResult.keywords
+      });
+
+      const result = await publishBlogToEndpoint(targetUrl, headers, payload, method);
+      const status = result.status;
+
+      if (result.ok || status === 200 || status === 201) {
+        const shortTitle = blogResult.title.length > 60
+          ? `${blogResult.title.slice(0, 60)}…`
+          : blogResult.title;
+        toast.success(`"${shortTitle}" updated on ${endpoint.name}!`);
+
+        const updated: SavedBlogDraft[] = savedBlogDrafts.map(d => d.id === record.id ? {
+          ...d,
+          title: blogResult.title,
+          slug,
+          excerpt: payload.excerpt,
+          metaDescription: payload.metaDescription,
+          keywords: payload.keywords,
+          markdownContent: blogResult.markdownContent,
+          characterCount: blogResult.markdownContent.length,
+          readingTimeMinutes: Math.max(1, Math.ceil(blogResult.markdownContent.split(/\s+/).filter(Boolean).length / 200)),
+          embeddedImagesCount: (blogResult.markdownContent.match(/!\[.*?\]\(.*?\)/g) || []).length,
+          sectionImagePrompts: stripPreviewBlobs(blogResult.sectionImagePrompts),
+          publishedMarkdown: payload.body,
+          publishedTitle: blogResult.title,
+          status: 'published',
+          publishedEndpointId: endpoint.id,
+          updatedAt: new Date().toISOString()
+        } : d);
+        setSavedBlogDrafts(updated);
+        await DBService.setItem(BLOG_DRAFTS_STORAGE_KEY, updated);
+      } else {
+        let errorDetail = result.responseText || 'Update failed.';
+        if (status === 404) {
+          errorDetail = `404 Not Found: No post with slug "${slug}" exists on the endpoint. It may have been deleted — use "Publish Now" to publish it as a new post instead.`;
+        } else if (status === 401) {
+          errorDetail = `401 Unauthorized: Invalid or missing Bearer token. Check the secret key in Webhook settings.`;
+        }
+        toast.error(`Endpoint "${endpoint.name}" returned HTTP ${status}: ${errorDetail}`);
+      }
+    } catch (err: any) {
+      console.error("Blog update endpoint error:", err);
+      toast.error(`Network Error connecting to ${endpoint.name} (${targetUrl}): ${err?.message || 'Unable to connect.'}`);
+    } finally {
+      setIsPublishing(false);
+      setPublishingDraftId(null);
+    }
+  }, [blogResult, findPublishedRecord, publishEndpoints, savedBlogDrafts]);
 
   /**
    * Advance `nextRunAt` for a recurring cron schedule (when the draft it points
@@ -723,21 +872,43 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
 
       const imageMatches = updatedMarkdown.match(/!\[.*?\]\(.*?\)/g) || [];
 
-      setBlogResult({
+      const updatedResult = {
         ...blogResult,
         markdownContent: updatedMarkdown,
         characterCount: updatedMarkdown.length,
         readingTimeMinutes: Math.max(1, Math.ceil(updatedMarkdown.split(/\s+/).filter(Boolean).length / 200)),
         embeddedImagesCount: imageMatches.length,
         sectionImagePrompts: updatedPrompts
-      });
+      };
+      setBlogResult(updatedResult);
+
+      // Persist immediately so an uploaded image is never lost by navigating away,
+      // refreshing, or reopening the post from the Published list. Preserves the
+      // record's published status/identity so published posts stay published.
+      const record = activeDraftId
+        ? savedBlogDrafts.find(d => d.id === activeDraftId)
+        : savedBlogDrafts.find(d => d.publishedEndpointId && d.title === blogResult.title);
+      await handleSaveBlogDraft({
+        id: record?.id || activeDraftId || undefined,
+        title: updatedResult.title,
+        slug: updatedResult.slug,
+        excerpt: updatedResult.excerpt,
+        metaDescription: updatedResult.metaDescription,
+        keywords: updatedResult.keywords,
+        markdownContent: updatedResult.markdownContent,
+        characterCount: updatedResult.characterCount,
+        readingTimeMinutes: updatedResult.readingTimeMinutes,
+        embeddedImagesCount: updatedResult.embeddedImagesCount,
+        sectionImagePrompts: updatedResult.sectionImagePrompts,
+        relatedPosts: updatedResult.relatedPosts
+      }, record?.status === 'published' ? 'published' : 'draft');
     } catch (err: any) {
       console.error("Failed to upload section image:", err);
       toast.error("Failed to upload the section image. Check your connection and try again.");
     } finally {
       setUploadingPromptId(null);
     }
-  }, [blogResult, uploadingPromptId]);
+  }, [blogResult, uploadingPromptId, activeDraftId, savedBlogDrafts, handleSaveBlogDraft]);
 
   const handleMarkdownContentEdit = useCallback((newMarkdown: string) => {
     if (!blogResult) return;
@@ -786,13 +957,16 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     setBlogResult(updated);
     setIsEditingTitle(false);
 
+    const existingRecord = activeDraftId
+      ? savedBlogDrafts.find(d => d.id === activeDraftId)
+      : undefined;
     handleSaveBlogDraft({
       id: activeDraftId || undefined,
       title: newTitle,
       slug: newSlug,
       markdownContent: blogResult.markdownContent
-    }, 'draft');
-  }, [blogResult, customTitleInput, activeDraftId, handleSaveBlogDraft]);
+    }, existingRecord?.status === 'published' ? 'published' : 'draft');
+  }, [blogResult, customTitleInput, activeDraftId, handleSaveBlogDraft, savedBlogDrafts]);
 
   // AI SEO suggestions
   const suggestSeo = useCallback(async () => {
@@ -951,6 +1125,9 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     handleSaveEndpointsList,
     handleDeleteEndpoint,
     handlePublishBlogToEndpoint,
+    handleUpdatePublishedPost,
+    findPublishedRecord,
+    hasUnpublishedChanges,
     handleGenerateSectionImage,
     handleUploadSectionImage,
     handleMarkdownContentEdit,

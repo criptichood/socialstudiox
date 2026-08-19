@@ -50,6 +50,15 @@ export const PublishedBlogPostsTab: React.FC<PublishedBlogPostsTabProps> = ({
     }, 'draft');
   };
 
+  const hasPendingChanges = (post: SavedBlogDraft): boolean => {
+    if (post.publishedMarkdown === undefined || post.publishedTitle === undefined) return false;
+    const sanitize = (md: string) => md
+      .replace(/\[?IMAGE_PROMPT:\s*[^\]\n]*\]?\s*/gi, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return sanitize(post.markdownContent) !== post.publishedMarkdown || post.title !== post.publishedTitle;
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
@@ -87,6 +96,12 @@ export const PublishedBlogPostsTab: React.FC<PublishedBlogPostsTabProps> = ({
                       <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
                         Published
                       </span>
+                      {hasPendingChanges(post) && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold uppercase bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/40 flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                          Edited since publish
+                        </span>
+                      )}
                       {post.publishedAt && (
                         <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
                           <CalendarClock className="w-3 h-3" />
