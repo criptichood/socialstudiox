@@ -180,8 +180,8 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                     if (hasPreview && matchedPrompt && onUploadSectionImage) {
                       return (
                         <div className="space-y-2">
-                          <div className="aspect-video w-full overflow-hidden rounded-xl border border-purple-500/30 bg-slate-900">
-                            <img src={matchedPrompt.previewDataUrl} alt="Generated section preview" className="w-full h-full object-cover" />
+                          <div className="w-full max-h-64 overflow-hidden rounded-xl border border-purple-500/30 bg-slate-900">
+                            <img src={matchedPrompt.previewDataUrl} alt="Generated section preview" className="w-full h-auto object-cover" />
                           </div>
                           <button
                             type="button"
@@ -206,34 +206,33 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                     }
 
                     return (
-                      <div className="aspect-video w-full rounded-xl border border-purple-500/30 bg-slate-900/80 flex items-center justify-center overflow-hidden">
+                      <button
+                        type="button"
+                        disabled={generatingPromptId !== null}
+                        onClick={() => {
+                          const promptObj: SectionImagePrompt = {
+                            id: matchedPrompt?.id || `prompt_${Date.now()}`,
+                            prompt: promptText,
+                            tag: promptMatch[0],
+                            aspectRatio: ratioFor(promptText),
+                            generatedUrl: matchedPrompt?.generatedUrl
+                          };
+                          onGenerateSectionImage(promptObj);
+                        }}
+                        className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
                         {generatingPromptId !== null ? (
-                          <div className="flex flex-col items-center gap-2.5 p-4">
-                            <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
-                            <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider text-center">
-                              Generating High-Res Section Image...
-                            </span>
-                          </div>
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin text-purple-200" />
+                            <span>Generating High-Res Section Image...</span>
+                          </>
                         ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const promptObj: SectionImagePrompt = {
-                                id: matchedPrompt?.id || `prompt_${Date.now()}`,
-                                prompt: promptText,
-                                tag: promptMatch[0],
-                                aspectRatio: ratioFor(promptText),
-                                generatedUrl: matchedPrompt?.generatedUrl
-                              };
-                              onGenerateSectionImage(promptObj);
-                            }}
-                            className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-                          >
+                          <>
                             <ImageIcon className="w-4 h-4" />
                             <span>🎨 Generate Image for Section</span>
-                          </button>
+                          </>
                         )}
-                      </div>
+                      </button>
                     );
                   })()}
                 </div>

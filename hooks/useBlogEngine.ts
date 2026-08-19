@@ -540,12 +540,14 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
   /** The saved record (if any) that represents the CURRENTLY EDITED post's published version. */
   const findPublishedRecord = useCallback((): SavedBlogDraft | undefined => {
     if (!blogResult) return undefined;
+    const norm = (s?: string) => (s || '').toLowerCase().replace(/\/+$/g, '').trim();
     const byId = activeDraftId
       ? savedBlogDrafts.find(d => d.id === activeDraftId && d.publishedEndpointId)
       : undefined;
     if (byId) return byId;
-    const bySlug = blogResult.slug
-      ? savedBlogDrafts.find(d => d.publishedEndpointId && d.slug === blogResult.slug)
+    const currentSlug = norm(blogResult.slug);
+    const bySlug = currentSlug
+      ? savedBlogDrafts.find(d => d.publishedEndpointId && norm(d.slug) === currentSlug)
       : undefined;
     if (bySlug) return bySlug;
     return savedBlogDrafts.find(d => d.publishedEndpointId && d.title === blogResult.title);
@@ -626,7 +628,27 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
         if (status === 401) {
           errorDetail = `401 Unauthorized: Invalid or missing Bearer token. Check the secret key in Webhook settings.`;
         } else if (status === 409) {
-          errorDetail = `409 Conflict: A blog post with slug "${slug}" already exists. Use "Update Published Post" to modify it instead.`;
+          errorDetail = `409 Conflict: A blog post with slug "${slug}" already exists on "${targetEndpoint.name}".`;
+          // Auto-link this post to a published record so the "Update Published Post"
+          // (PUT/PATCH) path becomes available instead of a dead-end "Publish Now".
+          const existingRecord = savedBlogDrafts.find(d =>
+            d.publishedEndpointId && d.slug === slug && d.status === 'published'
+          );
+          if (!existingRecord) {
+            await handleSaveBlogDraft({
+              id: postToPublish.id,
+              title: postToPublish.title,
+              slug,
+              excerpt: payload.excerpt,
+              metaDescription: payload.metaDescription,
+              keywords: payload.keywords,
+              markdownContent: postToPublish.markdownContent,
+              sectionImagePrompts: stripPreviewBlobs((postToPublish as any).sectionImagePrompts),
+              publishedMarkdown: payload.body,
+              publishedTitle: postToPublish.title
+            }, 'published', undefined, targetEndpoint.id);
+            errorDetail += ' This post is now linked as published — use "Update Published Post" to push your changes.';
+          }
         } else if (status === 400) {
           errorDetail = `400 Validation Error: ${resText || 'Check title, slug, excerpt, and body content.'}`;
         }
@@ -640,7 +662,7 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       setIsPublishing(false);
       setPublishingDraftId(null);
     }
-  }, [blogResult, activeDraftId, publishEndpoints, selectedEndpointId, handleSaveBlogDraft]);
+  }, [blogResult, activeDraftId, publishEndpoints, selectedEndpointId, handleSaveBlogDraft, savedBlogDrafts]);
 
   /** Update an already-published post in place (PUT/PATCH by slug) using the current editor content. */
   const handleUpdatePublishedPost = useCallback(async (customRecord?: SavedBlogDraft) => {
@@ -704,6 +726,8 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
           errorDetail = `404 Not Found: No post with slug "${slug}" exists on the endpoint. It may have been deleted — use "Publish Now" to publish it as a new post instead.`;
         } else if (status === 401) {
           errorDetail = `401 Unauthorized: Invalid or missing Bearer token. Check the secret key in Webhook settings.`;
+        } else if (status === 405 || status === 501) {
+          errorDetail = `HTTP ${status}: "${endpoint.name}" does not support ${method} updates yet. The endpoint must accept ${method} to the post's slug (see Webhook → Update Method).`;
         }
         toast.error(`Endpoint "${endpoint.name}" returned HTTP ${status}: ${errorDetail}`);
       }
@@ -865,14 +889,33 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       } else {
         // Fresh generation (or the prompt token is still in the markdown): keep the
         // result as a UI-only preview and drop any stale generatedUrl so the
-        // preview + "Upload Image to Blog" card renders.
-        const updatedPrompts = (blogResult.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
-          if (p.id === promptObj.id || p.prompt === promptObj.prompt) {
-            const { generatedUrl: _staleUrl, ...rest } = p;
-            return { ...rest, previewDataUrl: generatedDataUrl, aspectRatio };
-          }
-          return p;
-        });
+        // preview + "Upload Image to Blog" card renders. If no matching prompt entry
+        // exists (e.g. a legacy record with empty sectionImagePrompts), append one —
+        // otherwise the preview would never be reachable.
+        const existingIndex = (blogResult.sectionImagePrompts || []).findIndex(
+          (p: SectionImagePrompt) => p.id === promptObj.id || p.prompt === promptObj.prompt
+        );
+        let updatedPrompts: SectionImagePrompt[];
+        if (existingIndex >= 0) {
+          updatedPrompts = (blogResult.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
+            if (p.id === promptObj.id || p.prompt === promptObj.prompt) {
+              const { generatedUrl: _staleUrl, ...rest } = p;
+              return { ...rest, previewDataUrl: generatedDataUrl, aspectRatio };
+            }
+            return p;
+          });
+        } else {
+          updatedPrompts = [
+            ...(blogResult.sectionImagePrompts || []),
+            {
+              id: promptObj.id || `prompt_${Date.now()}`,
+              prompt: promptObj.prompt,
+              tag: promptObj.tag,
+              aspectRatio,
+              previewDataUrl: generatedDataUrl
+            }
+          ];
+        }
 
         setBlogResult({
           ...blogResult,
