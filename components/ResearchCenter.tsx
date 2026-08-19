@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { DBService } from '../services/dbService';
-import { conductResearchChat } from '../services/geminiService';
+import { conductResearchChat, generateInfographicImage, uploadImageToCloudinary, SectionImagePrompt } from '../services/geminiService';
 import { loadModelSettings } from '@/services/ai/modelService';
 import { gatewayBackendForId, textModelSupportsVision } from '@/types';
 import { ResearchSession, ChatMessageItem } from '../types';
 import { useBlogEngine } from '@/hooks/useBlogEngine';
-import { curateResearchBrief } from '@/services/ai/campaignService';
 import { beginLoading, resolveToast, logTechnicalError } from '@/lib/feedback';
 
 import { ResearchSidebar } from './research/ResearchSidebar';
@@ -48,6 +47,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = useState<string>('Thinking…');
+  const [generatingPromptId, setGeneratingPromptId] = useState<string | null>(null);
 
   // Campaign to Blog Post Converter popup visibility
   const [isBlogStudioOpen, setIsBlogStudioOpen] = useState<boolean>(false);
@@ -395,19 +395,17 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     blogEngine.setIsNewPostComposerOpen(true);
 
     // Curate the clicked reply into a rich blog brief instead of leaving the
-    // composer prefilled with just the plain topic name. Won't clobber input
-    // the user already started typing.
+    // composer prefilled with just the plain topic name. The engine drives the
+    // composer's loading state while this runs, and won't clobber input the
+    // user already started typing.
     if (!context) return;
     const toastId = beginLoading('Curating blog brief…');
     try {
-      const brief = await curateResearchBrief(topic || '', context, activeSession?.companyContext || '', 'blog');
-      if (brief.objective && blogEngine.newPostIdeaInput === (topic || '')) {
-        blogEngine.setNewPostIdeaInput(brief.objective);
-      }
+      await blogEngine.curateBlogBrief(topic || '', context, activeSession?.companyContext || '');
       resolveToast(toastId, 'success', 'Blog brief ready');
     } catch (err) {
       resolveToast(toastId, 'error', 'Could not curate brief — using original topic');
-      logTechnicalError('curateResearchBrief', err);
+      logTechnicalError('curateBlogBrief', err);
     }
   };
 
@@ -470,6 +468,51 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     setEditingMessageContent('');
   };
 
+  /**
+   * Generate the image for an [IMAGE_PROMPT: ...] block embedded in a research
+   * reply. Generates the visual, uploads it to Cloudinary, then replaces the
+   * prompt token in that message's content with an inline markdown image so the
+   * rendered reply shows the finished visual in place of the prompt card.
+   */
+  const handleGenerateSectionImage = async (msgId: string, promptObj: SectionImagePrompt) => {
+    if (generatingPromptId || !activeSessionId) return;
+    const session = sessions.find(s => s.id === activeSessionId);
+    const msg = session?.messages.find(m => m.id === msgId);
+    if (!msg || !msg.content.includes('IMAGE_PROMPT')) return;
+
+    setGeneratingPromptId(promptObj.id);
+    const toastId = beginLoading('Generating section image…');
+    try {
+      const dataUrl = await generateInfographicImage(promptObj.prompt, promptObj.aspectRatio as any);
+      const hostedUrl = await uploadImageToCloudinary(dataUrl, 'blog-images');
+      const imgTag = `![${promptObj.prompt.slice(0, 35)}](${hostedUrl})`;
+
+      let updatedContent = msg.content;
+      if (promptObj.tag && updatedContent.includes(promptObj.tag)) {
+        updatedContent = updatedContent.split(promptObj.tag).join(imgTag);
+      } else {
+        const escapedPrompt = promptObj.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const tokenRegex = new RegExp(`\\[?IMAGE_PROMPT:\\s*${escapedPrompt}\\]?`, 'i');
+        updatedContent = updatedContent.replace(tokenRegex, imgTag);
+      }
+
+      setSessions(prev => prev.map(s => {
+        if (s.id !== activeSessionId) return s;
+        return {
+          ...s,
+          updatedAt: Date.now(),
+          messages: s.messages.map(m => m.id === msgId ? { ...m, content: updatedContent } : m)
+        };
+      }));
+      resolveToast(toastId, 'success', 'Section image generated & embedded');
+    } catch (err) {
+      resolveToast(toastId, 'error', 'Failed to generate the section image. Please try again.');
+      logTechnicalError('generateSectionImage (research)', err);
+    } finally {
+      setGeneratingPromptId(null);
+    }
+  };
+
   const samplePrompts = [
     {
       icon: Video,
@@ -522,6 +565,8 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           onSendToVideoStudio={onSendToVideoStudio}
           onSaveToDraftPlanner={onSaveToDraftPlanner}
           onOpenBlogComposer={handleOpenBlogComposer}
+          onGenerateSectionImage={handleGenerateSectionImage}
+          generatingPromptId={generatingPromptId}
           handleGenerateBlogPost={handleGenerateBlogPost}
           setIsBlogStudioOpen={setIsBlogStudioOpen}
           setBlogViewMode={setBlogViewMode}

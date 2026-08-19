@@ -17,6 +17,7 @@ import {
   Loader2 
 } from 'lucide-react';
 import { ChatMessageItem, ResearchSession } from '../../types';
+import { SectionImagePrompt } from '../../services/geminiService';
 import { BlogMarkdownRenderer } from './blog/BlogMarkdownRenderer';
 
 // The "send to campaign / video / blog" buttons bundle the specific reply the
@@ -47,6 +48,8 @@ interface ResearchChatAreaProps {
   onSendToVideoStudio?: (videoPrompt: string, scriptText?: string) => void;
   onSaveToDraftPlanner?: (topic: string, prompt: string) => void;
   onOpenBlogComposer?: (topic: string, context: string) => void;
+  onGenerateSectionImage?: (msgId: string, promptObj: SectionImagePrompt) => void;
+  generatingPromptId?: string | null;
   handleGenerateBlogPost: (forcedTopic?: string, forcedContext?: string) => Promise<void>;
   setIsBlogStudioOpen: (val: boolean) => void;
   setBlogViewMode: (mode: any) => void;
@@ -69,6 +72,8 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
   onSendToVideoStudio,
   onSaveToDraftPlanner,
   onOpenBlogComposer,
+  onGenerateSectionImage,
+  generatingPromptId,
   handleGenerateBlogPost,
   setIsBlogStudioOpen,
   setBlogViewMode,
@@ -289,7 +294,11 @@ export const ResearchChatArea: React.FC<ResearchChatAreaProps> = ({
                         <p className="text-xs sm:text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
                       </div>
                     ) : (
-                      <BlogMarkdownRenderer content={msg.content} />
+                      <BlogMarkdownRenderer
+                        content={msg.content}
+                        generatingPromptId={generatingPromptId}
+                        onGenerateSectionImage={onGenerateSectionImage ? (promptObj) => onGenerateSectionImage(msg.id, promptObj) : undefined}
+                      />
                     )}
                   </div>
                 )}

@@ -19,24 +19,30 @@ export const BlogNewPostModal: React.FC<BlogNewPostModalProps> = ({ engine, onGe
     setIdeaOptions,
     isGeneratingIdeas,
     isGeneratingBlog,
+    isCuratingBlogBrief,
     generateTopicIdeas,
     generateBlogPost,
     nodeDiagramsEnabled,
     setNodeDiagramsEnabled,
   } = engine;
 
+  // The composer also locks while a research reply is being curated into a
+  // brief (isCuratingBlogBrief), so users see a clear transition instead of a
+  // bare topic + toast, and don't mistake the loading phase for a broken app.
+  const loading = isGeneratingBlog || isCuratingBlogBrief;
+
   useEffect(() => {
     if (!isNewPostComposerOpen) return;
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !isGeneratingBlog) setIsNewPostComposerOpen(false);
+      if (e.key === 'Escape' && !loading) setIsNewPostComposerOpen(false);
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [isNewPostComposerOpen, setIsNewPostComposerOpen, isGeneratingBlog]);
+  }, [isNewPostComposerOpen, setIsNewPostComposerOpen, loading]);
 
   const handleGenerate = async (topic: string) => {
     const cleanTopic = topic.trim();
-    if (!cleanTopic || isGeneratingBlog) return;
+    if (!cleanTopic || loading) return;
     try {
       let ok = false;
       if (onGeneratePost) {
@@ -72,7 +78,7 @@ export const BlogNewPostModal: React.FC<BlogNewPostModalProps> = ({ engine, onGe
     <div
       className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
       onClick={() => {
-        if (!isGeneratingBlog) setIsNewPostComposerOpen(false);
+        if (!loading) setIsNewPostComposerOpen(false);
       }}
     >
       <div
@@ -95,7 +101,7 @@ export const BlogNewPostModal: React.FC<BlogNewPostModalProps> = ({ engine, onGe
           </div>
           <button
             type="button"
-            disabled={isGeneratingBlog}
+            disabled={loading}
             onClick={() => setIsNewPostComposerOpen(false)}
             className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
           >
@@ -104,7 +110,7 @@ export const BlogNewPostModal: React.FC<BlogNewPostModalProps> = ({ engine, onGe
         </div>
 
         <div className="p-5">
-          {isGeneratingBlog ? (
+          {loading ? (
             <div className="space-y-4">
               <div className="flex flex-col items-center justify-center py-8 text-center space-y-4">
                 <div className="w-14 h-14 rounded-3xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-500/30">
@@ -112,10 +118,12 @@ export const BlogNewPostModal: React.FC<BlogNewPostModalProps> = ({ engine, onGe
                 </div>
                 <div className="space-y-1.5">
                   <h4 className="text-sm font-bold text-slate-900 dark:text-white font-display">
-                    Generating your blog post...
+                    {isCuratingBlogBrief ? 'Curating your blog brief...' : 'Generating your blog post...'}
                   </h4>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs mx-auto leading-relaxed">
-                    The AI is reviewing your published posts to avoid duplicate content, then writing the article with SEO structure and section image prompts.
+                    {isCuratingBlogBrief
+                      ? 'The AI is reading the research reply and distilling it into a rich post idea and angle, so the draft continues exactly where your research left off.'
+                      : 'The AI is reviewing your published posts to avoid duplicate content, then writing the article with SEO structure and section image prompts.'}
                   </p>
                 </div>
                 <div className="w-full space-y-2 pt-1">
@@ -183,7 +191,7 @@ export const BlogNewPostModal: React.FC<BlogNewPostModalProps> = ({ engine, onGe
           <div className="flex items-center gap-2">
             <button
               type="button"
-              disabled={isGeneratingBlog || !newPostIdeaInput.trim()}
+              disabled={loading || !newPostIdeaInput.trim()}
               onClick={() => handleGenerate(newPostIdeaInput)}
               className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
             >
@@ -202,7 +210,7 @@ export const BlogNewPostModal: React.FC<BlogNewPostModalProps> = ({ engine, onGe
 
             <button
               type="button"
-              disabled={isGeneratingIdeas || isGeneratingBlog}
+              disabled={isGeneratingIdeas || loading}
               onClick={handleLucky}
               className="px-4 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 disabled:opacity-50 text-amber-700 dark:text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
             >
@@ -262,7 +270,7 @@ export const BlogNewPostModal: React.FC<BlogNewPostModalProps> = ({ engine, onGe
                   <span className="flex items-center gap-2 mt-1">
                     <button
                       type="button"
-                      disabled={isGeneratingBlog}
+                      disabled={loading}
                       onClick={(e) => {
                         e.stopPropagation();
                         setPreviewIdea(idea);
@@ -273,7 +281,7 @@ export const BlogNewPostModal: React.FC<BlogNewPostModalProps> = ({ engine, onGe
                     </button>
                     <button
                       type="button"
-                      disabled={isGeneratingBlog}
+                      disabled={loading}
                       onClick={(e) => {
                         e.stopPropagation();
                         setNewPostIdeaInput(idea.title);
@@ -371,7 +379,7 @@ export const BlogNewPostModal: React.FC<BlogNewPostModalProps> = ({ engine, onGe
               <div className="flex items-center gap-2 pt-1">
                 <button
                   type="button"
-                  disabled={isGeneratingBlog}
+                  disabled={loading}
                   onClick={() => {
                     const idea = previewIdea;
                     setPreviewIdea(null);

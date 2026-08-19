@@ -19,6 +19,7 @@ import {
   SavedBlogDraft,
   CronScheduleItem,
 } from '@/types';
+import { curateResearchBrief, CuratedResearchBrief } from '@/services/ai/campaignService';
 
 export const BLOG_DRAFTS_STORAGE_KEY = 'infogenius_saved_blog_drafts';
 export const BLOG_ENDPOINTS_STORAGE_KEY = 'infogenius_publish_endpoints';
@@ -122,6 +123,18 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
   const [newPostIdeaInput, setNewPostIdeaInput] = useState<string>('');
   const [ideaOptions, setIdeaOptions] = useState<BlogTopicIdea[]>([]);
   const [isGeneratingIdeas, setIsGeneratingIdeas] = useState<boolean>(false);
+
+  // When "Create Blog Post" is opened from a research reply, the composer is
+  // shown immediately with the plain topic while the reply is curated into a
+  // rich brief in the background. This flag drives the loading state in the
+  // composer so the user sees the transition instead of a bare topic and a toast.
+  const [isCuratingBlogBrief, setIsCuratingBlogBrief] = useState<boolean>(false);
+  // Live mirror of newPostIdeaInput so async curation can check whether the user
+  // edited the field while it was running (the closure's state value is stale).
+  const newPostIdeaInputRef = useRef<string>('');
+  useEffect(() => {
+    newPostIdeaInputRef.current = newPostIdeaInput;
+  }, [newPostIdeaInput]);
 
   // AI node-diagram rendering toggle (default ON)
   const [nodeDiagramsEnabled, setNodeDiagramsEnabled] = useState<boolean>(() => {
@@ -406,6 +419,29 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       setIsGeneratingIdeas(false);
     }
   }, [isGeneratingIdeas, savedBlogDrafts]);
+
+  /**
+   * Curate a research reply into a rich blog brief and prefill the composer's
+   * idea field with it. Exposes the isCuratingBlogBrief flag so the composer
+   * can show a loading state while it runs. Re-throws on failure so callers
+   * can surface the error, and never clobbers text the user typed meanwhile.
+   */
+  const curateBlogBrief = useCallback(async (
+    topic: string,
+    context: string,
+    companyContext?: string
+  ): Promise<CuratedResearchBrief> => {
+    setIsCuratingBlogBrief(true);
+    try {
+      const brief = await curateResearchBrief(topic || '', context, companyContext || '', 'blog');
+      if (brief.objective && newPostIdeaInputRef.current === (topic || '')) {
+        setNewPostIdeaInput(brief.objective);
+      }
+      return brief;
+    } finally {
+      setIsCuratingBlogBrief(false);
+    }
+  }, []);
 
   const extractExcerptFromMarkdown = (markdown: string): string => {
     const cleanText = markdown
@@ -896,6 +932,9 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     ideaOptions,
     setIdeaOptions,
     isGeneratingIdeas,
+    isCuratingBlogBrief,
+    setIsCuratingBlogBrief,
+    curateBlogBrief,
     generateTopicIdeas,
     // node-diagram toggle
     nodeDiagramsEnabled,
