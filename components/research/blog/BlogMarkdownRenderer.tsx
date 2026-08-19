@@ -105,7 +105,7 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
     </select>
   );
   return (
-    <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm leading-relaxed text-slate-800 dark:text-slate-200">
+    <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm leading-relaxed text-slate-800 dark:text-slate-200" style={{ overflowAnchor: 'none' }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -114,7 +114,11 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
           h3: ({ children }) => <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 mt-6 mb-3 font-display leading-tight">{children}</h3>,
           h4: ({ children }) => <h4 className="text-base font-bold text-slate-800 dark:text-slate-200 mt-4 mb-2 font-display">{children}</h4>,
           p: ({ children, node }: any) => {
-            const hasImageChild = (node?.children || []).some((c: any) => c?.type === 'image');
+            const hasImageChild = (node?.children || []).some((c: any) =>
+              c?.type === 'image' ||
+              c?.tagName === 'img' ||
+              (c?.type === 'element' && c?.tagName === 'a' && (c.children || []).some((gc: any) => gc?.type === 'image' || gc?.tagName === 'img'))
+            );
 
             if (hasImageChild) {
               return <div className="my-2">{children}</div>;
@@ -171,13 +175,13 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                   </p>
                   {onGenerateSectionImage && (() => {
                     const matchedPrompt = blogResult?.sectionImagePrompts?.find((p: any) => p.prompt === promptText);
-                    const hasPreview = matchedPrompt?.previewDataUrl && !matchedPrompt?.generatedUrl;
+                    const hasPreview = Boolean(matchedPrompt?.previewDataUrl);
 
-                    if (hasPreview && onUploadSectionImage) {
+                    if (hasPreview && matchedPrompt && onUploadSectionImage) {
                       return (
                         <div className="space-y-2">
-                          <div className="w-full max-h-64 overflow-hidden rounded-xl border border-purple-500/30 bg-slate-900">
-                            <img src={matchedPrompt.previewDataUrl} alt="Generated section preview" className="w-full h-auto object-cover" />
+                          <div className="aspect-video w-full overflow-hidden rounded-xl border border-purple-500/30 bg-slate-900">
+                            <img src={matchedPrompt.previewDataUrl} alt="Generated section preview" className="w-full h-full object-cover" />
                           </div>
                           <button
                             type="button"
@@ -202,32 +206,34 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                     }
 
                     return (
-                      <button
-                        type="button"
-                        disabled={generatingPromptId !== null}
-                        onClick={() => {
-                          const promptObj: SectionImagePrompt = {
-                            id: `prompt_${Date.now()}`,
-                            prompt: promptText,
-                            tag: promptMatch[0],
-                            aspectRatio: ratioFor(promptText)
-                          };
-                          onGenerateSectionImage(promptObj);
-                        }}
-                        className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
+                      <div className="aspect-video w-full rounded-xl border border-purple-500/30 bg-slate-900/80 flex items-center justify-center overflow-hidden">
                         {generatingPromptId !== null ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin text-purple-200" />
-                            <span>Generating High-Res Section Image...</span>
-                          </>
+                          <div className="flex flex-col items-center gap-2.5 p-4">
+                            <Loader2 className="w-6 h-6 animate-spin text-purple-400" />
+                            <span className="text-[10px] font-bold text-purple-300 uppercase tracking-wider text-center">
+                              Generating High-Res Section Image...
+                            </span>
+                          </div>
                         ) : (
-                          <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const promptObj: SectionImagePrompt = {
+                                id: matchedPrompt?.id || `prompt_${Date.now()}`,
+                                prompt: promptText,
+                                tag: promptMatch[0],
+                                aspectRatio: ratioFor(promptText),
+                                generatedUrl: matchedPrompt?.generatedUrl
+                              };
+                              onGenerateSectionImage(promptObj);
+                            }}
+                            className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer"
+                          >
                             <ImageIcon className="w-4 h-4" />
                             <span>🎨 Generate Image for Section</span>
-                          </>
+                          </button>
                         )}
-                      </button>
+                      </div>
                     );
                   })()}
                 </div>

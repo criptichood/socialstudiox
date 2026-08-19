@@ -817,24 +817,75 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       const aspectRatio = promptObj.aspectRatio || '16:9';
       const generatedDataUrl = await generateInfographicImage(promptObj.prompt, aspectRatio as any);
 
-      const updatedPrompts = (blogResult.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
-        if (p.id === promptObj.id || p.prompt === promptObj.prompt) {
-          return { ...p, previewDataUrl: generatedDataUrl, aspectRatio };
-        }
-        return p;
-      });
+      // Regeneration of an ALREADY-EMBEDDED image (markdown contains the old hosted
+      // URL): upload the new preview and swap the URL in place so the rendered
+      // figure updates on screen. No extra upload click needed.
+      const oldUrl = promptObj.generatedUrl;
+      const isEmbedded = Boolean(oldUrl && blogResult.markdownContent.includes(oldUrl));
 
-      setBlogResult({
-        ...blogResult,
-        sectionImagePrompts: updatedPrompts
-      });
+      if (isEmbedded) {
+        const hostedUrl = await uploadImageToCloudinary(generatedDataUrl, 'blog-images');
+        const updatedMarkdown = blogResult.markdownContent.split(oldUrl!).join(hostedUrl);
+        const updatedPrompts = (blogResult.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
+          if (p.id === promptObj.id || p.prompt === promptObj.prompt) {
+            return { ...p, generatedUrl: hostedUrl, previewDataUrl: undefined, aspectRatio };
+          }
+          return p;
+        });
+        const imageMatches = updatedMarkdown.match(/!\[.*?\]\(.*?\)/g) || [];
+
+        const updatedResult = {
+          ...blogResult,
+          markdownContent: updatedMarkdown,
+          characterCount: updatedMarkdown.length,
+          readingTimeMinutes: Math.max(1, Math.ceil(updatedMarkdown.split(/\s+/).filter(Boolean).length / 200)),
+          embeddedImagesCount: imageMatches.length,
+          sectionImagePrompts: updatedPrompts
+        };
+        setBlogResult(updatedResult);
+
+        const record = activeDraftId
+          ? savedBlogDrafts.find(d => d.id === activeDraftId)
+          : savedBlogDrafts.find(d => d.publishedEndpointId && d.title === blogResult.title);
+        await handleSaveBlogDraft({
+          id: record?.id || activeDraftId || undefined,
+          title: updatedResult.title,
+          slug: updatedResult.slug,
+          excerpt: updatedResult.excerpt,
+          metaDescription: updatedResult.metaDescription,
+          keywords: updatedResult.keywords,
+          markdownContent: updatedResult.markdownContent,
+          characterCount: updatedResult.characterCount,
+          readingTimeMinutes: updatedResult.readingTimeMinutes,
+          embeddedImagesCount: updatedResult.embeddedImagesCount,
+          sectionImagePrompts: updatedResult.sectionImagePrompts,
+          relatedPosts: updatedResult.relatedPosts
+        }, record?.status === 'published' ? 'published' : 'draft');
+        toast.success("Section image regenerated and replaced.");
+      } else {
+        // Fresh generation (or the prompt token is still in the markdown): keep the
+        // result as a UI-only preview and drop any stale generatedUrl so the
+        // preview + "Upload Image to Blog" card renders.
+        const updatedPrompts = (blogResult.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
+          if (p.id === promptObj.id || p.prompt === promptObj.prompt) {
+            const { generatedUrl: _staleUrl, ...rest } = p;
+            return { ...rest, previewDataUrl: generatedDataUrl, aspectRatio };
+          }
+          return p;
+        });
+
+        setBlogResult({
+          ...blogResult,
+          sectionImagePrompts: updatedPrompts
+        });
+      }
     } catch (err: any) {
       console.error("Failed to generate section image:", err);
       toast.error("Failed to generate the section image. Please try again.");
     } finally {
       setGeneratingPromptId(null);
     }
-  }, [blogResult, generatingPromptId]);
+  }, [blogResult, generatingPromptId, activeDraftId, savedBlogDrafts, handleSaveBlogDraft]);
 
   /**
    * Phase 2 — upload the generated preview to Cloudinary and only then embed the
@@ -917,16 +968,19 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     const imageMatches = newMarkdown.match(/!\[.*?\]\(.*?\)/g) || [];
 
     const promptRegex = /\[IMAGE_PROMPT:\s*([^\]]+)\]/gi;
+    const existingPrompts = new Map(
+      (blogResult.sectionImagePrompts || []).map(p => [p.prompt.trim().toLowerCase(), p])
+    );
     const sectionImagePrompts: SectionImagePrompt[] = [];
     let match: RegExpExecArray | null;
     let count = 0;
     while ((match = promptRegex.exec(newMarkdown)) !== null) {
       count++;
-      sectionImagePrompts.push({
-        id: `img_prompt_edit_${Date.now()}_${count}`,
-        prompt: match[1].trim(),
-        tag: match[0]
-      });
+      const promptText = match[1].trim();
+      const prev = existingPrompts.get(promptText.toLowerCase());
+      sectionImagePrompts.push(prev
+        ? { ...prev, tag: match[0] }
+        : { id: `img_prompt_edit_${Date.now()}_${count}`, prompt: promptText, tag: match[0] });
     }
 
     setBlogResult({
