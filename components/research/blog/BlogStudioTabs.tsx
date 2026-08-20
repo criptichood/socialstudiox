@@ -537,7 +537,7 @@ export const BlogStudioTabs: React.FC<BlogStudioTabsProps> = ({ engine, onGenera
                   type="text"
                   value={editingEndpoint.blogBaseUrl || ''}
                   onChange={(e) => setEditingEndpoint({ ...editingEndpoint, blogBaseUrl: e.target.value })}
-                  placeholder="https://growency.ai/blog (used to build Related Reading backlinks)"
+                  placeholder="https://myblog.com/blog (used to build Related Reading backlinks)"
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white font-mono outline-none"
                 />
               </div>

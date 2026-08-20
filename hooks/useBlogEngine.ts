@@ -28,9 +28,9 @@ export const BLOG_CAMPAIGNS_STORAGE_KEY = 'social_studio_x_campaigns_v2';
 export const BLOG_NODE_DIAGRAMS_KEY = 'infogenius_node_diagrams_enabled';
 
 const DEFAULT_ENDPOINT: PublishEndpointConfig = {
-  id: 'growency_main',
-  name: 'Growency.ai Production Blog',
-  endpointUrl: 'https://growency.ai/api/blog/publish',
+  id: 'default_endpoint',
+  name: 'My Blog Endpoint',
+  endpointUrl: '',
   secretKey: '',
   headerName: 'Authorization',
   enabled: true,
@@ -107,7 +107,7 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
 
   // Webhook endpoints
   const [publishEndpoints, setPublishEndpoints] = useState<PublishEndpointConfig[]>([DEFAULT_ENDPOINT]);
-  const [selectedEndpointId, setSelectedEndpointId] = useState<string>('growency_main');
+  const [selectedEndpointId, setSelectedEndpointId] = useState<string>('default_endpoint');
   const [editingEndpoint, setEditingEndpoint] = useState<PublishEndpointConfig | null>(null);
   const [isEndpointModalOpen, setIsEndpointModalOpen] = useState<boolean>(false);
 
@@ -180,7 +180,7 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       const match = target.endpointUrl.match(/^(https?:\/\/[^/]+)/);
       if (match) return match[1];
     }
-    return 'https://growency.ai';
+    return '';
   };
 
   const publishedBlogPosts = savedBlogDrafts.filter(d => d.status === 'published');
@@ -578,7 +578,12 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     if (!postToPublish) return;
 
     const targetEndpoint = publishEndpoints.find(e => e.id === selectedEndpointId) || publishEndpoints[0];
-    const targetUrl = targetEndpoint?.endpointUrl.trim() || 'https://growency.ai/api/blog/publish';
+    const targetUrl = targetEndpoint?.endpointUrl.trim() || '';
+
+    if (!targetUrl) {
+      toast.error("No webhook endpoint configured. Add one in Webhooks settings before publishing.");
+      return;
+    }
 
     setIsPublishing(true);
     setPublishingDraftId(customDraftToPublish?.id || activeDraftId || 'current');

@@ -617,7 +617,7 @@ export interface PublishEndpointConfig {
   headerName: string;
   enabled: boolean;
   isDefault?: boolean;
-  /** Public base URL where published posts are reachable (e.g. https://growency.ai/blog). Used to build backlink URLs. */
+  /** Public base URL where published posts are reachable (e.g. https://myblog.com/blog). Used to build backlink URLs. */
   blogBaseUrl?: string;
   /** HTTP method used to update an already-published post by slug (defaults to PUT). */
   updateMethod?: 'PUT' | 'PATCH';
