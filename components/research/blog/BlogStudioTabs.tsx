@@ -28,6 +28,13 @@ interface BlogStudioTabsProps {
   onGeneratePost?: (topic: string) => Promise<void> | void;
 }
 
+/** Mirror of the engine's publish-time sanitizer so the diff view reflects what's actually live. */
+const sanitizeForCompare = (markdown: string): string =>
+  markdown
+    .replace(/\[?IMAGE_PROMPT:\s*[^\]\n]*\]?\s*/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
 export const BlogStudioTabs: React.FC<BlogStudioTabsProps> = ({ engine, onGeneratePost }) => {
   const {
     blogResult,
@@ -72,6 +79,9 @@ export const BlogStudioTabs: React.FC<BlogStudioTabsProps> = ({ engine, onGenera
     handleSaveEndpointsList,
     handleDeleteEndpoint,
     handlePublishBlogToEndpoint,
+    handleUpdatePublishedPost,
+    findPublishedRecord,
+    hasUnpublishedChanges,
     isPublishing,
     publishingDraftId,
     generatingPromptId,
@@ -95,6 +105,11 @@ export const BlogStudioTabs: React.FC<BlogStudioTabsProps> = ({ engine, onGenera
   } = engine;
 
   const [showSecretKey, setShowSecretKey] = useState(false);
+  const [showCompareModal, setShowCompareModal] = useState(false);
+
+  const publishedRecord = findPublishedRecord();
+  const hasPendingChanges = hasUnpublishedChanges();
+  const isPublishingCurrent = isPublishing && (publishingDraftId === 'current' || publishingDraftId === activeDraftId);
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -236,17 +251,54 @@ export const BlogStudioTabs: React.FC<BlogStudioTabsProps> = ({ engine, onGenera
                     ))}
                   </select>
 
-                  <button
-                    type="button"
-                    disabled={isPublishing}
-                    onClick={() => handlePublishBlogToEndpoint()}
-                    className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
-                  >
-                    {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                    <span>{isPublishing ? 'Publishing...' : 'Publish Now'}</span>
-                  </button>
+                  {publishedRecord && (
+                    <>
+                      {hasPendingChanges && (
+                        <button
+                          type="button"
+                          onClick={() => setShowCompareModal(true)}
+                          className="px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                          title="Compare your current draft with the version live on the endpoint"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Compare with Published</span>
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        disabled={isPublishingCurrent}
+                        onClick={() => handleUpdatePublishedPost()}
+                        className="px-3.5 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                        title="Update the existing post on the endpoint (PUT/PATCH by slug)"
+                      >
+                        {isPublishingCurrent ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                        <span>{isPublishingCurrent ? 'Updating...' : hasPendingChanges ? 'Update Published Post' : 'Re-publish'}</span>
+                      </button>
+                    </>
+                  )}
+
+                  {!publishedRecord && (
+                    <button
+                      type="button"
+                      disabled={isPublishingCurrent}
+                      onClick={() => handlePublishBlogToEndpoint()}
+                      className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                    >
+                      {isPublishingCurrent ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                      <span>{isPublishingCurrent ? 'Publishing...' : 'Publish Now'}</span>
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {publishedRecord && hasPendingChanges && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-700 dark:text-amber-300">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                  <span className="font-semibold">
+                    You have unpublished changes. The live post "{publishedRecord.publishedTitle}" on {publishEndpoints.find(e => e.id === publishedRecord.publishedEndpointId)?.name || 'your endpoint'} is still the previous version.
+                  </span>
+                </div>
+              )}
 
               <BlogPreviewTab
                 blogResult={blogResult}
@@ -311,17 +363,52 @@ export const BlogStudioTabs: React.FC<BlogStudioTabsProps> = ({ engine, onGenera
                     <option key={ep.id} value={ep.id}>Endpoint: {ep.name}</option>
                   ))}
                 </select>
-                <button
-                  type="button"
-                  disabled={isPublishing}
-                  onClick={() => handlePublishBlogToEndpoint()}
-                  className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
-                >
-                  {isPublishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                  <span>{isPublishing ? 'Publishing...' : 'Publish Now'}</span>
-                </button>
+
+                {publishedRecord && hasPendingChanges && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCompareModal(true)}
+                    className="px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Compare your current draft with the version live on the endpoint"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>Compare with Published</span>
+                  </button>
+                )}
+
+                {publishedRecord ? (
+                  <button
+                    type="button"
+                    disabled={isPublishingCurrent}
+                    onClick={() => handleUpdatePublishedPost()}
+                    className="px-3.5 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                    title="Update the existing post on the endpoint (PUT/PATCH by slug)"
+                  >
+                    {isPublishingCurrent ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    <span>{isPublishingCurrent ? 'Updating...' : hasPendingChanges ? 'Update Published Post' : 'Re-publish'}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isPublishingCurrent}
+                    onClick={() => handlePublishBlogToEndpoint()}
+                    className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+                  >
+                    {isPublishingCurrent ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                    <span>{isPublishingCurrent ? 'Publishing...' : 'Publish Now'}</span>
+                  </button>
+                )}
               </div>
             </div>
+
+            {publishedRecord && hasPendingChanges && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs text-amber-700 dark:text-amber-300">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                <span className="font-semibold">
+                  You have unpublished changes. The live post "{publishedRecord.publishedTitle}" on {publishEndpoints.find(e => e.id === publishedRecord.publishedEndpointId)?.name || 'your endpoint'} is still the previous version.
+                </span>
+              </div>
+            )}
 
             <BlogMarkdownTab
               blogResult={blogResult}
@@ -450,7 +537,7 @@ export const BlogStudioTabs: React.FC<BlogStudioTabsProps> = ({ engine, onGenera
                   type="text"
                   value={editingEndpoint.blogBaseUrl || ''}
                   onChange={(e) => setEditingEndpoint({ ...editingEndpoint, blogBaseUrl: e.target.value })}
-                  placeholder="https://growency.ai/blog (used to build Related Reading backlinks)"
+                  placeholder="https://myblog.com/blog (used to build Related Reading backlinks)"
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white font-mono outline-none"
                 />
               </div>
@@ -490,8 +577,23 @@ export const BlogStudioTabs: React.FC<BlogStudioTabsProps> = ({ engine, onGenera
                   </button>
                 </div>
               </div>
+            <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Update Method (for editing published posts):
+                </label>
+                <select
+                  value={editingEndpoint.updateMethod || 'PUT'}
+                  onChange={(e) => setEditingEndpoint({ ...editingEndpoint, updateMethod: e.target.value as 'PUT' | 'PATCH' })}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-900 dark:text-white outline-none"
+                >
+                  <option value="PUT">PUT (replace by slug)</option>
+                  <option value="PATCH">PATCH (partial update by slug)</option>
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
+                  Used by "Update Published Post" — the endpoint must accept {editingEndpoint.updateMethod || 'PUT'} to the post's slug.
+                </p>
+              </div>
             </div>
-
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
               <button
                 type="button"
@@ -523,6 +625,73 @@ export const BlogStudioTabs: React.FC<BlogStudioTabsProps> = ({ engine, onGenera
                 className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold"
               >
                 Save Endpoint
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Compare Current Draft vs Published Version Modal */}
+      {showCompareModal && publishedRecord && blogResult && (
+        <div className="fixed inset-0 z-60 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white font-display">
+                Changes vs. Published Version
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowCompareModal(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                title="Close"
+              >
+                <EyeOff className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0 overflow-hidden">
+              <div className="flex flex-col min-h-0">
+                <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 dark:bg-slate-800 rounded-t-xl border border-b-0 border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-200">
+                  <span className="w-2 h-2 rounded-full bg-slate-400" />
+                  Published: {publishedRecord.publishedTitle || blogResult.title}
+                  <span className="font-mono font-normal text-[10px] text-slate-400">
+                    {publishedRecord.publishedAt ? new Date(publishedRecord.publishedAt).toLocaleString() : ''}
+                  </span>
+                </div>
+                <pre className="flex-1 min-h-0 overflow-auto custom-scrollbar bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-b-xl p-4 text-xs font-mono whitespace-pre-wrap text-slate-700 dark:text-slate-300">
+                  {sanitizeForCompare(publishedRecord.publishedMarkdown ?? publishedRecord.markdownContent ?? '')}
+                </pre>
+              </div>
+
+              <div className="flex flex-col min-h-0">
+                <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-b-0 border-amber-500/30 rounded-t-xl text-xs font-bold text-amber-700 dark:text-amber-300">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  Current Draft (not yet live)
+                </div>
+                <pre className="flex-1 min-h-0 overflow-auto custom-scrollbar bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-b-xl p-4 text-xs font-mono whitespace-pre-wrap text-slate-700 dark:text-slate-300">
+                  {sanitizeForCompare(blogResult.markdownContent)}
+                </pre>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowCompareModal(false)}
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                disabled={isPublishingCurrent}
+                onClick={() => {
+                  setShowCompareModal(false);
+                  handleUpdatePublishedPost();
+                }}
+                className="px-4 py-2 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50"
+              >
+                {isPublishingCurrent ? 'Updating...' : 'Publish These Changes'}
               </button>
             </div>
           </div>

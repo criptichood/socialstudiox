@@ -19,6 +19,7 @@ import {
   SavedBlogDraft,
   CronScheduleItem,
 } from '@/types';
+import { curateResearchBrief, CuratedResearchBrief } from '@/services/ai/campaignService';
 
 export const BLOG_DRAFTS_STORAGE_KEY = 'infogenius_saved_blog_drafts';
 export const BLOG_ENDPOINTS_STORAGE_KEY = 'infogenius_publish_endpoints';
@@ -27,14 +28,23 @@ export const BLOG_CAMPAIGNS_STORAGE_KEY = 'social_studio_x_campaigns_v2';
 export const BLOG_NODE_DIAGRAMS_KEY = 'infogenius_node_diagrams_enabled';
 
 const DEFAULT_ENDPOINT: PublishEndpointConfig = {
-  id: 'growency_main',
-  name: 'Growency.ai Production Blog',
-  endpointUrl: 'https://growency.ai/api/blog/publish',
+  id: 'default_endpoint',
+  name: 'My Blog Endpoint',
+  endpointUrl: '',
   secretKey: '',
   headerName: 'Authorization',
   enabled: true,
   isDefault: true,
+  updateMethod: 'PUT',
 };
+
+/** Strip unresolved [IMAGE_PROMPT: ...] placeholder lines so raw prompt text never ships to the blog endpoint. */
+const sanitizeBodyForPublish = (markdown: string): string =>
+  markdown
+    .replace(/^[ \t]*\[?IMAGE_PROMPT:\s*[^\]\n]*\]?[ \t]*\n?/gim, '')
+    .replace(/\[?IMAGE_PROMPT:\s*[^\]\n]*\]?/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim() + '\n';
 
 export type BlogViewMode = 'preview' | 'markdown' | 'drafts' | 'published' | 'schedules' | 'webhook-settings';
 
@@ -97,7 +107,7 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
 
   // Webhook endpoints
   const [publishEndpoints, setPublishEndpoints] = useState<PublishEndpointConfig[]>([DEFAULT_ENDPOINT]);
-  const [selectedEndpointId, setSelectedEndpointId] = useState<string>('growency_main');
+  const [selectedEndpointId, setSelectedEndpointId] = useState<string>('default_endpoint');
   const [editingEndpoint, setEditingEndpoint] = useState<PublishEndpointConfig | null>(null);
   const [isEndpointModalOpen, setIsEndpointModalOpen] = useState<boolean>(false);
 
@@ -122,6 +132,18 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
   const [newPostIdeaInput, setNewPostIdeaInput] = useState<string>('');
   const [ideaOptions, setIdeaOptions] = useState<BlogTopicIdea[]>([]);
   const [isGeneratingIdeas, setIsGeneratingIdeas] = useState<boolean>(false);
+
+  // When "Create Blog Post" is opened from a research reply, the composer is
+  // shown immediately with the plain topic while the reply is curated into a
+  // rich brief in the background. This flag drives the loading state in the
+  // composer so the user sees the transition instead of a bare topic and a toast.
+  const [isCuratingBlogBrief, setIsCuratingBlogBrief] = useState<boolean>(false);
+  // Live mirror of newPostIdeaInput so async curation can check whether the user
+  // edited the field while it was running (the closure's state value is stale).
+  const newPostIdeaInputRef = useRef<string>('');
+  useEffect(() => {
+    newPostIdeaInputRef.current = newPostIdeaInput;
+  }, [newPostIdeaInput]);
 
   // AI node-diagram rendering toggle (default ON)
   const [nodeDiagramsEnabled, setNodeDiagramsEnabled] = useState<boolean>(() => {
@@ -158,7 +180,7 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       const match = target.endpointUrl.match(/^(https?:\/\/[^/]+)/);
       if (match) return match[1];
     }
-    return 'https://growency.ai';
+    return '';
   };
 
   const publishedBlogPosts = savedBlogDrafts.filter(d => d.status === 'published');
@@ -248,19 +270,25 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       characterCount: draftData.markdownContent?.length || 0,
       readingTimeMinutes,
       embeddedImagesCount: (draftData.markdownContent || '').match(/!\[.*?\]\(.*?\)/g)?.length || 0,
-      relatedPosts: draftData.relatedPosts || undefined,
-      sectionImagePrompts: (draftData.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
-        // Never persist raw base64 preview blobs — only the hosted Cloudinary URL.
-        if (!p.previewDataUrl) return p;
-        const { previewDataUrl, ...rest } = p;
-        return rest;
-      }),
+      relatedPosts: draftData.relatedPosts ?? (existingIndex >= 0 ? savedBlogDrafts[existingIndex].relatedPosts : undefined),
+      sectionImagePrompts: (draftData.sectionImagePrompts
+        ? draftData.sectionImagePrompts.map((p: SectionImagePrompt) => {
+            // Never persist raw base64 preview blobs — only the hosted Cloudinary URL.
+            if (!p.previewDataUrl) return p;
+            const { previewDataUrl, ...rest } = p;
+            return rest;
+          })
+        : (existingIndex >= 0 ? savedBlogDrafts[existingIndex].sectionImagePrompts : [])),
       status,
       createdAt: existingIndex >= 0 ? savedBlogDrafts[existingIndex].createdAt : nowISO,
       updatedAt: nowISO,
       scheduledAt: scheduledAt || (existingIndex >= 0 ? savedBlogDrafts[existingIndex].scheduledAt : undefined),
-      publishedAt: status === 'published' ? nowISO : (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedAt : undefined),
-      publishedEndpointId: publishedToEndpointId || (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedEndpointId : undefined)
+      publishedAt: (existingIndex >= 0 && savedBlogDrafts[existingIndex].publishedAt)
+        ? savedBlogDrafts[existingIndex].publishedAt
+        : (status === 'published' ? nowISO : (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedAt : undefined)),
+      publishedEndpointId: publishedToEndpointId || (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedEndpointId : undefined),
+      publishedMarkdown: draftData.publishedMarkdown ?? (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedMarkdown : undefined),
+      publishedTitle: draftData.publishedTitle ?? (existingIndex >= 0 ? savedBlogDrafts[existingIndex].publishedTitle : undefined)
     };
 
     if (existingIndex >= 0) {
@@ -407,6 +435,29 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     }
   }, [isGeneratingIdeas, savedBlogDrafts]);
 
+  /**
+   * Curate a research reply into a rich blog brief and prefill the composer's
+   * idea field with it. Exposes the isCuratingBlogBrief flag so the composer
+   * can show a loading state while it runs. Re-throws on failure so callers
+   * can surface the error, and never clobbers text the user typed meanwhile.
+   */
+  const curateBlogBrief = useCallback(async (
+    topic: string,
+    context: string,
+    companyContext?: string
+  ): Promise<CuratedResearchBrief> => {
+    setIsCuratingBlogBrief(true);
+    try {
+      const brief = await curateResearchBrief(topic || '', context, companyContext || '', 'blog');
+      if (brief.objective && newPostIdeaInputRef.current === (topic || '')) {
+        setNewPostIdeaInput(brief.objective);
+      }
+      return brief;
+    } finally {
+      setIsCuratingBlogBrief(false);
+    }
+  }, []);
+
   const extractExcerptFromMarkdown = (markdown: string): string => {
     const cleanText = markdown
       .replace(/!\[.*?\]\(.*?\)/g, '')
@@ -433,6 +484,84 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     return undefined;
   };
 
+  const buildPublishHeaders = (endpoint: PublishEndpointConfig): Record<string, string> => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (endpoint.secretKey.trim()) {
+      const headerName = endpoint.headerName.trim() || 'Authorization';
+      let keyVal = endpoint.secretKey.trim();
+      if (headerName.toLowerCase() === 'authorization' && !keyVal.toLowerCase().startsWith('bearer ')) {
+        keyVal = `Bearer ${keyVal}`;
+      }
+      headers[headerName] = keyVal;
+    }
+    return headers;
+  };
+
+  interface PublishPayloadInput {
+    title: string;
+    slug: string;
+    markdownContent: string;
+    excerpt?: string;
+    metaDescription?: string;
+    keywords?: string[];
+  }
+
+  /** Build the payload sent to a blog endpoint. The body is sanitized so
+   *  unresolved [IMAGE_PROMPT: ...] placeholders never ship to the live site. */
+  const buildPublishPayload = (post: PublishPayloadInput) => {
+    const body = sanitizeBodyForPublish(post.markdownContent);
+    const excerpt = post.excerpt || extractExcerptFromMarkdown(body).slice(0, 500);
+    const metaDescription = post.metaDescription || excerpt.slice(0, 160);
+    const keywords = post.keywords || [];
+    const primaryImageUrl = extractPrimaryImageUrl(body);
+    return {
+      title: post.title,
+      slug: post.slug,
+      body,
+      content: body,
+      excerpt,
+      metaDescription,
+      keywords,
+      image_url: primaryImageUrl,
+      featuredImage: primaryImageUrl,
+      author: 'AI Research Studio',
+      publishedAt: new Date().toISOString(),
+      source: 'Social Studio X AI Research Center'
+    };
+  };
+
+  const stripPreviewBlobs = (prompts: SectionImagePrompt[] | undefined): SectionImagePrompt[] =>
+    (prompts || []).map((p) => {
+      if (!p.previewDataUrl) return p;
+      const { previewDataUrl, ...rest } = p;
+      return rest;
+    });
+
+  /** The saved record (if any) that represents the CURRENTLY EDITED post's published version. */
+  const findPublishedRecord = useCallback((): SavedBlogDraft | undefined => {
+    if (!blogResult) return undefined;
+    const norm = (s?: string) => (s || '').toLowerCase().replace(/\/+$/g, '').trim();
+    const byId = activeDraftId
+      ? savedBlogDrafts.find(d => d.id === activeDraftId && d.publishedEndpointId)
+      : undefined;
+    if (byId) return byId;
+    const currentSlug = norm(blogResult.slug);
+    const bySlug = currentSlug
+      ? savedBlogDrafts.find(d => d.publishedEndpointId && norm(d.slug) === currentSlug)
+      : undefined;
+    if (bySlug) return bySlug;
+    return savedBlogDrafts.find(d => d.publishedEndpointId && d.title === blogResult.title);
+  }, [blogResult, activeDraftId, savedBlogDrafts]);
+
+  /** Whether the currently edited post differs from what was last published to its endpoint. */
+  const hasUnpublishedChanges = useCallback((): boolean => {
+    const record = findPublishedRecord();
+    if (!blogResult) return false;
+    const baseline = sanitizeBodyForPublish(record?.publishedMarkdown ?? record?.markdownContent ?? '');
+    const current = sanitizeBodyForPublish(blogResult.markdownContent);
+    return current !== baseline || (record?.publishedTitle || '') !== blogResult.title;
+  }, [blogResult, findPublishedRecord]);
+
   const handlePublishBlogToEndpoint = useCallback(async (customDraftToPublish?: SavedBlogDraft) => {
     const postToPublish = customDraftToPublish || (blogResult ? {
       id: activeDraftId || undefined,
@@ -449,7 +578,12 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     if (!postToPublish) return;
 
     const targetEndpoint = publishEndpoints.find(e => e.id === selectedEndpointId) || publishEndpoints[0];
-    const targetUrl = targetEndpoint?.endpointUrl.trim() || 'https://growency.ai/api/blog/publish';
+    const targetUrl = targetEndpoint?.endpointUrl.trim() || '';
+
+    if (!targetUrl) {
+      toast.error("No webhook endpoint configured. Add one in Webhooks settings before publishing.");
+      return;
+    }
 
     setIsPublishing(true);
     setPublishingDraftId(customDraftToPublish?.id || activeDraftId || 'current');
@@ -461,40 +595,17 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
         .replace(/(^-|-$)/g, '')
         .slice(0, 200) || 'blog-post';
 
-      const excerpt = (postToPublish as any).excerpt || extractExcerptFromMarkdown(postToPublish.markdownContent).slice(0, 500);
-      const metaDescription = (postToPublish as any).metaDescription || excerpt.slice(0, 160);
-      const keywords = (postToPublish as any).keywords || [];
-      const primaryImageUrl = extractPrimaryImageUrl(postToPublish.markdownContent);
-
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-
-      if (targetEndpoint.secretKey.trim()) {
-        const headerName = targetEndpoint.headerName.trim() || 'Authorization';
-        let keyVal = targetEndpoint.secretKey.trim();
-        if (headerName.toLowerCase() === 'authorization' && !keyVal.toLowerCase().startsWith('bearer ')) {
-          keyVal = `Bearer ${keyVal}`;
-        }
-        headers[headerName] = keyVal;
-      }
-
-      const payload = {
+      const headers = buildPublishHeaders(targetEndpoint);
+      const payload = buildPublishPayload({
         title: postToPublish.title,
         slug,
-        body: postToPublish.markdownContent,
-        content: postToPublish.markdownContent,
-        excerpt,
-        metaDescription,
-        keywords,
-        image_url: primaryImageUrl,
-        featuredImage: primaryImageUrl,
-        author: 'AI Research Studio',
-        publishedAt: new Date().toISOString(),
-        source: 'Social Studio X AI Research Center'
-      };
+        markdownContent: postToPublish.markdownContent,
+        excerpt: (postToPublish as any).excerpt,
+        metaDescription: (postToPublish as any).metaDescription,
+        keywords: (postToPublish as any).keywords
+      });
 
-      const result = await publishBlogToEndpoint(targetUrl, headers, payload);
+      const result = await publishBlogToEndpoint(targetUrl, headers, payload, 'POST');
 
       const status = result.status;
       let resText = result.responseText;
@@ -508,14 +619,41 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
         await handleSaveBlogDraft({
           id: postToPublish.id,
           title: postToPublish.title,
-          markdownContent: postToPublish.markdownContent
+          slug,
+          excerpt: payload.excerpt,
+          metaDescription: payload.metaDescription,
+          keywords: payload.keywords,
+          markdownContent: postToPublish.markdownContent,
+          sectionImagePrompts: stripPreviewBlobs((postToPublish as any).sectionImagePrompts),
+          publishedMarkdown: payload.body,
+          publishedTitle: postToPublish.title
         }, 'published', undefined, targetEndpoint.id);
       } else {
         let errorDetail = resText || 'Publish failed.';
         if (status === 401) {
           errorDetail = `401 Unauthorized: Invalid or missing Bearer token. Check the secret key in Webhook settings.`;
         } else if (status === 409) {
-          errorDetail = `409 Conflict: A blog post with slug "${slug}" already exists.`;
+          errorDetail = `409 Conflict: A blog post with slug "${slug}" already exists on "${targetEndpoint.name}".`;
+          // Auto-link this post to a published record so the "Update Published Post"
+          // (PUT/PATCH) path becomes available instead of a dead-end "Publish Now".
+          const existingRecord = savedBlogDrafts.find(d =>
+            d.publishedEndpointId && d.slug === slug && d.status === 'published'
+          );
+          if (!existingRecord) {
+            await handleSaveBlogDraft({
+              id: postToPublish.id,
+              title: postToPublish.title,
+              slug,
+              excerpt: payload.excerpt,
+              metaDescription: payload.metaDescription,
+              keywords: payload.keywords,
+              markdownContent: postToPublish.markdownContent,
+              sectionImagePrompts: stripPreviewBlobs((postToPublish as any).sectionImagePrompts),
+              publishedMarkdown: payload.body,
+              publishedTitle: postToPublish.title
+            }, 'published', undefined, targetEndpoint.id);
+            errorDetail += ' This post is now linked as published — use "Update Published Post" to push your changes.';
+          }
         } else if (status === 400) {
           errorDetail = `400 Validation Error: ${resText || 'Check title, slug, excerpt, and body content.'}`;
         }
@@ -529,7 +667,83 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       setIsPublishing(false);
       setPublishingDraftId(null);
     }
-  }, [blogResult, activeDraftId, publishEndpoints, selectedEndpointId, handleSaveBlogDraft]);
+  }, [blogResult, activeDraftId, publishEndpoints, selectedEndpointId, handleSaveBlogDraft, savedBlogDrafts]);
+
+  /** Update an already-published post in place (PUT/PATCH by slug) using the current editor content. */
+  const handleUpdatePublishedPost = useCallback(async (customRecord?: SavedBlogDraft) => {
+    const record = customRecord || findPublishedRecord();
+    if (!record || !record.publishedEndpointId || !blogResult) return;
+
+    const endpoint = publishEndpoints.find(e => e.id === record.publishedEndpointId) || publishEndpoints[0];
+    const targetUrl = endpoint?.endpointUrl.trim();
+    if (!targetUrl) return;
+
+    const method = endpoint.updateMethod || 'PUT';
+    const slug = record.slug || blogResult.slug || blogResult.title
+      .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '').slice(0, 200);
+
+    setIsPublishing(true);
+    setPublishingDraftId(record.id);
+
+    try {
+      const headers = buildPublishHeaders(endpoint);
+      const payload = buildPublishPayload({
+        title: blogResult.title,
+        slug,
+        markdownContent: blogResult.markdownContent,
+        excerpt: blogResult.excerpt,
+        metaDescription: blogResult.metaDescription,
+        keywords: blogResult.keywords
+      });
+
+      const result = await publishBlogToEndpoint(targetUrl, headers, payload, method);
+      const status = result.status;
+
+      if (result.ok || status === 200 || status === 201) {
+        const shortTitle = blogResult.title.length > 60
+          ? `${blogResult.title.slice(0, 60)}…`
+          : blogResult.title;
+        toast.success(`"${shortTitle}" updated on ${endpoint.name}!`);
+
+        const updated: SavedBlogDraft[] = savedBlogDrafts.map(d => d.id === record.id ? {
+          ...d,
+          title: blogResult.title,
+          slug,
+          excerpt: payload.excerpt,
+          metaDescription: payload.metaDescription,
+          keywords: payload.keywords,
+          markdownContent: blogResult.markdownContent,
+          characterCount: blogResult.markdownContent.length,
+          readingTimeMinutes: Math.max(1, Math.ceil(blogResult.markdownContent.split(/\s+/).filter(Boolean).length / 200)),
+          embeddedImagesCount: (blogResult.markdownContent.match(/!\[.*?\]\(.*?\)/g) || []).length,
+          sectionImagePrompts: stripPreviewBlobs(blogResult.sectionImagePrompts),
+          publishedMarkdown: payload.body,
+          publishedTitle: blogResult.title,
+          status: 'published',
+          publishedEndpointId: endpoint.id,
+          updatedAt: new Date().toISOString()
+        } : d);
+        setSavedBlogDrafts(updated);
+        await DBService.setItem(BLOG_DRAFTS_STORAGE_KEY, updated);
+      } else {
+        let errorDetail = result.responseText || 'Update failed.';
+        if (status === 404) {
+          errorDetail = `404 Not Found: No post with slug "${slug}" exists on the endpoint. It may have been deleted — use "Publish Now" to publish it as a new post instead.`;
+        } else if (status === 401) {
+          errorDetail = `401 Unauthorized: Invalid or missing Bearer token. Check the secret key in Webhook settings.`;
+        } else if (status === 405 || status === 501) {
+          errorDetail = `HTTP ${status}: "${endpoint.name}" does not support ${method} updates yet. The endpoint must accept ${method} to the post's slug (see Webhook → Update Method).`;
+        }
+        toast.error(`Endpoint "${endpoint.name}" returned HTTP ${status}: ${errorDetail}`);
+      }
+    } catch (err: any) {
+      console.error("Blog update endpoint error:", err);
+      toast.error(`Network Error connecting to ${endpoint.name} (${targetUrl}): ${err?.message || 'Unable to connect.'}`);
+    } finally {
+      setIsPublishing(false);
+      setPublishingDraftId(null);
+    }
+  }, [blogResult, findPublishedRecord, publishEndpoints, savedBlogDrafts]);
 
   /**
    * Advance `nextRunAt` for a recurring cron schedule (when the draft it points
@@ -632,24 +846,94 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
       const aspectRatio = promptObj.aspectRatio || '16:9';
       const generatedDataUrl = await generateInfographicImage(promptObj.prompt, aspectRatio as any);
 
-      const updatedPrompts = (blogResult.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
-        if (p.id === promptObj.id || p.prompt === promptObj.prompt) {
-          return { ...p, previewDataUrl: generatedDataUrl, aspectRatio };
-        }
-        return p;
-      });
+      // Regeneration of an ALREADY-EMBEDDED image (markdown contains the old hosted
+      // URL): upload the new preview and swap the URL in place so the rendered
+      // figure updates on screen. No extra upload click needed.
+      const oldUrl = promptObj.generatedUrl;
+      const isEmbedded = Boolean(oldUrl && blogResult.markdownContent.includes(oldUrl));
 
-      setBlogResult({
-        ...blogResult,
-        sectionImagePrompts: updatedPrompts
-      });
+      if (isEmbedded) {
+        const hostedUrl = await uploadImageToCloudinary(generatedDataUrl, 'blog-images');
+        const updatedMarkdown = blogResult.markdownContent.split(oldUrl!).join(hostedUrl);
+        const updatedPrompts = (blogResult.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
+          if (p.id === promptObj.id || p.prompt === promptObj.prompt) {
+            return { ...p, generatedUrl: hostedUrl, previewDataUrl: undefined, aspectRatio };
+          }
+          return p;
+        });
+        const imageMatches = updatedMarkdown.match(/!\[.*?\]\(.*?\)/g) || [];
+
+        const updatedResult = {
+          ...blogResult,
+          markdownContent: updatedMarkdown,
+          characterCount: updatedMarkdown.length,
+          readingTimeMinutes: Math.max(1, Math.ceil(updatedMarkdown.split(/\s+/).filter(Boolean).length / 200)),
+          embeddedImagesCount: imageMatches.length,
+          sectionImagePrompts: updatedPrompts
+        };
+        setBlogResult(updatedResult);
+
+        const record = activeDraftId
+          ? savedBlogDrafts.find(d => d.id === activeDraftId)
+          : savedBlogDrafts.find(d => d.publishedEndpointId && d.title === blogResult.title);
+        await handleSaveBlogDraft({
+          id: record?.id || activeDraftId || undefined,
+          title: updatedResult.title,
+          slug: updatedResult.slug,
+          excerpt: updatedResult.excerpt,
+          metaDescription: updatedResult.metaDescription,
+          keywords: updatedResult.keywords,
+          markdownContent: updatedResult.markdownContent,
+          characterCount: updatedResult.characterCount,
+          readingTimeMinutes: updatedResult.readingTimeMinutes,
+          embeddedImagesCount: updatedResult.embeddedImagesCount,
+          sectionImagePrompts: updatedResult.sectionImagePrompts,
+          relatedPosts: updatedResult.relatedPosts
+        }, record?.status === 'published' ? 'published' : 'draft');
+        toast.success("Section image regenerated and replaced.");
+      } else {
+        // Fresh generation (or the prompt token is still in the markdown): keep the
+        // result as a UI-only preview and drop any stale generatedUrl so the
+        // preview + "Upload Image to Blog" card renders. If no matching prompt entry
+        // exists (e.g. a legacy record with empty sectionImagePrompts), append one —
+        // otherwise the preview would never be reachable.
+        const existingIndex = (blogResult.sectionImagePrompts || []).findIndex(
+          (p: SectionImagePrompt) => p.id === promptObj.id || p.prompt === promptObj.prompt
+        );
+        let updatedPrompts: SectionImagePrompt[];
+        if (existingIndex >= 0) {
+          updatedPrompts = (blogResult.sectionImagePrompts || []).map((p: SectionImagePrompt) => {
+            if (p.id === promptObj.id || p.prompt === promptObj.prompt) {
+              const { generatedUrl: _staleUrl, ...rest } = p;
+              return { ...rest, previewDataUrl: generatedDataUrl, aspectRatio };
+            }
+            return p;
+          });
+        } else {
+          updatedPrompts = [
+            ...(blogResult.sectionImagePrompts || []),
+            {
+              id: promptObj.id || `prompt_${Date.now()}`,
+              prompt: promptObj.prompt,
+              tag: promptObj.tag,
+              aspectRatio,
+              previewDataUrl: generatedDataUrl
+            }
+          ];
+        }
+
+        setBlogResult({
+          ...blogResult,
+          sectionImagePrompts: updatedPrompts
+        });
+      }
     } catch (err: any) {
       console.error("Failed to generate section image:", err);
       toast.error("Failed to generate the section image. Please try again.");
     } finally {
       setGeneratingPromptId(null);
     }
-  }, [blogResult, generatingPromptId]);
+  }, [blogResult, generatingPromptId, activeDraftId, savedBlogDrafts, handleSaveBlogDraft]);
 
   /**
    * Phase 2 — upload the generated preview to Cloudinary and only then embed the
@@ -687,21 +971,43 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
 
       const imageMatches = updatedMarkdown.match(/!\[.*?\]\(.*?\)/g) || [];
 
-      setBlogResult({
+      const updatedResult = {
         ...blogResult,
         markdownContent: updatedMarkdown,
         characterCount: updatedMarkdown.length,
         readingTimeMinutes: Math.max(1, Math.ceil(updatedMarkdown.split(/\s+/).filter(Boolean).length / 200)),
         embeddedImagesCount: imageMatches.length,
         sectionImagePrompts: updatedPrompts
-      });
+      };
+      setBlogResult(updatedResult);
+
+      // Persist immediately so an uploaded image is never lost by navigating away,
+      // refreshing, or reopening the post from the Published list. Preserves the
+      // record's published status/identity so published posts stay published.
+      const record = activeDraftId
+        ? savedBlogDrafts.find(d => d.id === activeDraftId)
+        : savedBlogDrafts.find(d => d.publishedEndpointId && d.title === blogResult.title);
+      await handleSaveBlogDraft({
+        id: record?.id || activeDraftId || undefined,
+        title: updatedResult.title,
+        slug: updatedResult.slug,
+        excerpt: updatedResult.excerpt,
+        metaDescription: updatedResult.metaDescription,
+        keywords: updatedResult.keywords,
+        markdownContent: updatedResult.markdownContent,
+        characterCount: updatedResult.characterCount,
+        readingTimeMinutes: updatedResult.readingTimeMinutes,
+        embeddedImagesCount: updatedResult.embeddedImagesCount,
+        sectionImagePrompts: updatedResult.sectionImagePrompts,
+        relatedPosts: updatedResult.relatedPosts
+      }, record?.status === 'published' ? 'published' : 'draft');
     } catch (err: any) {
       console.error("Failed to upload section image:", err);
       toast.error("Failed to upload the section image. Check your connection and try again.");
     } finally {
       setUploadingPromptId(null);
     }
-  }, [blogResult, uploadingPromptId]);
+  }, [blogResult, uploadingPromptId, activeDraftId, savedBlogDrafts, handleSaveBlogDraft]);
 
   const handleMarkdownContentEdit = useCallback((newMarkdown: string) => {
     if (!blogResult) return;
@@ -710,16 +1016,19 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     const imageMatches = newMarkdown.match(/!\[.*?\]\(.*?\)/g) || [];
 
     const promptRegex = /\[IMAGE_PROMPT:\s*([^\]]+)\]/gi;
+    const existingPrompts = new Map(
+      (blogResult.sectionImagePrompts || []).map(p => [p.prompt.trim().toLowerCase(), p])
+    );
     const sectionImagePrompts: SectionImagePrompt[] = [];
     let match: RegExpExecArray | null;
     let count = 0;
     while ((match = promptRegex.exec(newMarkdown)) !== null) {
       count++;
-      sectionImagePrompts.push({
-        id: `img_prompt_edit_${Date.now()}_${count}`,
-        prompt: match[1].trim(),
-        tag: match[0]
-      });
+      const promptText = match[1].trim();
+      const prev = existingPrompts.get(promptText.toLowerCase());
+      sectionImagePrompts.push(prev
+        ? { ...prev, tag: match[0] }
+        : { id: `img_prompt_edit_${Date.now()}_${count}`, prompt: promptText, tag: match[0] });
     }
 
     setBlogResult({
@@ -750,13 +1059,16 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     setBlogResult(updated);
     setIsEditingTitle(false);
 
+    const existingRecord = activeDraftId
+      ? savedBlogDrafts.find(d => d.id === activeDraftId)
+      : undefined;
     handleSaveBlogDraft({
       id: activeDraftId || undefined,
       title: newTitle,
       slug: newSlug,
       markdownContent: blogResult.markdownContent
-    }, 'draft');
-  }, [blogResult, customTitleInput, activeDraftId, handleSaveBlogDraft]);
+    }, existingRecord?.status === 'published' ? 'published' : 'draft');
+  }, [blogResult, customTitleInput, activeDraftId, handleSaveBlogDraft, savedBlogDrafts]);
 
   // AI SEO suggestions
   const suggestSeo = useCallback(async () => {
@@ -896,6 +1208,9 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     ideaOptions,
     setIdeaOptions,
     isGeneratingIdeas,
+    isCuratingBlogBrief,
+    setIsCuratingBlogBrief,
+    curateBlogBrief,
     generateTopicIdeas,
     // node-diagram toggle
     nodeDiagramsEnabled,
@@ -912,6 +1227,9 @@ export const useBlogEngine = (options: UseBlogEngineOptions = {}) => {
     handleSaveEndpointsList,
     handleDeleteEndpoint,
     handlePublishBlogToEndpoint,
+    handleUpdatePublishedPost,
+    findPublishedRecord,
+    hasUnpublishedChanges,
     handleGenerateSectionImage,
     handleUploadSectionImage,
     handleMarkdownContentEdit,

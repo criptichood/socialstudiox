@@ -136,6 +136,8 @@ interface CampaignModalProps {
   setPlatform: (p: string) => void;
   postCount: number;
   setPostCount: (c: number) => void;
+  slidesPerPost: number;
+  setSlidesPerPost: (s: number) => void;
   styleGuide: string;
   setStyleGuide: (g: string) => void;
   startMethod: 'ai' | 'empty';
@@ -148,6 +150,7 @@ interface CampaignModalProps {
   setPreferredStyle?: (s: VisualStyle) => void;
   aiModel?: string;
   setAiModel?: (m: string) => void;
+  initialStep?: 'method' | 'details';
   onSubmit: (e: React.FormEvent) => void;
 }
 
@@ -164,6 +167,8 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
   setPlatform,
   postCount,
   setPostCount,
+  slidesPerPost,
+  setSlidesPerPost,
   styleGuide,
   setStyleGuide,
   startMethod,
@@ -176,16 +181,18 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
   setPreferredStyle,
   aiModel = 'gemini-3.6-flash',
   setAiModel,
+  initialStep = 'method',
   onSubmit,
 }) => {
   const [modalStep, setModalStep] = useState<'method' | 'details'>('method');
 
-  // Reset the onboarding step to start on reopen
+  // Reset the onboarding step to start on reopen (or open straight at details
+  // when the campaign is prefilled from the Research Center).
   useEffect(() => {
     if (show) {
-      setModalStep('method');
+      setModalStep(initialStep);
     }
-  }, [show]);
+  }, [show, initialStep]);
 
   if (!show) return null;
 
@@ -329,17 +336,56 @@ export const CreateCampaignModal: React.FC<CampaignModalProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">AIPost Count</label>
-                  <select
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5">Post Count</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={30}
                     value={postCount}
-                    onChange={(e) => setPostCount(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer font-medium"
-                  >
-                    {[3, 5, 7, 10].map(c => (
-                      <option key={c} value={c} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{c} Posts</option>
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      setPostCount(e.target.value === '' ? 1 : Math.max(1, Math.min(30, v || 1)));
+                    }}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none font-medium"
+                  />
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {[1, 3, 5, 7, 10].map(n => (
+                      <button
+                        type="button"
+                        key={n}
+                        onClick={() => setPostCount(n)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                          postCount === n
+                            ? 'bg-purple-600 border-purple-600 text-white'
+                            : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-purple-500'
+                        }`}
+                      >
+                        {n}
+                      </button>
                     ))}
-                  </select>
+                  </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Slides per Carousel Post</span>
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={slidesPerPost}
+                  onChange={(e) => {
+                    const v = parseInt(e.target.value, 10);
+                    setSlidesPerPost(e.target.value === '' ? 1 : Math.max(1, Math.min(12, v || 1)));
+                  }}
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none font-medium"
+                />
+                <p className="text-[10px] text-slate-450 mt-1">
+                  Number of slides inside each carousel deck. E.g. 1 post × 7 slides = a single 7-slide deck; 5 posts × 5 slides = five separate decks, each with 5 slides.
+                </p>
               </div>
 
               {/* Common Style and Aspect Settings */}
@@ -557,7 +603,7 @@ export const AddPostManualModal: React.FC<ManualPostModalProps> = ({
                   onChange={(e) => setAspect(e.target.value as AspectRatio)}
                   className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none cursor-pointer font-medium"
                 >
-                  {['1:1', '16:9', '9:16'].map(r => (
+                  {['1:1', '4:5', '16:9', '9:16'].map(r => (
                     <option key={r} value={r} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{r}</option>
                   ))}
                 </select>

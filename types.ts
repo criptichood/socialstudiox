@@ -2,7 +2,7 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
-export type AspectRatio = '16:9' | '9:16' | '1:1';
+export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:5';
 
 export type ImageModelId =
   | 'gemini-3.1-flash-image'
@@ -517,6 +517,8 @@ export interface SavedCampaign {
   mainTopic: string;
   platform: string;
   postCount: number;
+  /** Number of carousel slides per carousel deck post (user-selected at creation) */
+  slidesPerPost?: number;
   customRequirements?: string;
   aiModel?: string;
   /** User-selected aspect ratio at campaign creation — preserved across re-generations */
@@ -615,8 +617,10 @@ export interface PublishEndpointConfig {
   headerName: string;
   enabled: boolean;
   isDefault?: boolean;
-  /** Public base URL where published posts are reachable (e.g. https://growency.ai/blog). Used to build backlink URLs. */
+  /** Public base URL where published posts are reachable (e.g. https://myblog.com/blog). Used to build backlink URLs. */
   blogBaseUrl?: string;
+  /** HTTP method used to update an already-published post by slug (defaults to PUT). */
+  updateMethod?: 'PUT' | 'PATCH';
 }
 
 /** A related, previously published post the AI links back to (SEO interlinking). */
@@ -658,6 +662,10 @@ export interface SavedBlogDraft {
   scheduledAt?: string;
   publishedAt?: string;
   publishedEndpointId?: string;
+  /** Snapshot of the markdown body that was last successfully published (for dirty-state comparison). */
+  publishedMarkdown?: string;
+  /** Snapshot of the title that was last successfully published (for dirty-state comparison). */
+  publishedTitle?: string;
   createdAt: number | string;
   updatedAt: number | string;
 }

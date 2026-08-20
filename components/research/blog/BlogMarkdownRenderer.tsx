@@ -1,10 +1,66 @@
 import React, { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Sparkles, ExternalLink, ImageIcon, Loader2, Copy, Check, RefreshCw, CloudUpload } from 'lucide-react';
+import { Sparkles, ExternalLink, ImageIcon, Loader2, Copy, Check, RefreshCw, CloudUpload, ClipboardList } from 'lucide-react';
 import { BlogPostResult, SectionImagePrompt } from '../../../services/geminiService';
 import { extractNodeDiagrams, findDiagramTokens, NodeDiagram } from '../../../lib/nodeDiagrams';
+import { parseAsciiTable, AsciiTableData } from '../../../lib/asciiTable';
 import { FlowDiagramRenderer } from './FlowDiagramRenderer';
+
+const StyledAsciiTable: React.FC<{ table: AsciiTableData }> = ({ table }) => {
+  const { headers, rows } = table;
+  const singleColumn = headers.length === 1;
+
+  if (singleColumn) {
+    return (
+      <div className="my-5 rounded-2xl border border-purple-500/30 bg-gradient-to-b from-purple-950/40 to-slate-950/60 dark:from-purple-950/60 dark:to-slate-950 overflow-hidden shadow-md">
+        <div className="px-4 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-display font-bold text-sm flex items-center gap-2">
+          <ClipboardList className="w-4 h-4 shrink-0" />
+          <span className="uppercase tracking-wide">{headers[0]}</span>
+        </div>
+        <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+          {rows.map((row, i) => (
+            <li key={i} className="flex items-start gap-3 px-4 py-3">
+              <span className="w-6 h-6 shrink-0 rounded-full bg-purple-500/15 text-purple-600 dark:text-purple-300 text-[10px] font-bold flex items-center justify-center border border-purple-500/30 mt-0.5">
+                {i + 1}
+              </span>
+              <span className="text-xs sm:text-sm text-slate-700 dark:text-slate-200 leading-relaxed">
+                {row[0]}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  return (
+    <div className="my-5 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/90 shadow-sm">
+      <table className="w-full text-left text-xs sm:text-sm border-collapse">
+        <thead>
+          <tr className="bg-gradient-to-r from-purple-600/90 to-indigo-600/90 text-white uppercase tracking-wider text-[10px] sm:text-[11px] font-bold">
+            {headers.map((h, i) => (
+              <th key={i} className="p-3.5 font-bold">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60">
+          {rows.map((row, i) => (
+            <tr key={i} className="hover:bg-slate-50 dark:hover:bg-slate-900/60 transition-colors">
+              {row.map((cell, j) => (
+                <td key={j} className={`p-3.5 text-slate-700 dark:text-slate-300 font-medium ${j === 0 ? 'text-slate-900 dark:text-white font-bold' : ''}`}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
 
 interface BlogMarkdownRendererProps {
   content: string;
@@ -49,7 +105,7 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
     </select>
   );
   return (
-    <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm leading-relaxed text-slate-800 dark:text-slate-200">
+    <div className="prose dark:prose-invert max-w-none text-xs sm:text-sm leading-relaxed text-slate-800 dark:text-slate-200" style={{ overflowAnchor: 'none' }}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -58,7 +114,11 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
           h3: ({ children }) => <h3 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-slate-100 mt-6 mb-3 font-display leading-tight">{children}</h3>,
           h4: ({ children }) => <h4 className="text-base font-bold text-slate-800 dark:text-slate-200 mt-4 mb-2 font-display">{children}</h4>,
           p: ({ children, node }: any) => {
-            const hasImageChild = (node?.children || []).some((c: any) => c?.type === 'image');
+            const hasImageChild = (node?.children || []).some((c: any) =>
+              c?.type === 'image' ||
+              c?.tagName === 'img' ||
+              (c?.type === 'element' && c?.tagName === 'a' && (c.children || []).some((gc: any) => gc?.type === 'image' || gc?.tagName === 'img'))
+            );
 
             if (hasImageChild) {
               return <div className="my-2">{children}</div>;
@@ -95,7 +155,7 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                       <span>Image Prompt</span>
                     </span>
                     <div className="flex items-center gap-1.5">
-                      {blogResult && onGenerateSectionImage && ratioSelect(promptText, blogResult.sectionImagePrompts.find(p => p.prompt === promptText)?.aspectRatio)}
+                      {onGenerateSectionImage && ratioSelect(promptText, blogResult?.sectionImagePrompts.find(p => p.prompt === promptText)?.aspectRatio)}
                       <button
                         type="button"
                         onClick={() => {
@@ -113,11 +173,11 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                   <p className="text-xs sm:text-sm text-purple-200 font-medium bg-slate-900/80 p-3.5 rounded-xl border border-purple-500/20 leading-relaxed whitespace-pre-wrap">
                     {promptText}
                   </p>
-                  {blogResult && onGenerateSectionImage && (() => {
-                    const matchedPrompt = blogResult.sectionImagePrompts?.find((p: any) => p.prompt === promptText);
-                    const hasPreview = matchedPrompt?.previewDataUrl && !matchedPrompt?.generatedUrl;
+                  {onGenerateSectionImage && (() => {
+                    const matchedPrompt = blogResult?.sectionImagePrompts?.find((p: any) => p.prompt === promptText);
+                    const hasPreview = Boolean(matchedPrompt?.previewDataUrl);
 
-                    if (hasPreview && onUploadSectionImage) {
+                    if (hasPreview && matchedPrompt && onUploadSectionImage) {
                       return (
                         <div className="space-y-2">
                           <div className="w-full max-h-64 overflow-hidden rounded-xl border border-purple-500/30 bg-slate-900">
@@ -151,10 +211,11 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                         disabled={generatingPromptId !== null}
                         onClick={() => {
                           const promptObj: SectionImagePrompt = {
-                            id: `prompt_${Date.now()}`,
+                            id: matchedPrompt?.id || `prompt_${Date.now()}`,
                             prompt: promptText,
                             tag: promptMatch[0],
-                            aspectRatio: ratioFor(promptText)
+                            aspectRatio: ratioFor(promptText),
+                            generatedUrl: matchedPrompt?.generatedUrl
                           };
                           onGenerateSectionImage(promptObj);
                         }}
@@ -245,11 +306,11 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
             </blockquote>
           ),
           table: ({ children }) => (
-            <div className="my-5 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/90 shadow-xs">
-              <table className="w-full text-left text-xs border-collapse">{children}</table>
+            <div className="my-5 overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/90 shadow-sm">
+              <table className="w-full text-left text-xs sm:text-sm border-collapse">{children}</table>
             </div>
           ),
-          thead: ({ children }) => <thead className="bg-purple-100 dark:bg-purple-950/60 border-b border-slate-200 dark:border-slate-800 text-purple-800 dark:text-purple-300 uppercase tracking-wider text-[10px] font-bold">{children}</thead>,
+          thead: ({ children }) => <thead className="bg-gradient-to-r from-purple-600/90 to-indigo-600/90 text-white uppercase tracking-wider text-[10px] sm:text-[11px] font-bold">{children}</thead>,
           tbody: ({ children }) => <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60">{children}</tbody>,
           tr: ({ children }) => <tr className="hover:bg-slate-50 dark:hover:bg-slate-900/60 transition-colors">{children}</tr>,
           th: ({ children }) => <th className="p-3.5 font-bold text-slate-800 dark:text-slate-200">{children}</th>,
@@ -261,6 +322,11 @@ export const BlogMarkdownRenderer: React.FC<BlogMarkdownRendererProps> = ({
                   {children}
                 </code>
               );
+            }
+            const rawCode = Array.isArray(children) ? children.join('') : String(children || '');
+            const asciiTable = parseAsciiTable(rawCode);
+            if (asciiTable && asciiTable.headers.length > 0) {
+              return <StyledAsciiTable table={asciiTable} />;
             }
             return (
               <pre className="p-4 my-5 bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 text-purple-300 font-mono text-xs sm:text-sm rounded-2xl overflow-x-auto shadow-md">

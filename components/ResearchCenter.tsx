@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { DBService } from '../services/dbService';
-import { conductResearchChat } from '../services/geminiService';
+import { conductResearchChat, generateInfographicImage, uploadImageToCloudinary, SectionImagePrompt } from '../services/geminiService';
 import { loadModelSettings } from '@/services/ai/modelService';
 import { gatewayBackendForId, textModelSupportsVision } from '@/types';
 import { ResearchSession, ChatMessageItem } from '../types';
 import { useBlogEngine } from '@/hooks/useBlogEngine';
+import { beginLoading, resolveToast, logTechnicalError } from '@/lib/feedback';
 
 import { ResearchSidebar } from './research/ResearchSidebar';
 import { ResearchChatArea } from './research/ResearchChatArea';
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react';
 
 const STORAGE_KEY = 'social_studio_x_research_sessions_v3';
+const ACTIVE_SESSION_KEY = 'social_studio_x_active_research_session_id';
 
 interface ResearchCenterProps {
   onSendToSocialCampaign?: (topic: string, prompt: string, companyContext: string) => void;
@@ -45,6 +47,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [loadingStatus, setLoadingStatus] = useState<string>('Thinking…');
+  const [generatingPromptId, setGeneratingPromptId] = useState<string | null>(null);
 
   // Campaign to Blog Post Converter popup visibility
   const [isBlogStudioOpen, setIsBlogStudioOpen] = useState<boolean>(false);
@@ -83,7 +86,21 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         const storedSessions = await DBService.getItem<ResearchSession[]>(STORAGE_KEY, []);
         if (storedSessions && Array.isArray(storedSessions) && storedSessions.length > 0) {
           setSessions(storedSessions);
-          setActiveSessionId(storedSessions[0].id);
+          // Restore the last active session (so navigating back to the Research
+          // Center resumes the conversation you were in), falling back to the
+          // most recently updated session, then the first stored session.
+          let restoredId: string | null = null;
+          try {
+            const savedActiveId = window.localStorage.getItem(ACTIVE_SESSION_KEY);
+            if (savedActiveId && storedSessions.some(s => s.id === savedActiveId)) {
+              restoredId = savedActiveId;
+            }
+          } catch { /* no-op */ }
+          if (!restoredId) {
+            const mostRecent = [...storedSessions].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+            restoredId = mostRecent?.id || storedSessions[0].id;
+          }
+          setActiveSessionId(restoredId);
         } else {
           const initialSession: ResearchSession = {
             id: `session_${Date.now()}`,
@@ -103,6 +120,14 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
 
     loadAllInitialData();
   }, []);
+
+  // Persist the active session id so navigation away and back restores it.
+  useEffect(() => {
+    if (!activeSessionId) return;
+    try {
+      window.localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId);
+    } catch { /* no-op */ }
+  }, [activeSessionId]);
 
   // Sync sessions to IndexedDB
   useEffect(() => {
@@ -184,6 +209,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     const updated = [newSession, ...sessions];
     setSessions(updated);
     setActiveSessionId(newSession.id);
+    try { window.localStorage.setItem(ACTIVE_SESSION_KEY, newSession.id); } catch { /* no-op */ }
     await DBService.setItem(STORAGE_KEY, updated);
   };
 
@@ -192,7 +218,9 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     const filtered = sessions.filter(s => s.id !== sessionId);
     setSessions(filtered);
     if (activeSessionId === sessionId) {
-      setActiveSessionId(filtered[0].id);
+      const nextId = filtered[0].id;
+      setActiveSessionId(nextId);
+      try { window.localStorage.setItem(ACTIVE_SESSION_KEY, nextId); } catch { /* no-op */ }
     }
     await DBService.setItem(STORAGE_KEY, filtered);
   };
@@ -207,6 +235,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     };
     setSessions([fresh]);
     setActiveSessionId(fresh.id);
+    try { window.localStorage.setItem(ACTIVE_SESSION_KEY, fresh.id); } catch { /* no-op */ }
     await DBService.setItem(STORAGE_KEY, [fresh]);
   };
 
@@ -310,7 +339,7 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
         content: response.reply,
         timestamp: Date.now(),
         searchResults: response.searchResults,
-        suggestedCampaignTopic: response.suggestedCampaignTopic || updatedTitle,
+        ...(response.suggestedCampaignTopic ? { suggestedCampaignTopic: response.suggestedCampaignTopic } : {}),
         isDeepResearch: researchMode === 'deep'
       };
 
@@ -353,6 +382,33 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   });
   const setBlogViewMode = blogEngine.setBlogViewMode;
 
+  // When "Create Blog Post" is opened from a research message, we prefill the
+  // composer's topic and remember the message as generation context so the
+  // user can review the bundled data before clicking generate.
+  const pendingBlogContextRef = React.useRef<string>('');
+
+  const handleOpenBlogComposer = async (topic: string, context: string) => {
+    pendingBlogContextRef.current = context || '';
+    blogEngine.setNewPostIdeaInput(topic || '');
+    setIsBlogStudioOpen(true);
+    setBlogViewMode('preview');
+    blogEngine.setIsNewPostComposerOpen(true);
+
+    // Curate the clicked reply into a rich blog brief instead of leaving the
+    // composer prefilled with just the plain topic name. The engine drives the
+    // composer's loading state while this runs, and won't clobber input the
+    // user already started typing.
+    if (!context) return;
+    const toastId = beginLoading('Curating blog brief…');
+    try {
+      await blogEngine.curateBlogBrief(topic || '', context, activeSession?.companyContext || '');
+      resolveToast(toastId, 'success', 'Blog brief ready');
+    } catch (err) {
+      resolveToast(toastId, 'error', 'Could not curate brief — using original topic');
+      logTechnicalError('curateBlogBrief', err);
+    }
+  };
+
   const buildResearchThreadSummary = (): string => {
     if (!activeSession || activeSession.messages.length === 0) return '';
     return activeSession.messages
@@ -367,7 +423,9 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
   };
 
   const handleGenerateBlogPost = async (forcedTopic?: string, forcedContext?: string) => {
-    const result = await blogEngine.generateBlogPost(forcedTopic, forcedContext);
+    const contextToUse = forcedContext || pendingBlogContextRef.current;
+    const result = await blogEngine.generateBlogPost(forcedTopic, contextToUse || undefined);
+    pendingBlogContextRef.current = '';
 
     if (result && activeSessionId) {
       const blogMsg: ChatMessageItem = {
@@ -408,6 +466,51 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
     }));
     setEditingMessageId(null);
     setEditingMessageContent('');
+  };
+
+  /**
+   * Generate the image for an [IMAGE_PROMPT: ...] block embedded in a research
+   * reply. Generates the visual, uploads it to Cloudinary, then replaces the
+   * prompt token in that message's content with an inline markdown image so the
+   * rendered reply shows the finished visual in place of the prompt card.
+   */
+  const handleGenerateSectionImage = async (msgId: string, promptObj: SectionImagePrompt) => {
+    if (generatingPromptId || !activeSessionId) return;
+    const session = sessions.find(s => s.id === activeSessionId);
+    const msg = session?.messages.find(m => m.id === msgId);
+    if (!msg || !msg.content.includes('IMAGE_PROMPT')) return;
+
+    setGeneratingPromptId(promptObj.id);
+    const toastId = beginLoading('Generating section image…');
+    try {
+      const dataUrl = await generateInfographicImage(promptObj.prompt, promptObj.aspectRatio as any);
+      const hostedUrl = await uploadImageToCloudinary(dataUrl, 'blog-images');
+      const imgTag = `![${promptObj.prompt.slice(0, 35)}](${hostedUrl})`;
+
+      let updatedContent = msg.content;
+      if (promptObj.tag && updatedContent.includes(promptObj.tag)) {
+        updatedContent = updatedContent.split(promptObj.tag).join(imgTag);
+      } else {
+        const escapedPrompt = promptObj.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const tokenRegex = new RegExp(`\\[?IMAGE_PROMPT:\\s*${escapedPrompt}\\]?`, 'i');
+        updatedContent = updatedContent.replace(tokenRegex, imgTag);
+      }
+
+      setSessions(prev => prev.map(s => {
+        if (s.id !== activeSessionId) return s;
+        return {
+          ...s,
+          updatedAt: Date.now(),
+          messages: s.messages.map(m => m.id === msgId ? { ...m, content: updatedContent } : m)
+        };
+      }));
+      resolveToast(toastId, 'success', 'Section image generated & embedded');
+    } catch (err) {
+      resolveToast(toastId, 'error', 'Failed to generate the section image. Please try again.');
+      logTechnicalError('generateSectionImage (research)', err);
+    } finally {
+      setGeneratingPromptId(null);
+    }
   };
 
   const samplePrompts = [
@@ -461,6 +564,9 @@ export const ResearchCenter: React.FC<ResearchCenterProps> = ({
           onSendToSocialCampaign={onSendToSocialCampaign}
           onSendToVideoStudio={onSendToVideoStudio}
           onSaveToDraftPlanner={onSaveToDraftPlanner}
+          onOpenBlogComposer={handleOpenBlogComposer}
+          onGenerateSectionImage={handleGenerateSectionImage}
+          generatingPromptId={generatingPromptId}
           handleGenerateBlogPost={handleGenerateBlogPost}
           setIsBlogStudioOpen={setIsBlogStudioOpen}
           setBlogViewMode={setBlogViewMode}

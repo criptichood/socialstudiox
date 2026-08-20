@@ -16,6 +16,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
   const [newCampTopic, setNewCampTopic] = useState('');
   const [newCampPlatform, setNewCampPlatform] = useState('Instagram');
   const [newCampPostCount, setNewCampPostCount] = useState(5);
+  const [newCampSlidesPerPost, setNewCampSlidesPerPost] = useState(5);
   const [newCampStyleGuide, setNewCampStyleGuide] = useState('');
   const [newCampAspect, setNewCampAspect] = useState<AspectRatio>('9:16');
   const [newCampStyle, setNewCampStyle] = useState<VisualStyle>('Default');
@@ -254,6 +255,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
       mainTopic: newCampTopic.trim(),
       platform: newCampPlatform,
       postCount: newCampPostCount,
+      slidesPerPost: newCampSlidesPerPost,
       customRequirements: newCampStyleGuide.trim() || undefined,
       aiModel: newCampModel,
       preferredAspect: newCampAspect as AspectRatio,
@@ -274,6 +276,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
       setNewCampTopic('');
       setNewCampPlatform('Instagram');
       setNewCampPostCount(5);
+      setNewCampSlidesPerPost(5);
       setNewCampStyleGuide('');
       return;
     }
@@ -287,7 +290,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
       const statuses = [
         "Analyzing company core competencies...",
         "Scraping brand aesthetic anchors...",
-        "Generating high-converting captions and viral hashtags...",
+        "Generating engaging captions and viral hashtags...",
         "Formulating structured visual generator prompt ideas...",
         "Polishing campaign sequence layout..."
       ];
@@ -305,6 +308,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
         newCampTopic.trim(),
         newCampPlatform,
         newCampPostCount,
+        newCampSlidesPerPost,
         newCampStyleGuide.trim() || undefined,
         newCampTemplate || undefined,
         newCampModel
@@ -334,6 +338,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
       setNewCampTopic('');
       setNewCampPlatform('Instagram');
       setNewCampPostCount(5);
+      setNewCampSlidesPerPost(5);
       setNewCampStyleGuide('');
       setNewCampTemplate('');
       setNewCampAspect('9:16');
@@ -431,6 +436,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
         activeCamp.mainTopic,
         activeCamp.platform,
         activeCamp.postCount || 5,
+        activeCamp.slidesPerPost || 5,
         activeCamp.customRequirements,
         undefined,
         activeCamp.aiModel || newCampModel || 'gemini-3.6-flash'
@@ -519,6 +525,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
         activeCamp.mainTopic,
         activeCamp.platform,
         campaignPosts.length,
+        activeCamp.slidesPerPost || 5,
         `Refinement Instructions: ${refinementText.trim()}. Current drafts to optimize: ${JSON.stringify(campaignPosts)}`,
         undefined,
         activeCamp.aiModel || newCampModel || 'gemini-3.6-flash'
@@ -701,6 +708,7 @@ export const useCampaigns = ({ activeProjectId, onCreateDraft, onLaunchDraft }: 
     newCampTopic, setNewCampTopic,
     newCampPlatform, setNewCampPlatform,
     newCampPostCount, setNewCampPostCount,
+    newCampSlidesPerPost, setNewCampSlidesPerPost,
     newCampStyleGuide, setNewCampStyleGuide,
     newCampAspect, setNewCampAspect,
     newCampStyle, setNewCampStyle,

@@ -11,14 +11,15 @@ export interface PublishBlogResult {
 export const publishBlogToEndpoint = async (
   targetUrl: string,
   headers: Record<string, string>,
-  payload: Record<string, unknown>
+  payload: Record<string, unknown>,
+  method: 'POST' | 'PUT' | 'PATCH' = 'POST'
 ): Promise<PublishBlogResult> => {
   const response = await fetch("/api/blog/publish", {
     method: "POST",
     headers: {
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({ targetUrl, headers, payload })
+    body: JSON.stringify({ targetUrl, headers, payload, method })
   });
 
   if (!response.ok) {

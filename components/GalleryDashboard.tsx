@@ -187,6 +187,7 @@ const GalleryDashboard: React.FC<GalleryDashboardProps> = ({
   const getResolutionIcon = (res: string) => {
     switch (res) {
       case '9:16': return <Smartphone className="w-3.5 h-3.5" />;
+      case '4:5': return <ImageIcon className="w-3.5 h-3.5" />;
       case '1:1': return <Square className="w-3.5 h-3.5" />;
       case '16:9':
       default:

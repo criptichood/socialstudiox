@@ -2,6 +2,8 @@ export interface PublishRequestPayload {
   targetUrl: string;
   headers: Record<string, string>;
   payload: Record<string, unknown>;
+  /** HTTP method to use (POST for new posts, PUT/PATCH for updates by slug). */
+  method?: 'POST' | 'PUT' | 'PATCH';
 }
 
 export interface PublishResult {
@@ -21,19 +23,27 @@ export const publishToExternalEndpoint = async (req: PublishRequestPayload): Pro
     throw new Error('Invalid endpoint URL. Must be an absolute http(s) URL.');
   }
 
+  const method = req.method || 'POST';
   const res = await fetch(req.targetUrl, {
-    method: 'POST',
+    method,
     headers: req.headers || { 'Content-Type': 'application/json' },
     body: JSON.stringify(req.payload),
     signal: AbortSignal.timeout(60000)
   });
 
-  let responseText = '';
+  // Read the response body exactly ONCE, then parse defensively. Calling
+  // `res.json()` and falling back to `res.text()` on the same response throws
+  // "Body is unusable: Body has already been read" when the target returns a
+  // non-JSON (or empty) body — e.g. a plain-text 409 from the endpoint.
+  const rawText = await res.text();
+  let responseText = rawText;
   try {
-    const data = await res.json();
-    responseText = data?.message || data?.error || JSON.stringify(data);
+    const data = JSON.parse(rawText);
+    if (data && typeof data === 'object') {
+      responseText = data?.message || data?.error || JSON.stringify(data);
+    }
   } catch {
-    responseText = await res.text();
+    // Keep the raw text (HTML error pages, plain-text messages, empty body).
   }
 
   return { status: res.status, ok: res.ok, responseText };

@@ -121,7 +121,7 @@ export const CronSchedulesTab: React.FC<CronSchedulesTabProps> = ({
               cronExpression: newCronExpression.trim() || '0 9 * * 1',
               cronHumanReadable: formatCronExpression(newCronExpression.trim() || '0 9 * * 1'),
               scheduledDateTime: schedISO,
-              endpointId: selectedEndpointId || 'growency_main',
+              endpointId: selectedEndpointId || 'default_endpoint',
               endpointName: publishEndpoints.find(e => e.id === selectedEndpointId)?.name,
               status: 'active',
               nextRunAt: schedISO,

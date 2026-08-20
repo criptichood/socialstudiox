@@ -101,6 +101,8 @@ export const getResolutionInstruction = (resolution: AspectRatio): string => {
       return "Layout & Composition: Portrait / Mobile Story structure (9:16 aspect ratio). Stack informational graphics, boxes, and icons vertically, optimizing the design for tall mobile screens with a clear top-to-bottom logical flow. Everything must be proportioned for smartphone viewing.";
     case '1:1':
       return "Layout & Composition: Square badge/sticker structure (1:1 aspect ratio). Symmetrical layout with a dominant centered focal graphic, surrounding icons, and compact, beautifully balanced boundaries. Perfect for avatars, social media badges, or single stickers.";
+    case '4:5':
+      return "Layout & Composition: Portrait feed post structure (4:5 aspect ratio). Design a slightly-taller-than-wide canvas ideal for Instagram/LinkedIn feed posts, with a clear top-to-bottom visual hierarchy, balanced margins, and enough vertical breathing room for headline + body graphics.";
     case '16:9':
     default:
       return "Layout & Composition: Landscape widescreen presentation structure (16:9 aspect ratio). Distribute data graphics, flowcharts, and labels horizontally across the workspace with balanced left-to-right reading flow, perfect for slides and desktop screens.";
